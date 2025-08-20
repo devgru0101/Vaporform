@@ -1,0 +1,1206 @@
+# Terminal Integration System
+
+## Overview
+
+Vaporform's terminal integration provides a full-featured terminal experience within the IDE, enabling users to execute commands directly in their project containers. It includes secure command execution, session management, real-time output streaming, and advanced terminal features.
+
+## Core Terminal Service
+
+### 1. Terminal Session Manager
+
+```typescript
+// terminal/TerminalSessionManager.ts
+import { spawn, ChildProcess } from 'child_process';
+import { EventEmitter } from 'events';
+import * as pty from 'node-pty';
+import Docker from 'dockerode';
+
+export class TerminalSessionManager extends EventEmitter {
+  private sessions: Map<string, TerminalSession> = new Map();
+  private docker: Docker;
+  private securityManager: TerminalSecurityManager;
+  
+  constructor() {
+    super();
+    this.docker = new Docker();
+    this.securityManager = new TerminalSecurityManager();
+    this.setupSessionCleanup();
+  }
+
+  async createSession(request: CreateSessionRequest): Promise<TerminalSession> {
+    // Validate access
+    await this.securityManager.validateAccess(request.projectId, request.userId);
+    
+    const sessionId = this.generateSessionId();
+    const projectContainer = await this.getProjectContainer(request.projectId);
+    
+    if (!projectContainer) {
+      throw new Error('Project container not found or not running');
+    }
+
+    const session: TerminalSession = {
+      id: sessionId,
+      projectId: request.projectId,
+      userId: request.userId,
+      containerId: projectContainer.id,
+      status: 'initializing',
+      workingDirectory: request.workingDirectory || '/app',
+      environment: {
+        ...request.environment,
+        TERM: 'xterm-256color',
+        USER: 'appuser',
+        HOME: '/home/appuser',
+        PROJECT_ID: request.projectId
+      },
+      createdAt: new Date(),
+      lastActivity: new Date(),
+      commands: [],
+      pty: null
+    };
+
+    try {
+      // Create PTY session in container
+      const ptyProcess = await this.createContainerPTY(session);
+      session.pty = ptyProcess;
+      session.status = 'active';
+      
+      // Set up event handlers
+      this.setupSessionEventHandlers(session);
+      
+      // Store session
+      this.sessions.set(sessionId, session);
+      
+      // Log session creation
+      await this.logTerminalActivity(session.projectId, session.userId, 'session_created', {
+        sessionId: sessionId
+      });
+      
+      this.emit('session_created', session);
+      
+      return session;
+      
+    } catch (error) {
+      console.error('Failed to create terminal session:', error);
+      throw new Error(`Terminal session creation failed: ${error.message}`);
+    }
+  }
+
+  async executeCommand(sessionId: string, command: string): Promise<CommandExecution> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error('Terminal session not found');
+    }
+
+    if (session.status !== 'active') {
+      throw new Error('Terminal session is not active');
+    }
+
+    // Validate command security
+    await this.securityManager.validateCommand(command, session.projectId);
+    
+    const executionId = this.generateExecutionId();
+    const execution: CommandExecution = {
+      id: executionId,
+      sessionId: sessionId,
+      command: command,
+      status: 'running',
+      startTime: new Date(),
+      output: [],
+      exitCode: null
+    };
+
+    session.commands.push(execution);
+    session.lastActivity = new Date();
+
+    try {
+      // Write command to PTY
+      if (session.pty) {
+        session.pty.write(command + '\r');
+      }
+      
+      // Log command execution
+      await this.logTerminalActivity(session.projectId, session.userId, 'command_executed', {
+        sessionId: sessionId,
+        command: command,
+        executionId: executionId
+      });
+      
+      this.emit('command_executed', { session, execution });
+      
+      return execution;
+      
+    } catch (error) {
+      execution.status = 'failed';
+      execution.error = error.message;
+      execution.endTime = new Date();
+      
+      console.error('Command execution failed:', error);
+      throw error;
+    }
+  }
+
+  async sendInput(sessionId: string, input: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.status !== 'active' || !session.pty) {
+      throw new Error('Invalid session or session not active');
+    }
+
+    session.pty.write(input);
+    session.lastActivity = new Date();
+  }
+
+  async resizeTerminal(sessionId: string, cols: number, rows: number): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session || session.status !== 'active' || !session.pty) {
+      throw new Error('Invalid session or session not active');
+    }
+
+    session.pty.resize(cols, rows);
+    session.lastActivity = new Date();
+  }
+
+  async killSession(sessionId: string): Promise<void> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error('Terminal session not found');
+    }
+
+    try {
+      // Kill PTY process
+      if (session.pty) {
+        session.pty.kill();
+      }
+      
+      session.status = 'terminated';
+      session.endTime = new Date();
+      
+      // Log session termination
+      await this.logTerminalActivity(session.projectId, session.userId, 'session_terminated', {
+        sessionId: sessionId
+      });
+      
+      // Remove from active sessions
+      this.sessions.delete(sessionId);
+      
+      this.emit('session_terminated', session);
+      
+    } catch (error) {
+      console.error('Failed to kill terminal session:', error);
+      throw error;
+    }
+  }
+
+  async getSessionHistory(sessionId: string): Promise<TerminalHistory> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      throw new Error('Terminal session not found');
+    }
+
+    return {
+      sessionId: sessionId,
+      commands: session.commands,
+      startTime: session.createdAt,
+      endTime: session.endTime,
+      totalCommands: session.commands.length,
+      workingDirectory: session.workingDirectory
+    };
+  }
+
+  private async createContainerPTY(session: TerminalSession): Promise<pty.IPty> {
+    // Execute shell in container using Docker exec
+    const container = this.docker.getContainer(session.containerId);
+    
+    // Create exec instance
+    const exec = await container.exec({
+      Cmd: ['/bin/bash'],
+      AttachStdout: true,
+      AttachStderr: true,
+      AttachStdin: true,
+      Tty: true,
+      WorkingDir: session.workingDirectory,
+      Env: Object.entries(session.environment).map(([key, value]) => `${key}=${value}`),
+      User: 'appuser'
+    });
+
+    // Start exec
+    const stream = await exec.start({
+      hijack: true,
+      stdin: true,
+      Tty: true
+    });
+
+    // Wrap Docker stream in PTY interface
+    const ptyProcess = this.wrapDockerStreamAsPTY(stream, exec);
+    
+    return ptyProcess;
+  }
+
+  private wrapDockerStreamAsPTY(stream: any, exec: any): pty.IPty {
+    const emitter = new EventEmitter();
+    
+    // Create PTY-like interface
+    const ptyInterface = {
+      write: (data: string) => {
+        stream.write(data);
+      },
+      
+      resize: (cols: number, rows: number) => {
+        // Docker doesn't support runtime resize, but we can simulate it
+        emitter.emit('resize', { cols, rows });
+      },
+      
+      kill: () => {
+        stream.destroy();
+        emitter.emit('exit', { exitCode: 0, signal: null });
+      },
+      
+      on: (event: string, listener: Function) => {
+        emitter.on(event, listener);
+        return ptyInterface;
+      },
+      
+      off: (event: string, listener: Function) => {
+        emitter.off(event, listener);
+        return ptyInterface;
+      },
+      
+      pid: 0, // Docker exec doesn't provide direct PID access
+      
+      cols: 80,
+      rows: 24
+    };
+
+    // Handle stream data
+    stream.on('data', (data: Buffer) => {
+      emitter.emit('data', data.toString());
+    });
+
+    stream.on('end', () => {
+      emitter.emit('exit', { exitCode: 0, signal: null });
+    });
+
+    stream.on('error', (error: Error) => {
+      emitter.emit('exit', { exitCode: 1, signal: null });
+      console.error('Docker stream error:', error);
+    });
+
+    return ptyInterface as pty.IPty;
+  }
+
+  private setupSessionEventHandlers(session: TerminalSession): void {
+    if (!session.pty) return;
+
+    session.pty.on('data', (data: string) => {
+      // Emit data event for real-time streaming
+      this.emit('session_data', {
+        sessionId: session.id,
+        data: data,
+        timestamp: new Date()
+      });
+      
+      // Update last activity
+      session.lastActivity = new Date();
+      
+      // Store output in current command execution
+      const currentExecution = session.commands[session.commands.length - 1];
+      if (currentExecution && currentExecution.status === 'running') {
+        currentExecution.output.push({
+          type: 'stdout',
+          data: data,
+          timestamp: new Date()
+        });
+      }
+    });
+
+    session.pty.on('exit', (exitCode: number, signal?: number) => {
+      session.status = 'terminated';
+      session.endTime = new Date();
+      
+      // Mark current command execution as completed
+      const currentExecution = session.commands[session.commands.length - 1];
+      if (currentExecution && currentExecution.status === 'running') {
+        currentExecution.status = 'completed';
+        currentExecution.exitCode = exitCode;
+        currentExecution.endTime = new Date();
+      }
+      
+      this.emit('session_exit', {
+        sessionId: session.id,
+        exitCode: exitCode,
+        signal: signal
+      });
+    });
+  }
+
+  async getActiveSessions(projectId: string): Promise<TerminalSession[]> {
+    const projectSessions = Array.from(this.sessions.values())
+      .filter(session => session.projectId === projectId && session.status === 'active');
+    
+    return projectSessions;
+  }
+
+  async getSessionById(sessionId: string): Promise<TerminalSession | null> {
+    return this.sessions.get(sessionId) || null;
+  }
+
+  private async getProjectContainer(projectId: string): Promise<Docker.Container | null> {
+    try {
+      const containers = await this.docker.listContainers({
+        filters: {
+          label: [`vaporform.project=${projectId}`],
+          status: ['running']
+        }
+      });
+
+      if (containers.length === 0) {
+        return null;
+      }
+
+      return this.docker.getContainer(containers[0].Id);
+    } catch (error) {
+      console.error('Failed to get project container:', error);
+      return null;
+    }
+  }
+
+  private setupSessionCleanup(): void {
+    // Clean up inactive sessions every 5 minutes
+    setInterval(() => {
+      const now = new Date();
+      const inactiveThreshold = 30 * 60 * 1000; // 30 minutes
+
+      for (const [sessionId, session] of this.sessions) {
+        const timeSinceLastActivity = now.getTime() - session.lastActivity.getTime();
+        
+        if (timeSinceLastActivity > inactiveThreshold && session.status === 'active') {
+          console.log(`Terminating inactive session: ${sessionId}`);
+          this.killSession(sessionId).catch(error => {
+            console.error(`Failed to cleanup session ${sessionId}:`, error);
+          });
+        }
+      }
+    }, 5 * 60 * 1000);
+  }
+
+  private generateSessionId(): string {
+    return `terminal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private generateExecutionId(): string {
+    return `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private async logTerminalActivity(
+    projectId: string, 
+    userId: string, 
+    activity: string, 
+    metadata: any
+  ): Promise<void> {
+    await db.exec`
+      INSERT INTO terminal_activity (
+        project_id, user_id, activity_type, metadata, created_at
+      ) VALUES (
+        ${projectId}, ${userId}, ${activity}, ${JSON.stringify(metadata)}, NOW()
+      )
+    `;
+  }
+}
+
+// Type definitions
+interface CreateSessionRequest {
+  projectId: string;
+  userId: string;
+  workingDirectory?: string;
+  environment?: Record<string, string>;
+}
+
+interface TerminalSession {
+  id: string;
+  projectId: string;
+  userId: string;
+  containerId: string;
+  status: 'initializing' | 'active' | 'terminated' | 'error';
+  workingDirectory: string;
+  environment: Record<string, string>;
+  createdAt: Date;
+  lastActivity: Date;
+  endTime?: Date;
+  commands: CommandExecution[];
+  pty: pty.IPty | null;
+}
+
+interface CommandExecution {
+  id: string;
+  sessionId: string;
+  command: string;
+  status: 'running' | 'completed' | 'failed';
+  startTime: Date;
+  endTime?: Date;
+  output: OutputLine[];
+  exitCode: number | null;
+  error?: string;
+}
+
+interface OutputLine {
+  type: 'stdout' | 'stderr';
+  data: string;
+  timestamp: Date;
+}
+
+interface TerminalHistory {
+  sessionId: string;
+  commands: CommandExecution[];
+  startTime: Date;
+  endTime?: Date;
+  totalCommands: number;
+  workingDirectory: string;
+}
+```
+
+### 2. Terminal Security Manager
+
+```typescript
+// terminal/TerminalSecurityManager.ts
+export class TerminalSecurityManager {
+  private blockedCommands: Set<string> = new Set();
+  private restrictedPaths: Set<string> = new Set();
+  private commandWhitelist: Map<string, CommandPolicy> = new Map();
+  
+  constructor() {
+    this.initializeSecurityPolicies();
+  }
+
+  async validateAccess(projectId: string, userId: string): Promise<void> {
+    // Check if user has terminal access for this project
+    const hasAccess = await this.checkTerminalAccess(projectId, userId);
+    if (!hasAccess) {
+      throw new SecurityError('Terminal access denied for this project');
+    }
+
+    // Check if user account is in good standing
+    const userStatus = await this.checkUserStatus(userId);
+    if (userStatus !== 'active') {
+      throw new SecurityError('User account is not in good standing');
+    }
+  }
+
+  async validateCommand(command: string, projectId: string): Promise<void> {
+    const trimmedCommand = command.trim();
+    
+    if (!trimmedCommand) {
+      return; // Empty commands are allowed
+    }
+
+    // Parse command to extract base command and arguments
+    const parsedCommand = this.parseCommand(trimmedCommand);
+    
+    // Check against blocked commands
+    if (this.isBlockedCommand(parsedCommand.baseCommand)) {
+      throw new SecurityError(`Command '${parsedCommand.baseCommand}' is not allowed`);
+    }
+
+    // Check against command whitelist policies
+    const policy = this.commandWhitelist.get(parsedCommand.baseCommand);
+    if (policy) {
+      await this.enforceCommandPolicy(parsedCommand, policy, projectId);
+    }
+
+    // Check for dangerous patterns
+    this.checkDangerousPatterns(trimmedCommand);
+    
+    // Check file system access restrictions
+    await this.checkFileSystemRestrictions(parsedCommand, projectId);
+    
+    // Log command for audit
+    await this.logCommandValidation(projectId, trimmedCommand, 'allowed');
+  }
+
+  private initializeSecurityPolicies(): void {
+    // Blocked commands that are never allowed
+    this.blockedCommands.add('sudo');
+    this.blockedCommands.add('su');
+    this.blockedCommands.add('passwd');
+    this.blockedCommands.add('chown');
+    this.blockedCommands.add('chmod');
+    this.blockedCommands.add('mount');
+    this.blockedCommands.add('umount');
+    this.blockedCommands.add('systemctl');
+    this.blockedCommands.add('service');
+    this.blockedCommands.add('iptables');
+    this.blockedCommands.add('ufw');
+    this.blockedCommands.add('fdisk');
+    this.blockedCommands.add('mkfs');
+    this.blockedCommands.add('crontab');
+    this.blockedCommands.add('at');
+    this.blockedCommands.add('nohup');
+    
+    // Restricted paths that cannot be accessed
+    this.restrictedPaths.add('/etc');
+    this.restrictedPaths.add('/sys');
+    this.restrictedPaths.add('/proc');
+    this.restrictedPaths.add('/dev');
+    this.restrictedPaths.add('/boot');
+    this.restrictedPaths.add('/root');
+    this.restrictedPaths.add('/usr/bin');
+    this.restrictedPaths.add('/usr/sbin');
+    this.restrictedPaths.add('/sbin');
+    this.restrictedPaths.add('/bin');
+    
+    // Command policies for specific commands
+    this.commandWhitelist.set('rm', {
+      allowedPaths: ['/app', '/tmp', '/home/appuser'],
+      blockedFlags: ['-rf /'],
+      requireConfirmation: true
+    });
+    
+    this.commandWhitelist.set('curl', {
+      blockedHosts: ['localhost', '127.0.0.1', '169.254.169.254'], // Prevent SSRF
+      allowedProtocols: ['http', 'https'],
+      maxFileSize: 100 * 1024 * 1024 // 100MB
+    });
+    
+    this.commandWhitelist.set('wget', {
+      blockedHosts: ['localhost', '127.0.0.1', '169.254.169.254'],
+      allowedProtocols: ['http', 'https'],
+      maxFileSize: 100 * 1024 * 1024
+    });
+    
+    this.commandWhitelist.set('git', {
+      allowedOperations: ['clone', 'pull', 'push', 'add', 'commit', 'status', 'log', 'diff'],
+      allowedPaths: ['/app']
+    });
+    
+    this.commandWhitelist.set('docker', {
+      blockedOperations: ['run', 'exec', 'build'],
+      allowedOperations: ['ps', 'images', 'logs']
+    });
+  }
+
+  private parseCommand(command: string): ParsedCommand {
+    const parts = command.split(/\s+/);
+    const baseCommand = parts[0].split('/').pop() || parts[0]; // Handle full paths
+    const args = parts.slice(1);
+    
+    return {
+      originalCommand: command,
+      baseCommand: baseCommand,
+      arguments: args,
+      fullPath: parts[0]
+    };
+  }
+
+  private isBlockedCommand(command: string): boolean {
+    return this.blockedCommands.has(command);
+  }
+
+  private async enforceCommandPolicy(
+    parsedCommand: ParsedCommand, 
+    policy: CommandPolicy, 
+    projectId: string
+  ): Promise<void> {
+    
+    // Check allowed operations
+    if (policy.allowedOperations) {
+      const operation = parsedCommand.arguments[0];
+      if (!policy.allowedOperations.includes(operation)) {
+        throw new SecurityError(`Operation '${operation}' is not allowed for '${parsedCommand.baseCommand}'`);
+      }
+    }
+    
+    // Check blocked operations
+    if (policy.blockedOperations) {
+      const operation = parsedCommand.arguments[0];
+      if (policy.blockedOperations.includes(operation)) {
+        throw new SecurityError(`Operation '${operation}' is blocked for '${parsedCommand.baseCommand}'`);
+      }
+    }
+    
+    // Check allowed paths
+    if (policy.allowedPaths) {
+      const pathArgs = this.extractPathArguments(parsedCommand.arguments);
+      for (const pathArg of pathArgs) {
+        if (!this.isPathAllowed(pathArg, policy.allowedPaths)) {
+          throw new SecurityError(`Path '${pathArg}' is not allowed`);
+        }
+      }
+    }
+    
+    // Check blocked hosts (for network commands)
+    if (policy.blockedHosts) {
+      const hostArgs = this.extractHostArguments(parsedCommand.arguments);
+      for (const host of hostArgs) {
+        if (policy.blockedHosts.includes(host)) {
+          throw new SecurityError(`Host '${host}' is blocked`);
+        }
+      }
+    }
+    
+    // Check blocked flags
+    if (policy.blockedFlags) {
+      for (const flag of policy.blockedFlags) {
+        if (parsedCommand.originalCommand.includes(flag)) {
+          throw new SecurityError(`Flag '${flag}' is not allowed`);
+        }
+      }
+    }
+  }
+
+  private checkDangerousPatterns(command: string): void {
+    const dangerousPatterns = [
+      /rm\s+-rf\s+\/[^\/]/,  // rm -rf with root paths
+      />\s*\/dev\/null/,      // Redirecting to /dev/null (suspicious)
+      /\|\s*sh/,              // Piping to shell
+      /\|\s*bash/,            // Piping to bash
+      /\$\(.*\)/,             // Command substitution
+      /`.*`/,                 // Backtick command substitution
+      /&&.*rm/,               // Chained commands with rm
+      /;\s*rm/,               // Semicolon separated commands with rm
+      /wget.*\|\s*sh/,        // Download and execute
+      /curl.*\|\s*sh/,        // Download and execute
+      /nc\s+-l/,              // Netcat listener
+      /python.*-c/,           // Python one-liner execution
+      /perl.*-e/,             // Perl one-liner execution
+      /ruby.*-e/,             // Ruby one-liner execution
+      /node.*-e/,             // Node one-liner execution
+    ];
+    
+    for (const pattern of dangerousPatterns) {
+      if (pattern.test(command)) {
+        throw new SecurityError('Command contains potentially dangerous patterns');
+      }
+    }
+  }
+
+  private async checkFileSystemRestrictions(
+    parsedCommand: ParsedCommand, 
+    projectId: string
+  ): Promise<void> {
+    const pathArgs = this.extractPathArguments(parsedCommand.arguments);
+    
+    for (const pathArg of pathArgs) {
+      // Check restricted paths
+      const absolutePath = path.resolve(pathArg);
+      for (const restrictedPath of this.restrictedPaths) {
+        if (absolutePath.startsWith(restrictedPath)) {
+          throw new SecurityError(`Access to path '${pathArg}' is restricted`);
+        }
+      }
+      
+      // Ensure path is within project bounds
+      if (!this.isWithinProjectBounds(absolutePath, projectId)) {
+        throw new SecurityError(`Path '${pathArg}' is outside project boundaries`);
+      }
+    }
+  }
+
+  private extractPathArguments(args: string[]): string[] {
+    const pathArgs: string[] = [];
+    
+    for (const arg of args) {
+      // Skip flags (starting with -)
+      if (arg.startsWith('-')) {
+        continue;
+      }
+      
+      // Check if argument looks like a path
+      if (arg.includes('/') || arg === '.' || arg === '..' || arg.startsWith('~')) {
+        pathArgs.push(arg);
+      }
+    }
+    
+    return pathArgs;
+  }
+
+  private extractHostArguments(args: string[]): string[] {
+    const hostArgs: string[] = [];
+    
+    for (const arg of args) {
+      // Skip flags
+      if (arg.startsWith('-')) {
+        continue;
+      }
+      
+      // Check for URL patterns
+      if (arg.match(/^https?:\/\/([^\/]+)/)) {
+        const match = arg.match(/^https?:\/\/([^\/]+)/);
+        if (match) {
+          hostArgs.push(match[1]);
+        }
+      }
+      
+      // Check for hostname patterns
+      if (arg.match(/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/)) {
+        hostArgs.push(arg);
+      }
+      
+      // Check for IP addresses
+      if (arg.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
+        hostArgs.push(arg);
+      }
+    }
+    
+    return hostArgs;
+  }
+
+  private isPathAllowed(pathArg: string, allowedPaths: string[]): boolean {
+    const absolutePath = path.resolve(pathArg);
+    
+    for (const allowedPath of allowedPaths) {
+      if (absolutePath.startsWith(allowedPath)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  private isWithinProjectBounds(absolutePath: string, projectId: string): boolean {
+    const projectRoot = `/var/vaporform/projects/${projectId}`;
+    return absolutePath.startsWith(projectRoot);
+  }
+
+  private async checkTerminalAccess(projectId: string, userId: string): Promise<boolean> {
+    // Check project permissions
+    const result = await db.queryRow`
+      SELECT 1 FROM projects p
+      JOIN project_permissions pp ON p.id = pp.project_id
+      WHERE p.id = ${projectId} 
+      AND (p.user_id = ${userId} OR pp.user_id = ${userId})
+      AND pp.permissions->>'terminal' = 'true'
+    `;
+    
+    return !!result;
+  }
+
+  private async checkUserStatus(userId: string): Promise<string> {
+    const result = await db.queryRow`
+      SELECT status FROM users WHERE id = ${userId}
+    `;
+    
+    return result?.status || 'inactive';
+  }
+
+  private async logCommandValidation(
+    projectId: string, 
+    command: string, 
+    result: 'allowed' | 'blocked'
+  ): Promise<void> {
+    await db.exec`
+      INSERT INTO terminal_security_log (
+        project_id, command, validation_result, created_at
+      ) VALUES (
+        ${projectId}, ${command}, ${result}, NOW()
+      )
+    `;
+  }
+}
+
+interface ParsedCommand {
+  originalCommand: string;
+  baseCommand: string;
+  arguments: string[];
+  fullPath: string;
+}
+
+interface CommandPolicy {
+  allowedOperations?: string[];
+  blockedOperations?: string[];
+  allowedPaths?: string[];
+  blockedHosts?: string[];
+  allowedProtocols?: string[];
+  blockedFlags?: string[];
+  maxFileSize?: number;
+  requireConfirmation?: boolean;
+}
+
+class SecurityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SecurityError';
+  }
+}
+```
+
+### 3. Frontend Terminal Component
+
+```typescript
+// frontend/components/Terminal/TerminalComponent.tsx
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Terminal } from 'xterm';
+import { FitAddon } from 'xterm-addon-fit';
+import { WebLinksAddon } from 'xterm-addon-web-links';
+import { SearchAddon } from 'xterm-addon-search';
+import { VaporformWebSocketClient } from '../../services/WebSocketClient';
+
+interface TerminalComponentProps {
+  projectId: string;
+  onSessionCreated?: (sessionId: string) => void;
+  onSessionTerminated?: (sessionId: string) => void;
+  onError?: (error: string) => void;
+}
+
+export const TerminalComponent: React.FC<TerminalComponentProps> = ({
+  projectId,
+  onSessionCreated,
+  onSessionTerminated,
+  onError
+}) => {
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const terminal = useRef<Terminal | null>(null);
+  const fitAddon = useRef<FitAddon | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const wsClient = useRef<VaporformWebSocketClient | null>(null);
+
+  useEffect(() => {
+    initializeTerminal();
+    return () => {
+      cleanup();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (terminal.current && isConnected) {
+      setupWebSocketHandlers();
+    }
+  }, [isConnected, sessionId]);
+
+  const initializeTerminal = useCallback(() => {
+    if (!terminalRef.current) return;
+
+    // Create terminal instance
+    terminal.current = new Terminal({
+      cursorBlink: true,
+      theme: {
+        background: '#1e1e1e',
+        foreground: '#d4d4d4',
+        cursor: '#d4d4d4',
+        selection: '#264f78',
+        black: '#000000',
+        red: '#cd3131',
+        green: '#0dbc79',
+        yellow: '#e5e510',
+        blue: '#2472c8',
+        magenta: '#bc3fbc',
+        cyan: '#11a8cd',
+        white: '#e5e5e5',
+        brightBlack: '#666666',
+        brightRed: '#f14c4c',
+        brightGreen: '#23d18b',
+        brightYellow: '#f5f543',
+        brightBlue: '#3b8eea',
+        brightMagenta: '#d670d6',
+        brightCyan: '#29b8db',
+        brightWhite: '#e5e5e5'
+      },
+      fontSize: 14,
+      fontFamily: '"Fira Code", "Cascadia Code", "Source Code Pro", monospace',
+      rows: 24,
+      cols: 80
+    });
+
+    // Add addons
+    fitAddon.current = new FitAddon();
+    terminal.current.loadAddon(fitAddon.current);
+    terminal.current.loadAddon(new WebLinksAddon());
+    terminal.current.loadAddon(new SearchAddon());
+
+    // Open terminal
+    terminal.current.open(terminalRef.current);
+    fitAddon.current.fit();
+
+    // Handle terminal input
+    terminal.current.onData((data) => {
+      if (sessionId && wsClient.current) {
+        wsClient.current.sendTerminalInput(projectId, data, sessionId);
+      }
+    });
+
+    // Handle terminal resize
+    terminal.current.onResize((size) => {
+      if (sessionId && wsClient.current) {
+        wsClient.current.send({
+          type: 'terminal_resize',
+          data: {
+            sessionId,
+            cols: size.cols,
+            rows: size.rows
+          }
+        });
+      }
+    });
+
+    // Show connection message
+    terminal.current.writeln('Connecting to terminal...');
+    
+  }, [projectId, sessionId]);
+
+  const setupWebSocketHandlers = useCallback(() => {
+    if (!wsClient.current) return;
+
+    // Handle terminal output
+    wsClient.current.on('terminal_output', (data) => {
+      if (data.sessionId === sessionId && terminal.current) {
+        terminal.current.write(data.output);
+      }
+    });
+
+    // Handle terminal errors
+    wsClient.current.on('terminal_error', (data) => {
+      if (data.sessionId === sessionId) {
+        const error = `Terminal error: ${data.error}`;
+        terminal.current?.writeln(`\r\n\x1b[31m${error}\x1b[0m`);
+        onError?.(error);
+      }
+    });
+
+    // Handle session termination
+    wsClient.current.on('terminal_session_terminated', (data) => {
+      if (data.sessionId === sessionId) {
+        terminal.current?.writeln('\r\n\x1b[33mTerminal session terminated\x1b[0m');
+        setIsConnected(false);
+        setSessionId(null);
+        onSessionTerminated?.(data.sessionId);
+      }
+    });
+
+    // Handle session created
+    wsClient.current.on('terminal_session_created', (data) => {
+      if (data.projectId === projectId) {
+        setSessionId(data.sessionId);
+        setIsConnected(true);
+        terminal.current?.clear();
+        terminal.current?.writeln('Terminal session established');
+        onSessionCreated?.(data.sessionId);
+      }
+    });
+
+  }, [sessionId, projectId, onError, onSessionCreated, onSessionTerminated]);
+
+  const createSession = useCallback(async () => {
+    if (isLoading || sessionId) return;
+
+    setIsLoading(true);
+    
+    try {
+      // Get WebSocket client
+      wsClient.current = new VaporformWebSocketClient();
+      await wsClient.current.connect();
+      
+      // Request terminal session creation
+      wsClient.current.send({
+        type: 'create_terminal_session',
+        data: {
+          projectId,
+          workingDirectory: '/app'
+        }
+      });
+
+    } catch (error) {
+      console.error('Failed to create terminal session:', error);
+      terminal.current?.writeln(`\r\n\x1b[31mFailed to create terminal session: ${error.message}\x1b[0m`);
+      onError?.(`Failed to create terminal session: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [projectId, isLoading, sessionId, onError]);
+
+  const terminateSession = useCallback(async () => {
+    if (!sessionId || !wsClient.current) return;
+
+    try {
+      wsClient.current.send({
+        type: 'terminate_terminal_session',
+        data: { sessionId }
+      });
+      
+    } catch (error) {
+      console.error('Failed to terminate session:', error);
+      onError?.(`Failed to terminate session: ${error.message}`);
+    }
+  }, [sessionId, onError]);
+
+  const cleanup = useCallback(() => {
+    if (terminal.current) {
+      terminal.current.dispose();
+      terminal.current = null;
+    }
+    
+    if (wsClient.current) {
+      wsClient.current.disconnect();
+      wsClient.current = null;
+    }
+  }, []);
+
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (fitAddon.current) {
+        fitAddon.current.fit();
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  // Auto-create session on mount
+  useEffect(() => {
+    if (!sessionId && !isLoading) {
+      createSession();
+    }
+  }, [createSession, sessionId, isLoading]);
+
+  return (
+    <div className="terminal-container">
+      <div className="terminal-header">
+        <div className="terminal-title">
+          <span>Project Terminal</span>
+          {isConnected && <span className="connection-status connected">●</span>}
+          {isLoading && <span className="connection-status connecting">●</span>}
+          {!isConnected && !isLoading && <span className="connection-status disconnected">●</span>}
+        </div>
+        
+        <div className="terminal-controls">
+          {!sessionId && !isLoading && (
+            <button onClick={createSession} className="terminal-button">
+              Connect
+            </button>
+          )}
+          
+          {sessionId && (
+            <>
+              <button 
+                onClick={() => terminal.current?.clear()} 
+                className="terminal-button"
+              >
+                Clear
+              </button>
+              <button 
+                onClick={terminateSession} 
+                className="terminal-button terminal-button-danger"
+              >
+                Disconnect
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      
+      <div 
+        ref={terminalRef} 
+        className="terminal-content"
+        style={{ height: '500px', width: '100%' }}
+      />
+      
+      {isLoading && (
+        <div className="terminal-loading">
+          <span>Connecting to terminal...</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// CSS styles (would typically be in a separate file)
+const terminalStyles = `
+.terminal-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.terminal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  background: #2d2d2d;
+  border-bottom: 1px solid #3e3e3e;
+}
+
+.terminal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #d4d4d4;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.connection-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.connection-status.connected {
+  background: #0dbc79;
+}
+
+.connection-status.connecting {
+  background: #e5e510;
+  animation: pulse 1s infinite;
+}
+
+.connection-status.disconnected {
+  background: #cd3131;
+}
+
+.terminal-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.terminal-button {
+  padding: 4px 12px;
+  background: #0e639c;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.terminal-button:hover {
+  background: #1177bb;
+}
+
+.terminal-button-danger {
+  background: #cd3131;
+}
+
+.terminal-button-danger:hover {
+  background: #f14c4c;
+}
+
+.terminal-content {
+  flex: 1;
+  padding: 8px;
+}
+
+.terminal-loading {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #d4d4d4;
+  font-size: 14px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+`;
+```
+
+This comprehensive terminal integration system provides Vaporform with a secure, full-featured terminal experience that enables users to execute commands directly in their project containers while maintaining security and providing real-time communication.

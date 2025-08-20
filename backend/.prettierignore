@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+out/
+
+# Logs
+*.log
+
+# Environment files
+.env*
+
+# Cache
+.eslintcache
+.tsbuildinfo
+
+# Coverage
+coverage/
+
+# Generated files
+*.generated.*
+*.gen.ts
+
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Docker
+Dockerfile*
+.dockerignore

@@ -1,0 +1,584 @@
+# Database Schema Design
+
+## Overview
+
+Vaporform uses Encore's built-in PostgreSQL database to store all project data, user information, file contents, and system metadata. The schema is designed for scalability, performance, and easy querying.
+
+## Core Tables
+
+### 1. Users Table
+
+```sql
+-- User management and authentication
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    full_name VARCHAR(255) NOT NULL,
+    avatar_url TEXT,
+    password_hash VARCHAR(255) NOT NULL,
+    
+    -- Profile information
+    bio TEXT,
+    location VARCHAR(255),
+    website_url TEXT,
+    github_username VARCHAR(255),
+    
+    -- Account status
+    email_verified BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    is_premium BOOLEAN DEFAULT FALSE,
+    
+    -- Preferences
+    preferences JSONB DEFAULT '{}',
+    settings JSONB DEFAULT '{}',
+    
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    last_login_at TIMESTAMP WITH TIME ZONE,
+    email_verified_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Indexes for users
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_github_username ON users(github_username);
+CREATE INDEX idx_users_created_at ON users(created_at);
+CREATE INDEX idx_users_is_active ON users(is_active);
+```
+
+### 2. Projects Table
+
+```sql
+-- Main projects table
+CREATE TABLE projects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- Project metadata
+    name VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    functionality TEXT, -- User-described functionality
+    
+    -- Project configuration
+    architecture_type VARCHAR(50) NOT NULL DEFAULT 'monolithic', -- 'pwa', 'microservices', 'monolithic'
+    tech_stack JSONB NOT NULL,
+    integrations JSONB DEFAULT '{}',
+    environment_vars JSONB DEFAULT '{}',
+    
+    -- Project status
+    status VARCHAR(50) NOT NULL DEFAULT 'creating', -- 'creating', 'running', 'stopped', 'error', 'archived'
+    health_status VARCHAR(50) DEFAULT 'unknown', -- 'healthy', 'unhealthy', 'starting', 'unknown'
+    
+    -- Infrastructure details
+    container_id VARCHAR(255),
+    service_url TEXT,
+    internal_ip INET,
+    allocated_port INTEGER,
+    
+    -- Resource usage
+    memory_limit_mb INTEGER DEFAULT 1024,
+    cpu_limit_percent INTEGER DEFAULT 100,
+    storage_limit_mb INTEGER DEFAULT 5120, -- 5GB default
+    
+    -- Repository information
+    repository_type VARCHAR(50) DEFAULT 'new', -- 'new', 'existing'
+    repository_url TEXT,
+    repository_branch VARCHAR(255) DEFAULT 'main',
+    last_sync_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Project statistics
+    total_files INTEGER DEFAULT 0,
+    total_size_bytes BIGINT DEFAULT 0,
+    last_activity_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deployment_count INTEGER DEFAULT 0,
+    
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    deployed_at TIMESTAMP WITH TIME ZONE,
+    archived_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Constraints
+    UNIQUE(user_id, name),
+    CHECK (memory_limit_mb > 0),
+    CHECK (cpu_limit_percent > 0 AND cpu_limit_percent <= 100),
+    CHECK (allocated_port IS NULL OR (allocated_port >= 1000 AND allocated_port <= 65535))
+);
+
+-- Indexes for projects
+CREATE INDEX idx_projects_user_id ON projects(user_id);
+CREATE INDEX idx_projects_status ON projects(status);
+CREATE INDEX idx_projects_created_at ON projects(created_at);
+CREATE INDEX idx_projects_last_activity ON projects(last_activity_at);
+CREATE INDEX idx_projects_architecture ON projects(architecture_type);
+CREATE INDEX idx_projects_container_id ON projects(container_id);
+```
+
+### 3. Project Files Table
+
+```sql
+-- File system representation
+CREATE TABLE project_files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    
+    -- File information
+    file_path TEXT NOT NULL, -- Relative path within project
+    file_name VARCHAR(255) NOT NULL,
+    file_type VARCHAR(50), -- 'typescript', 'javascript', 'css', 'html', etc.
+    mime_type VARCHAR(100),
+    
+    -- File content
+    content TEXT NOT NULL,
+    content_hash VARCHAR(64), -- SHA-256 hash for change detection
+    encoding VARCHAR(20) DEFAULT 'utf-8',
+    
+    -- File metadata
+    size_bytes INTEGER DEFAULT 0,
+    line_count INTEGER DEFAULT 0,
+    is_binary BOOLEAN DEFAULT FALSE,
+    is_generated BOOLEAN DEFAULT FALSE, -- True for AI-generated files
+    
+    -- Version control
+    version INTEGER DEFAULT 1,
+    parent_version_id UUID REFERENCES project_files(id),
+    
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_by UUID REFERENCES users(id),
+    updated_by UUID REFERENCES users(id),
+    
+    -- Constraints
+    UNIQUE(project_id, file_path),
+    CHECK (size_bytes >= 0),
+    CHECK (line_count >= 0),
+    CHECK (version > 0)
+);
+
+-- Indexes for project_files
+CREATE INDEX idx_project_files_project_id ON project_files(project_id);
+CREATE INDEX idx_project_files_path ON project_files(file_path);
+CREATE INDEX idx_project_files_type ON project_files(file_type);
+CREATE INDEX idx_project_files_updated_at ON project_files(updated_at);
+CREATE INDEX idx_project_files_content_hash ON project_files(content_hash);
+CREATE INDEX idx_project_files_is_generated ON project_files(is_generated);
+
+-- Full-text search index for file content
+CREATE INDEX idx_project_files_content_search ON project_files USING gin(to_tsvector('english', content));
+```
+
+### 4. Claude Interactions Table
+
+```sql
+-- Track all Claude AI interactions
+CREATE TABLE claude_interactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- Interaction details
+    interaction_type VARCHAR(50) NOT NULL, -- 'chat', 'file_modification', 'project_creation', 'debug'
+    user_message TEXT NOT NULL,
+    claude_response TEXT NOT NULL,
+    
+    -- Context and metadata
+    context_data JSONB DEFAULT '{}',
+    affected_files TEXT[], -- Array of file paths that were modified
+    commands_executed TEXT[], -- Commands that were run
+    
+    -- Interaction results
+    success BOOLEAN DEFAULT TRUE,
+    error_message TEXT,
+    execution_time_ms INTEGER,
+    
+    -- Token usage (for cost tracking)
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    total_tokens INTEGER,
+    
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Indexes for claude_interactions
+CREATE INDEX idx_claude_interactions_project_id ON claude_interactions(project_id);
+CREATE INDEX idx_claude_interactions_user_id ON claude_interactions(user_id);
+CREATE INDEX idx_claude_interactions_type ON claude_interactions(interaction_type);
+CREATE INDEX idx_claude_interactions_created_at ON claude_interactions(created_at);
+CREATE INDEX idx_claude_interactions_success ON claude_interactions(success);
+```
+
+### 5. Project Activity Log
+
+```sql
+-- Comprehensive activity tracking
+CREATE TABLE project_activity (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    
+    -- Activity details
+    activity_type VARCHAR(50) NOT NULL, -- 'file_created', 'file_modified', 'file_deleted', 'container_started', etc.
+    description TEXT NOT NULL,
+    
+    -- Activity metadata
+    metadata JSONB DEFAULT '{}',
+    affected_resources TEXT[], -- Files, containers, etc. that were affected
+    
+    -- Change tracking
+    before_state JSONB,
+    after_state JSONB,
+    
+    -- Source tracking
+    source_type VARCHAR(50) NOT NULL, -- 'user', 'claude', 'system', 'webhook'
+    source_id UUID, -- ID of the source entity
+    
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Indexes inline
+    INDEX idx_project_activity_project_id (project_id),
+    INDEX idx_project_activity_user_id (user_id),
+    INDEX idx_project_activity_type (activity_type),
+    INDEX idx_project_activity_created_at (created_at),
+    INDEX idx_project_activity_source (source_type, source_id)
+);
+```
+
+### 6. Infrastructure Resources Table
+
+```sql
+-- Track infrastructure resources for each project
+CREATE TABLE infrastructure_resources (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    
+    -- Resource details
+    resource_type VARCHAR(50) NOT NULL, -- 'container', 'volume', 'network', 'service'
+    resource_name VARCHAR(255) NOT NULL,
+    resource_id VARCHAR(255) NOT NULL, -- Docker ID, Terraform resource ID, etc.
+    
+    -- Configuration
+    configuration JSONB DEFAULT '{}',
+    
+    -- Status
+    status VARCHAR(50) NOT NULL DEFAULT 'active', -- 'active', 'stopped', 'error', 'destroyed'
+    health_check_url TEXT,
+    last_health_check TIMESTAMP WITH TIME ZONE,
+    health_status VARCHAR(50) DEFAULT 'unknown',
+    
+    -- Resource metrics
+    cpu_usage_percent DECIMAL(5,2),
+    memory_usage_mb INTEGER,
+    disk_usage_mb INTEGER,
+    network_in_bytes BIGINT DEFAULT 0,
+    network_out_bytes BIGINT DEFAULT 0,
+    
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    last_metrics_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Constraints
+    UNIQUE(project_id, resource_type, resource_name)
+);
+
+-- Indexes for infrastructure_resources
+CREATE INDEX idx_infra_resources_project_id ON infrastructure_resources(project_id);
+CREATE INDEX idx_infra_resources_type ON infrastructure_resources(resource_type);
+CREATE INDEX idx_infra_resources_status ON infrastructure_resources(status);
+CREATE INDEX idx_infra_resources_health ON infrastructure_resources(health_status);
+```
+
+### 7. API Keys and Integrations
+
+```sql
+-- Store encrypted API keys and third-party integrations
+CREATE TABLE project_integrations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    
+    -- Integration details
+    service_name VARCHAR(100) NOT NULL, -- 'stripe', 'openai', 'github', etc.
+    service_type VARCHAR(50) NOT NULL, -- 'payment', 'ai', 'auth', 'storage', etc.
+    
+    -- Configuration
+    configuration JSONB DEFAULT '{}',
+    api_key_encrypted TEXT, -- Encrypted API key
+    webhook_url TEXT,
+    webhook_secret_encrypted TEXT,
+    
+    -- Status
+    is_active BOOLEAN DEFAULT TRUE,
+    is_configured BOOLEAN DEFAULT FALSE,
+    last_test_result JSONB,
+    last_tested_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Usage tracking
+    request_count INTEGER DEFAULT 0,
+    last_request_at TIMESTAMP WITH TIME ZONE,
+    error_count INTEGER DEFAULT 0,
+    last_error_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    -- Constraints
+    UNIQUE(project_id, service_name)
+);
+
+-- Indexes for project_integrations
+CREATE INDEX idx_project_integrations_project_id ON project_integrations(project_id);
+CREATE INDEX idx_project_integrations_service ON project_integrations(service_name);
+CREATE INDEX idx_project_integrations_active ON project_integrations(is_active);
+```
+
+### 8. Templates and Presets
+
+```sql
+-- Store project templates and user-created presets
+CREATE TABLE project_templates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    
+    -- Template metadata
+    name VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL,
+    category VARCHAR(100) NOT NULL, -- 'web-app', 'api', 'mobile', 'game', etc.
+    tags TEXT[], -- Array of searchable tags
+    
+    -- Template configuration
+    tech_stack JSONB NOT NULL,
+    default_integrations JSONB DEFAULT '{}',
+    file_structure JSONB NOT NULL, -- Template file structure and content
+    
+    -- Template status
+    is_public BOOLEAN DEFAULT FALSE,
+    is_featured BOOLEAN DEFAULT FALSE,
+    is_official BOOLEAN DEFAULT FALSE, -- Created by Vaporform team
+    
+    -- Usage statistics
+    usage_count INTEGER DEFAULT 0,
+    rating_average DECIMAL(3,2) DEFAULT 0,
+    rating_count INTEGER DEFAULT 0,
+    
+    -- Version info
+    version VARCHAR(20) DEFAULT '1.0.0',
+    changelog TEXT,
+    
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    published_at TIMESTAMP WITH TIME ZONE,
+    
+    -- Constraints
+    CHECK (rating_average >= 0 AND rating_average <= 5),
+    CHECK (usage_count >= 0)
+);
+
+-- Indexes for project_templates
+CREATE INDEX idx_project_templates_category ON project_templates(category);
+CREATE INDEX idx_project_templates_public ON project_templates(is_public);
+CREATE INDEX idx_project_templates_featured ON project_templates(is_featured);
+CREATE INDEX idx_project_templates_usage ON project_templates(usage_count DESC);
+CREATE INDEX idx_project_templates_rating ON project_templates(rating_average DESC);
+CREATE INDEX idx_project_templates_tags ON project_templates USING gin(tags);
+```
+
+## Database Functions and Triggers
+
+### 1. Update Timestamps
+
+```sql
+-- Function to update the updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Apply to all tables with updated_at columns
+CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON projects
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_project_files_updated_at BEFORE UPDATE ON project_files
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_infrastructure_resources_updated_at BEFORE UPDATE ON infrastructure_resources
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_project_integrations_updated_at BEFORE UPDATE ON project_integrations
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_project_templates_updated_at BEFORE UPDATE ON project_templates
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+```
+
+### 2. Project Statistics Updates
+
+```sql
+-- Function to update project statistics when files change
+CREATE OR REPLACE FUNCTION update_project_stats()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN
+        UPDATE projects 
+        SET 
+            total_files = (
+                SELECT COUNT(*) 
+                FROM project_files 
+                WHERE project_id = NEW.project_id
+            ),
+            total_size_bytes = (
+                SELECT COALESCE(SUM(size_bytes), 0) 
+                FROM project_files 
+                WHERE project_id = NEW.project_id
+            ),
+            last_activity_at = NOW()
+        WHERE id = NEW.project_id;
+        
+        RETURN NEW;
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE projects 
+        SET 
+            total_files = (
+                SELECT COUNT(*) 
+                FROM project_files 
+                WHERE project_id = OLD.project_id
+            ),
+            total_size_bytes = (
+                SELECT COALESCE(SUM(size_bytes), 0) 
+                FROM project_files 
+                WHERE project_id = OLD.project_id
+            ),
+            last_activity_at = NOW()
+        WHERE id = OLD.project_id;
+        
+        RETURN OLD;
+    END IF;
+    
+    RETURN NULL;
+END;
+$$ language 'plpgsql';
+
+-- Apply trigger to project_files table
+CREATE TRIGGER update_project_stats_trigger
+    AFTER INSERT OR UPDATE OR DELETE ON project_files
+    FOR EACH ROW EXECUTE FUNCTION update_project_stats();
+```
+
+### 3. Activity Logging
+
+```sql
+-- Function to automatically log project activities
+CREATE OR REPLACE FUNCTION log_project_activity()
+RETURNS TRIGGER AS $$
+DECLARE
+    activity_desc TEXT;
+    activity_type_val VARCHAR(50);
+BEGIN
+    IF TG_TABLE_NAME = 'project_files' THEN
+        IF TG_OP = 'INSERT' THEN
+            activity_type_val := 'file_created';
+            activity_desc := 'Created file: ' || NEW.file_path;
+        ELSIF TG_OP = 'UPDATE' THEN
+            activity_type_val := 'file_modified';
+            activity_desc := 'Modified file: ' || NEW.file_path;
+        ELSIF TG_OP = 'DELETE' THEN
+            activity_type_val := 'file_deleted';
+            activity_desc := 'Deleted file: ' || OLD.file_path;
+        END IF;
+        
+        INSERT INTO project_activity (
+            project_id, 
+            user_id, 
+            activity_type, 
+            description, 
+            source_type,
+            metadata
+        ) VALUES (
+            COALESCE(NEW.project_id, OLD.project_id),
+            COALESCE(NEW.updated_by, OLD.updated_by),
+            activity_type_val,
+            activity_desc,
+            'user',
+            jsonb_build_object(
+                'table', TG_TABLE_NAME,
+                'operation', TG_OP,
+                'file_path', COALESCE(NEW.file_path, OLD.file_path)
+            )
+        );
+    END IF;
+    
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
+    ELSE
+        RETURN NEW;
+    END IF;
+END;
+$$ language 'plpgsql';
+
+-- Apply activity logging triggers
+CREATE TRIGGER log_file_activity
+    AFTER INSERT OR UPDATE OR DELETE ON project_files
+    FOR EACH ROW EXECUTE FUNCTION log_project_activity();
+```
+
+## Performance Optimizations
+
+### 1. Partitioning for Large Tables
+
+```sql
+-- Partition project_activity by month for better performance
+CREATE TABLE project_activity_template (
+    LIKE project_activity INCLUDING DEFAULTS INCLUDING CONSTRAINTS
+);
+
+-- Create monthly partitions
+CREATE TABLE project_activity_2024_01 PARTITION OF project_activity_template
+    FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');
+
+CREATE TABLE project_activity_2024_02 PARTITION OF project_activity_template
+    FOR VALUES FROM ('2024-02-01') TO ('2024-03-01');
+
+-- Add constraint exclusion for better query performance
+CREATE INDEX idx_project_activity_partition_created_at 
+    ON project_activity_template (created_at);
+```
+
+### 2. Connection Pooling Configuration
+
+```typescript
+// Database connection configuration for Encore
+export const dbConfig = {
+  max: 20, // Maximum number of connections in the pool
+  min: 5,  // Minimum number of connections in the pool
+  acquire: 30000, // Maximum time to wait for a connection
+  idle: 10000,    // Maximum time a connection can be idle
+  
+  // Connection retry configuration
+  retry: {
+    match: [/SequelizeConnectionError/],
+    max: 3
+  },
+  
+  // Query timeout
+  dialectOptions: {
+    statement_timeout: 30000, // 30 seconds
+    idle_in_transaction_session_timeout: 30000
+  }
+};
+```
+
+This comprehensive database schema provides a solid foundation for Vaporform with proper indexing, triggers, and performance optimizations while maintaining data integrity and supporting all required features.

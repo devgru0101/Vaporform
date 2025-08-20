@@ -1,0 +1,1040 @@
+# Monitoring & Analytics System
+
+## Overview
+
+Vaporform's monitoring and analytics system provides comprehensive visibility into application performance, user behavior, system health, and resource utilization. It combines real-time monitoring, predictive analytics, and actionable insights to ensure optimal performance and user experience.
+
+## Application Performance Monitoring (APM)
+
+### 1. Performance Metrics Collection
+
+```typescript
+// monitoring/PerformanceMonitor.ts
+import { EventEmitter } from 'events';
+import { MetricsCollector } from './MetricsCollector';
+import { AlertManager } from './AlertManager';
+
+export class PerformanceMonitor extends EventEmitter {
+  private metricsCollector: MetricsCollector;
+  private alertManager: AlertManager;
+  private performanceMetrics: Map<string, PerformanceMetric[]> = new Map();
+  private thresholds: Map<string, PerformanceThreshold> = new Map();
+
+  constructor() {
+    super();
+    this.metricsCollector = new MetricsCollector();
+    this.alertManager = new AlertManager();
+    this.setupDefaultThresholds();
+    this.startMonitoring();
+  }
+
+  async trackContainerPerformance(containerId: string, projectId: string): Promise<void> {
+    const containerStats = await this.getContainerStats(containerId);
+    
+    const metrics: PerformanceMetric = {
+      timestamp: new Date(),
+      containerId,
+      projectId,
+      cpu: {
+        usage: containerStats.cpu.usage,
+        limit: containerStats.cpu.limit,
+        percentage: (containerStats.cpu.usage / containerStats.cpu.limit) * 100
+      },
+      memory: {
+        usage: containerStats.memory.usage,
+        limit: containerStats.memory.limit,
+        percentage: (containerStats.memory.usage / containerStats.memory.limit) * 100
+      },
+      network: {
+        bytesIn: containerStats.network.rx_bytes,
+        bytesOut: containerStats.network.tx_bytes,
+        packetsIn: containerStats.network.rx_packets,
+        packetsOut: containerStats.network.tx_packets
+      },
+      disk: {
+        usage: containerStats.disk.usage,
+        available: containerStats.disk.available,
+        iops: containerStats.disk.iops
+      }
+    };
+
+    // Store metrics
+    await this.storeMetrics(projectId, metrics);
+    
+    // Check thresholds
+    await this.checkThresholds(projectId, metrics);
+    
+    // Emit real-time event
+    this.emit('performance_update', { projectId, metrics });
+  }
+
+  async trackApplicationMetrics(projectId: string, appMetrics: ApplicationMetrics): Promise<void> {
+    const enrichedMetrics = {
+      ...appMetrics,
+      timestamp: new Date(),
+      projectId
+    };
+
+    // Store application-level metrics
+    await this.storeApplicationMetrics(projectId, enrichedMetrics);
+    
+    // Analyze performance trends
+    await this.analyzePerformanceTrends(projectId, enrichedMetrics);
+    
+    // Check for anomalies
+    await this.detectAnomalies(projectId, enrichedMetrics);
+  }
+
+  async trackUserInteraction(projectId: string, interaction: UserInteraction): Promise<void> {
+    const interactionMetric = {
+      timestamp: new Date(),
+      projectId,
+      userId: interaction.userId,
+      action: interaction.action,
+      duration: interaction.duration,
+      success: interaction.success,
+      errorCode: interaction.errorCode,
+      metadata: interaction.metadata
+    };
+
+    await this.storeUserInteraction(projectId, interactionMetric);
+    
+    // Update user experience metrics
+    await this.updateUXMetrics(projectId, interactionMetric);
+  }
+
+  private async checkThresholds(projectId: string, metrics: PerformanceMetric): Promise<void> {
+    const threshold = this.thresholds.get(projectId) || this.getDefaultThreshold();
+    
+    const alerts: Alert[] = [];
+
+    // CPU threshold check
+    if (metrics.cpu.percentage > threshold.cpu.critical) {
+      alerts.push({
+        level: 'critical',
+        type: 'cpu_usage',
+        message: `CPU usage is critically high: ${metrics.cpu.percentage.toFixed(2)}%`,
+        projectId,
+        containerId: metrics.containerId,
+        value: metrics.cpu.percentage,
+        threshold: threshold.cpu.critical
+      });
+    } else if (metrics.cpu.percentage > threshold.cpu.warning) {
+      alerts.push({
+        level: 'warning',
+        type: 'cpu_usage',
+        message: `CPU usage is high: ${metrics.cpu.percentage.toFixed(2)}%`,
+        projectId,
+        containerId: metrics.containerId,
+        value: metrics.cpu.percentage,
+        threshold: threshold.cpu.warning
+      });
+    }
+
+    // Memory threshold check
+    if (metrics.memory.percentage > threshold.memory.critical) {
+      alerts.push({
+        level: 'critical',
+        type: 'memory_usage',
+        message: `Memory usage is critically high: ${metrics.memory.percentage.toFixed(2)}%`,
+        projectId,
+        containerId: metrics.containerId,
+        value: metrics.memory.percentage,
+        threshold: threshold.memory.critical
+      });
+    }
+
+    // Disk threshold check
+    const diskPercentage = (metrics.disk.usage / (metrics.disk.usage + metrics.disk.available)) * 100;
+    if (diskPercentage > threshold.disk.critical) {
+      alerts.push({
+        level: 'critical',
+        type: 'disk_usage',
+        message: `Disk usage is critically high: ${diskPercentage.toFixed(2)}%`,
+        projectId,
+        containerId: metrics.containerId,
+        value: diskPercentage,
+        threshold: threshold.disk.critical
+      });
+    }
+
+    // Send alerts
+    for (const alert of alerts) {
+      await this.alertManager.sendAlert(alert);
+    }
+  }
+
+  async getPerformanceReport(projectId: string, timeRange: TimeRange): Promise<PerformanceReport> {
+    const metrics = await this.getMetricsInRange(projectId, timeRange);
+    const appMetrics = await this.getApplicationMetricsInRange(projectId, timeRange);
+    const userMetrics = await this.getUserMetricsInRange(projectId, timeRange);
+
+    return {
+      projectId,
+      timeRange,
+      summary: {
+        avgCpuUsage: this.calculateAverage(metrics.map(m => m.cpu.percentage)),
+        avgMemoryUsage: this.calculateAverage(metrics.map(m => m.memory.percentage)),
+        totalRequests: appMetrics.reduce((sum, m) => sum + m.requestCount, 0),
+        avgResponseTime: this.calculateAverage(appMetrics.map(m => m.avgResponseTime)),
+        errorRate: this.calculateErrorRate(appMetrics),
+        activeUsers: new Set(userMetrics.map(m => m.userId)).size
+      },
+      trends: await this.calculateTrends(projectId, timeRange),
+      alerts: await this.getAlertsInRange(projectId, timeRange),
+      recommendations: await this.generateRecommendations(projectId, metrics, appMetrics)
+    };
+  }
+
+  private async generateRecommendations(
+    projectId: string, 
+    metrics: PerformanceMetric[], 
+    appMetrics: ApplicationMetrics[]
+  ): Promise<Recommendation[]> {
+    const recommendations: Recommendation[] = [];
+
+    // CPU optimization recommendations
+    const avgCpu = this.calculateAverage(metrics.map(m => m.cpu.percentage));
+    if (avgCpu > 80) {
+      recommendations.push({
+        type: 'optimization',
+        priority: 'high',
+        title: 'High CPU Usage Detected',
+        description: 'Consider optimizing CPU-intensive operations or scaling horizontally',
+        actions: [
+          'Review and optimize algorithmic complexity',
+          'Implement caching strategies',
+          'Consider horizontal scaling',
+          'Profile CPU-intensive functions'
+        ]
+      });
+    }
+
+    // Memory optimization recommendations
+    const avgMemory = this.calculateAverage(metrics.map(m => m.memory.percentage));
+    if (avgMemory > 85) {
+      recommendations.push({
+        type: 'optimization',
+        priority: 'high',
+        title: 'High Memory Usage Detected',
+        description: 'Memory usage is consistently high, consider optimization or scaling',
+        actions: [
+          'Review memory leaks',
+          'Implement garbage collection optimization',
+          'Consider increasing memory limits',
+          'Optimize data structures'
+        ]
+      });
+    }
+
+    // Response time recommendations
+    const avgResponseTime = this.calculateAverage(appMetrics.map(m => m.avgResponseTime));
+    if (avgResponseTime > 1000) { // 1 second
+      recommendations.push({
+        type: 'performance',
+        priority: 'medium',
+        title: 'Slow Response Times',
+        description: 'API response times are slower than recommended',
+        actions: [
+          'Implement database query optimization',
+          'Add caching layers',
+          'Review API endpoint efficiency',
+          'Consider CDN for static assets'
+        ]
+      });
+    }
+
+    return recommendations;
+  }
+
+  private setupDefaultThresholds(): void {
+    const defaultThreshold: PerformanceThreshold = {
+      cpu: { warning: 70, critical: 85 },
+      memory: { warning: 80, critical: 90 },
+      disk: { warning: 80, critical: 90 },
+      responseTime: { warning: 500, critical: 1000 },
+      errorRate: { warning: 1, critical: 5 }
+    };
+
+    this.thresholds.set('default', defaultThreshold);
+  }
+
+  async updateThresholds(projectId: string, thresholds: PerformanceThreshold): Promise<void> {
+    this.thresholds.set(projectId, thresholds);
+    
+    // Store in database
+    await this.storeThresholds(projectId, thresholds);
+  }
+
+  private startMonitoring(): void {
+    // Start periodic monitoring
+    setInterval(async () => {
+      await this.collectSystemMetrics();
+    }, 30000); // Every 30 seconds
+
+    // Start health checks
+    setInterval(async () => {
+      await this.performHealthChecks();
+    }, 60000); // Every minute
+  }
+
+  private async collectSystemMetrics(): Promise<void> {
+    // Get all active containers
+    const activeContainers = await this.getActiveContainers();
+    
+    for (const container of activeContainers) {
+      try {
+        await this.trackContainerPerformance(container.id, container.projectId);
+      } catch (error) {
+        console.error(`Failed to collect metrics for container ${container.id}:`, error);
+      }
+    }
+  }
+
+  private async performHealthChecks(): Promise<void> {
+    const projects = await this.getActiveProjects();
+    
+    for (const project of projects) {
+      try {
+        const healthStatus = await this.checkProjectHealth(project.id);
+        await this.storeHealthCheck(project.id, healthStatus);
+        
+        if (healthStatus.status !== 'healthy') {
+          await this.alertManager.sendAlert({
+            level: healthStatus.status === 'critical' ? 'critical' : 'warning',
+            type: 'health_check',
+            message: `Project health check failed: ${healthStatus.message}`,
+            projectId: project.id
+          });
+        }
+      } catch (error) {
+        console.error(`Health check failed for project ${project.id}:`, error);
+      }
+    }
+  }
+}
+
+interface PerformanceMetric {
+  timestamp: Date;
+  containerId: string;
+  projectId: string;
+  cpu: {
+    usage: number;
+    limit: number;
+    percentage: number;
+  };
+  memory: {
+    usage: number;
+    limit: number;
+    percentage: number;
+  };
+  network: {
+    bytesIn: number;
+    bytesOut: number;
+    packetsIn: number;
+    packetsOut: number;
+  };
+  disk: {
+    usage: number;
+    available: number;
+    iops: number;
+  };
+}
+
+interface ApplicationMetrics {
+  timestamp: Date;
+  projectId: string;
+  requestCount: number;
+  avgResponseTime: number;
+  errorCount: number;
+  activeConnections: number;
+  throughput: number;
+}
+
+interface UserInteraction {
+  userId: string;
+  action: string;
+  duration: number;
+  success: boolean;
+  errorCode?: string;
+  metadata?: any;
+}
+
+interface PerformanceThreshold {
+  cpu: { warning: number; critical: number };
+  memory: { warning: number; critical: number };
+  disk: { warning: number; critical: number };
+  responseTime: { warning: number; critical: number };
+  errorRate: { warning: number; critical: number };
+}
+
+interface Alert {
+  level: 'info' | 'warning' | 'critical';
+  type: string;
+  message: string;
+  projectId: string;
+  containerId?: string;
+  value?: number;
+  threshold?: number;
+  timestamp?: Date;
+}
+
+interface PerformanceReport {
+  projectId: string;
+  timeRange: TimeRange;
+  summary: {
+    avgCpuUsage: number;
+    avgMemoryUsage: number;
+    totalRequests: number;
+    avgResponseTime: number;
+    errorRate: number;
+    activeUsers: number;
+  };
+  trends: PerformanceTrend[];
+  alerts: Alert[];
+  recommendations: Recommendation[];
+}
+
+interface Recommendation {
+  type: 'optimization' | 'performance' | 'security' | 'cost';
+  priority: 'low' | 'medium' | 'high';
+  title: string;
+  description: string;
+  actions: string[];
+}
+
+interface TimeRange {
+  start: Date;
+  end: Date;
+}
+
+interface PerformanceTrend {
+  metric: string;
+  direction: 'up' | 'down' | 'stable';
+  change: number;
+  period: string;
+}
+```
+
+### 2. Analytics and Insights Engine
+
+```typescript
+// monitoring/AnalyticsEngine.ts
+export class AnalyticsEngine {
+  private mlModels: Map<string, MLModel> = new Map();
+  private analyticsDatabase: AnalyticsDatabase;
+  
+  constructor() {
+    this.analyticsDatabase = new AnalyticsDatabase();
+    this.initializeMLModels();
+  }
+
+  async analyzeUserBehavior(projectId: string, timeRange: TimeRange): Promise<UserBehaviorAnalysis> {
+    const userInteractions = await this.analyticsDatabase.getUserInteractions(projectId, timeRange);
+    const sessionData = await this.analyticsDatabase.getSessionData(projectId, timeRange);
+    
+    const analysis: UserBehaviorAnalysis = {
+      projectId,
+      timeRange,
+      metrics: {
+        totalUsers: new Set(userInteractions.map(i => i.userId)).size,
+        totalSessions: sessionData.length,
+        avgSessionDuration: this.calculateAverage(sessionData.map(s => s.duration)),
+        bounceRate: this.calculateBounceRate(sessionData),
+        conversionRate: this.calculateConversionRate(userInteractions),
+        popularFeatures: this.findPopularFeatures(userInteractions),
+        userJourney: await this.analyzeUserJourney(userInteractions)
+      },
+      insights: await this.generateUserInsights(projectId, userInteractions, sessionData),
+      recommendations: await this.generateUXRecommendations(projectId, userInteractions)
+    };
+
+    return analysis;
+  }
+
+  async predictPerformanceIssues(projectId: string): Promise<PerformancePrediction> {
+    const historicalMetrics = await this.analyticsDatabase.getHistoricalMetrics(projectId, {
+      start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
+      end: new Date()
+    });
+
+    const predictionModel = this.mlModels.get('performance_prediction');
+    if (!predictionModel) {
+      throw new Error('Performance prediction model not available');
+    }
+
+    const features = this.extractPerformanceFeatures(historicalMetrics);
+    const prediction = await predictionModel.predict(features);
+
+    return {
+      projectId,
+      predictionTimestamp: new Date(),
+      riskLevel: this.calculateRiskLevel(prediction.probability),
+      predictedIssues: prediction.issues,
+      timeToIssue: prediction.timeToIssue,
+      confidence: prediction.confidence,
+      recommendations: await this.generatePreventiveActions(prediction)
+    };
+  }
+
+  async analyzeCodeQuality(projectId: string): Promise<CodeQualityAnalysis> {
+    const projectFiles = await this.getProjectFiles(projectId);
+    const commitHistory = await this.getCommitHistory(projectId);
+    const bugReports = await this.getBugReports(projectId);
+
+    const qualityMetrics = await this.calculateCodeQuality(projectFiles);
+    const complexityAnalysis = await this.analyzeCodeComplexity(projectFiles);
+    const maintainabilityIndex = await this.calculateMaintainabilityIndex(projectFiles, commitHistory);
+
+    return {
+      projectId,
+      timestamp: new Date(),
+      metrics: qualityMetrics,
+      complexity: complexityAnalysis,
+      maintainability: maintainabilityIndex,
+      technicalDebt: await this.calculateTechnicalDebt(projectFiles, bugReports),
+      recommendations: await this.generateCodeQualityRecommendations(qualityMetrics, complexityAnalysis)
+    };
+  }
+
+  async generateProjectInsights(projectId: string): Promise<ProjectInsights> {
+    const performanceData = await this.getPerformanceData(projectId);
+    const userBehaviorData = await this.getUserBehaviorData(projectId);
+    const codeQualityData = await this.getCodeQualityData(projectId);
+    const deploymentData = await this.getDeploymentData(projectId);
+
+    const insights: ProjectInsights = {
+      projectId,
+      generatedAt: new Date(),
+      performance: await this.analyzePerformanceInsights(performanceData),
+      userExperience: await this.analyzeUXInsights(userBehaviorData),
+      codeHealth: await this.analyzeCodeHealthInsights(codeQualityData),
+      deployment: await this.analyzeDeploymentInsights(deploymentData),
+      businessMetrics: await this.calculateBusinessMetrics(projectId),
+      actionableRecommendations: await this.generateActionableRecommendations(projectId)
+    };
+
+    return insights;
+  }
+
+  async detectAnomalies(projectId: string, metrics: any[]): Promise<AnomalyDetection> {
+    const anomalyModel = this.mlModels.get('anomaly_detection');
+    if (!anomalyModel) {
+      throw new Error('Anomaly detection model not available');
+    }
+
+    const features = this.extractAnomalyFeatures(metrics);
+    const anomalies = await anomalyModel.detectAnomalies(features);
+
+    const detectionResult: AnomalyDetection = {
+      projectId,
+      timestamp: new Date(),
+      anomalies: anomalies.map(anomaly => ({
+        type: this.classifyAnomaly(anomaly),
+        severity: this.calculateSeverity(anomaly),
+        metric: anomaly.metric,
+        expectedValue: anomaly.expected,
+        actualValue: anomaly.actual,
+        deviation: anomaly.deviation,
+        confidence: anomaly.confidence,
+        timeWindow: anomaly.timeWindow
+      })),
+      recommendations: await this.generateAnomalyRecommendations(anomalies)
+    };
+
+    return detectionResult;
+  }
+
+  private async generateUserInsights(
+    projectId: string, 
+    interactions: UserInteraction[], 
+    sessions: SessionData[]
+  ): Promise<UserInsight[]> {
+    const insights: UserInsight[] = [];
+
+    // Analyze peak usage times
+    const hourlyUsage = this.groupByHour(interactions);
+    const peakHours = this.findPeakHours(hourlyUsage);
+    insights.push({
+      type: 'usage_pattern',
+      title: 'Peak Usage Hours',
+      description: `Users are most active during ${peakHours.join(', ')}`,
+      impact: 'medium',
+      actionable: true,
+      data: { peakHours, hourlyUsage }
+    });
+
+    // Analyze feature adoption
+    const featureUsage = this.analyzeFeatureUsage(interactions);
+    const underutilizedFeatures = featureUsage.filter(f => f.adoptionRate < 0.2);
+    if (underutilizedFeatures.length > 0) {
+      insights.push({
+        type: 'feature_adoption',
+        title: 'Low Feature Adoption',
+        description: `${underutilizedFeatures.length} features have low adoption rates`,
+        impact: 'high',
+        actionable: true,
+        data: { underutilizedFeatures }
+      });
+    }
+
+    // Analyze user retention
+    const retentionAnalysis = await this.analyzeUserRetention(projectId, sessions);
+    insights.push({
+      type: 'retention',
+      title: 'User Retention Analysis',
+      description: `${retentionAnalysis.weeklyRetention}% weekly retention rate`,
+      impact: retentionAnalysis.weeklyRetention < 0.5 ? 'high' : 'medium',
+      actionable: true,
+      data: retentionAnalysis
+    });
+
+    return insights;
+  }
+
+  private async generateActionableRecommendations(projectId: string): Promise<ActionableRecommendation[]> {
+    const recommendations: ActionableRecommendation[] = [];
+    
+    // Get current project state
+    const performanceMetrics = await this.getLatestPerformanceMetrics(projectId);
+    const userMetrics = await this.getLatestUserMetrics(projectId);
+    const deploymentMetrics = await this.getLatestDeploymentMetrics(projectId);
+
+    // Performance recommendations
+    if (performanceMetrics.avgResponseTime > 500) {
+      recommendations.push({
+        id: `perf_${Date.now()}`,
+        type: 'performance',
+        priority: 'high',
+        title: 'Optimize API Response Times',
+        description: 'API response times are above optimal thresholds',
+        estimatedImpact: 'Improve user experience and reduce bounce rate',
+        estimatedEffort: 'Medium (2-4 days)',
+        steps: [
+          'Identify slowest endpoints using APM data',
+          'Implement database query optimization',
+          'Add Redis caching layer',
+          'Optimize serialization logic'
+        ],
+        automatable: false,
+        metrics: {
+          current: performanceMetrics.avgResponseTime,
+          target: 200,
+          unit: 'ms'
+        }
+      });
+    }
+
+    // User experience recommendations
+    if (userMetrics.bounceRate > 0.6) {
+      recommendations.push({
+        id: `ux_${Date.now()}`,
+        type: 'user_experience',
+        priority: 'high',
+        title: 'Reduce User Bounce Rate',
+        description: 'High bounce rate indicates users are leaving quickly',
+        estimatedImpact: 'Increase user engagement and retention',
+        estimatedEffort: 'High (1-2 weeks)',
+        steps: [
+          'Analyze user journey drop-off points',
+          'Improve landing page performance',
+          'Simplify onboarding flow',
+          'A/B test key user interactions'
+        ],
+        automatable: false,
+        metrics: {
+          current: userMetrics.bounceRate,
+          target: 0.4,
+          unit: 'rate'
+        }
+      });
+    }
+
+    return recommendations;
+  }
+
+  private initializeMLModels(): void {
+    // Initialize machine learning models for predictions and analysis
+    this.mlModels.set('performance_prediction', new PerformancePredictionModel());
+    this.mlModels.set('anomaly_detection', new AnomalyDetectionModel());
+    this.mlModels.set('user_behavior', new UserBehaviorModel());
+  }
+}
+
+interface UserBehaviorAnalysis {
+  projectId: string;
+  timeRange: TimeRange;
+  metrics: {
+    totalUsers: number;
+    totalSessions: number;
+    avgSessionDuration: number;
+    bounceRate: number;
+    conversionRate: number;
+    popularFeatures: FeatureUsage[];
+    userJourney: UserJourneyStep[];
+  };
+  insights: UserInsight[];
+  recommendations: UXRecommendation[];
+}
+
+interface PerformancePrediction {
+  projectId: string;
+  predictionTimestamp: Date;
+  riskLevel: 'low' | 'medium' | 'high';
+  predictedIssues: PredictedIssue[];
+  timeToIssue: number; // hours
+  confidence: number;
+  recommendations: PreventiveAction[];
+}
+
+interface CodeQualityAnalysis {
+  projectId: string;
+  timestamp: Date;
+  metrics: CodeQualityMetrics;
+  complexity: ComplexityAnalysis;
+  maintainability: MaintainabilityIndex;
+  technicalDebt: TechnicalDebt;
+  recommendations: CodeQualityRecommendation[];
+}
+
+interface ProjectInsights {
+  projectId: string;
+  generatedAt: Date;
+  performance: PerformanceInsights;
+  userExperience: UXInsights;
+  codeHealth: CodeHealthInsights;
+  deployment: DeploymentInsights;
+  businessMetrics: BusinessMetrics;
+  actionableRecommendations: ActionableRecommendation[];
+}
+
+interface ActionableRecommendation {
+  id: string;
+  type: 'performance' | 'user_experience' | 'code_quality' | 'security' | 'cost';
+  priority: 'low' | 'medium' | 'high';
+  title: string;
+  description: string;
+  estimatedImpact: string;
+  estimatedEffort: string;
+  steps: string[];
+  automatable: boolean;
+  metrics: {
+    current: number;
+    target: number;
+    unit: string;
+  };
+}
+
+interface AnomalyDetection {
+  projectId: string;
+  timestamp: Date;
+  anomalies: DetectedAnomaly[];
+  recommendations: AnomalyRecommendation[];
+}
+
+interface DetectedAnomaly {
+  type: string;
+  severity: 'low' | 'medium' | 'high';
+  metric: string;
+  expectedValue: number;
+  actualValue: number;
+  deviation: number;
+  confidence: number;
+  timeWindow: TimeRange;
+}
+```
+
+### 3. Real-Time Dashboard System
+
+```typescript
+// monitoring/DashboardService.ts
+export class DashboardService {
+  private websocketService: VaporformWebSocketService;
+  private analyticsEngine: AnalyticsEngine;
+  private performanceMonitor: PerformanceMonitor;
+  
+  constructor(
+    websocketService: VaporformWebSocketService,
+    analyticsEngine: AnalyticsEngine,
+    performanceMonitor: PerformanceMonitor
+  ) {
+    this.websocketService = websocketService;
+    this.analyticsEngine = analyticsEngine;
+    this.performanceMonitor = performanceMonitor;
+    this.setupRealTimeStreaming();
+  }
+
+  async createDashboard(config: DashboardConfig): Promise<Dashboard> {
+    const dashboardId = this.generateDashboardId();
+    
+    const dashboard: Dashboard = {
+      id: dashboardId,
+      name: config.name,
+      projectId: config.projectId,
+      layout: config.layout,
+      widgets: await this.createWidgets(config.widgets),
+      refreshInterval: config.refreshInterval || 30,
+      filters: config.filters || {},
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    await this.storeDashboard(dashboard);
+    return dashboard;
+  }
+
+  async getDashboardData(dashboardId: string): Promise<DashboardData> {
+    const dashboard = await this.getDashboard(dashboardId);
+    if (!dashboard) {
+      throw new Error('Dashboard not found');
+    }
+
+    const widgetData: Map<string, any> = new Map();
+    
+    for (const widget of dashboard.widgets) {
+      const data = await this.getWidgetData(widget, dashboard.filters);
+      widgetData.set(widget.id, data);
+    }
+
+    return {
+      dashboardId: dashboard.id,
+      timestamp: new Date(),
+      widgets: widgetData,
+      metadata: {
+        lastRefresh: new Date(),
+        refreshInterval: dashboard.refreshInterval,
+        autoRefresh: true
+      }
+    };
+  }
+
+  private async getWidgetData(widget: DashboardWidget, filters: any): Promise<any> {
+    switch (widget.type) {
+      case 'performance_chart':
+        return await this.getPerformanceChartData(widget, filters);
+      case 'metrics_summary':
+        return await this.getMetricsSummaryData(widget, filters);
+      case 'alert_list':
+        return await this.getAlertListData(widget, filters);
+      case 'user_analytics':
+        return await this.getUserAnalyticsData(widget, filters);
+      case 'deployment_status':
+        return await this.getDeploymentStatusData(widget, filters);
+      case 'resource_usage':
+        return await this.getResourceUsageData(widget, filters);
+      default:
+        throw new Error(`Unknown widget type: ${widget.type}`);
+    }
+  }
+
+  private async getPerformanceChartData(widget: DashboardWidget, filters: any): Promise<ChartData> {
+    const timeRange = this.getTimeRangeFromFilters(filters);
+    const metrics = await this.performanceMonitor.getMetricsInRange(
+      widget.projectId, 
+      timeRange
+    );
+
+    return {
+      type: 'line',
+      labels: metrics.map(m => m.timestamp),
+      datasets: [
+        {
+          label: 'CPU Usage (%)',
+          data: metrics.map(m => m.cpu.percentage),
+          borderColor: '#ff6384',
+          backgroundColor: 'rgba(255, 99, 132, 0.1)'
+        },
+        {
+          label: 'Memory Usage (%)',
+          data: metrics.map(m => m.memory.percentage),
+          borderColor: '#36a2eb',
+          backgroundColor: 'rgba(54, 162, 235, 0.1)'
+        }
+      ]
+    };
+  }
+
+  private async getMetricsSummaryData(widget: DashboardWidget, filters: any): Promise<MetricsSummary> {
+    const currentMetrics = await this.performanceMonitor.getCurrentMetrics(widget.projectId);
+    const previousMetrics = await this.performanceMonitor.getPreviousPeriodMetrics(
+      widget.projectId,
+      '1h'
+    );
+
+    return {
+      current: {
+        cpuUsage: currentMetrics.cpu.percentage,
+        memoryUsage: currentMetrics.memory.percentage,
+        responseTime: currentMetrics.avgResponseTime,
+        activeUsers: currentMetrics.activeUsers,
+        errorRate: currentMetrics.errorRate
+      },
+      trends: {
+        cpuUsage: this.calculateTrend(currentMetrics.cpu.percentage, previousMetrics.cpu.percentage),
+        memoryUsage: this.calculateTrend(currentMetrics.memory.percentage, previousMetrics.memory.percentage),
+        responseTime: this.calculateTrend(currentMetrics.avgResponseTime, previousMetrics.avgResponseTime),
+        activeUsers: this.calculateTrend(currentMetrics.activeUsers, previousMetrics.activeUsers),
+        errorRate: this.calculateTrend(currentMetrics.errorRate, previousMetrics.errorRate)
+      }
+    };
+  }
+
+  private setupRealTimeStreaming(): void {
+    // Stream performance updates
+    this.performanceMonitor.on('performance_update', (data) => {
+      this.websocketService.broadcastToProject(data.projectId, {
+        type: 'dashboard_update',
+        data: {
+          widgetType: 'performance',
+          update: data.metrics
+        }
+      });
+    });
+
+    // Stream alert updates
+    this.performanceMonitor.on('alert_triggered', (alert) => {
+      this.websocketService.broadcastToProject(alert.projectId, {
+        type: 'dashboard_alert',
+        data: alert
+      });
+    });
+
+    // Stream user analytics updates
+    this.analyticsEngine.on('user_analytics_update', (data) => {
+      this.websocketService.broadcastToProject(data.projectId, {
+        type: 'dashboard_update',
+        data: {
+          widgetType: 'user_analytics',
+          update: data
+        }
+      });
+    });
+  }
+
+  async createCustomWidget(config: CustomWidgetConfig): Promise<DashboardWidget> {
+    const widgetId = this.generateWidgetId();
+    
+    const widget: DashboardWidget = {
+      id: widgetId,
+      type: 'custom',
+      title: config.title,
+      projectId: config.projectId,
+      configuration: config.configuration,
+      dataSource: config.dataSource,
+      refreshInterval: config.refreshInterval || 30,
+      position: config.position,
+      size: config.size
+    };
+
+    await this.storeWidget(widget);
+    return widget;
+  }
+
+  async exportDashboard(dashboardId: string, format: 'pdf' | 'png' | 'json'): Promise<ExportResult> {
+    const dashboard = await this.getDashboard(dashboardId);
+    const dashboardData = await this.getDashboardData(dashboardId);
+    
+    switch (format) {
+      case 'json':
+        return await this.exportAsJSON(dashboard, dashboardData);
+      case 'pdf':
+        return await this.exportAsPDF(dashboard, dashboardData);
+      case 'png':
+        return await this.exportAsPNG(dashboard, dashboardData);
+      default:
+        throw new Error(`Unsupported export format: ${format}`);
+    }
+  }
+
+  private calculateTrend(current: number, previous: number): TrendIndicator {
+    const change = ((current - previous) / previous) * 100;
+    
+    return {
+      direction: change > 0 ? 'up' : change < 0 ? 'down' : 'stable',
+      percentage: Math.abs(change),
+      value: current - previous
+    };
+  }
+
+  private generateDashboardId(): string {
+    return `dashboard_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private generateWidgetId(): string {
+    return `widget_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+}
+
+interface Dashboard {
+  id: string;
+  name: string;
+  projectId: string;
+  layout: DashboardLayout;
+  widgets: DashboardWidget[];
+  refreshInterval: number;
+  filters: any;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface DashboardWidget {
+  id: string;
+  type: string;
+  title: string;
+  projectId: string;
+  configuration: any;
+  dataSource?: string;
+  refreshInterval: number;
+  position: { x: number; y: number };
+  size: { width: number; height: number };
+}
+
+interface DashboardData {
+  dashboardId: string;
+  timestamp: Date;
+  widgets: Map<string, any>;
+  metadata: {
+    lastRefresh: Date;
+    refreshInterval: number;
+    autoRefresh: boolean;
+  };
+}
+
+interface MetricsSummary {
+  current: {
+    cpuUsage: number;
+    memoryUsage: number;
+    responseTime: number;
+    activeUsers: number;
+    errorRate: number;
+  };
+  trends: {
+    cpuUsage: TrendIndicator;
+    memoryUsage: TrendIndicator;
+    responseTime: TrendIndicator;
+    activeUsers: TrendIndicator;
+    errorRate: TrendIndicator;
+  };
+}
+
+interface TrendIndicator {
+  direction: 'up' | 'down' | 'stable';
+  percentage: number;
+  value: number;
+}
+
+interface ChartData {
+  type: 'line' | 'bar' | 'pie' | 'doughnut';
+  labels: any[];
+  datasets: ChartDataset[];
+}
+
+interface ChartDataset {
+  label: string;
+  data: any[];
+  borderColor?: string;
+  backgroundColor?: string;
+}
+```
+
+This comprehensive monitoring and analytics system provides Vaporform with enterprise-grade observability, predictive insights, and actionable recommendations to optimize performance and user experience.

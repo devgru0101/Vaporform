@@ -1,0 +1,1101 @@
+# Migration & Import Tools Implementation
+
+## Overview
+
+Vaporform's migration and import tools enable seamless onboarding of existing projects from various sources including GitHub repositories, local files, other IDEs, and cloud platforms. The system provides intelligent analysis, automated conversion, and guided migration workflows.
+
+## Core Migration Engine
+
+### 1. Universal Project Importer
+
+```typescript
+// migration/UniversalProjectImporter.ts
+import { GitRepository } from './sources/GitRepository';
+import { LocalFileSystem } from './sources/LocalFileSystem';
+import { VSCodeWorkspace } from './sources/VSCodeWorkspace';
+import { ZipArchive } from './sources/ZipArchive';
+import { CloudPlatform } from './sources/CloudPlatform';
+
+export class UniversalProjectImporter {
+  private sourceHandlers: Map<ImportSource, SourceHandler> = new Map();
+  private analysisEngine: ProjectAnalysisEngine;
+  private conversionEngine: ProjectConversionEngine;
+  private claudeSDK: VaporformClaudeSDK;
+  
+  constructor() {
+    this.analysisEngine = new ProjectAnalysisEngine();
+    this.conversionEngine = new ProjectConversionEngine();
+    this.claudeSDK = new VaporformClaudeSDK();
+    this.initializeSourceHandlers();
+  }
+
+  async analyzeImportSource(importRequest: ImportRequest): Promise<ImportAnalysis> {
+    const sourceHandler = this.getSourceHandler(importRequest.source);
+    
+    try {
+      // Extract project information
+      const projectInfo = await sourceHandler.extractProjectInfo(importRequest);
+      
+      // Analyze project structure
+      const structureAnalysis = await this.analysisEngine.analyzeStructure(projectInfo);
+      
+      // Detect technology stack
+      const techStackAnalysis = await this.analysisEngine.detectTechStack(projectInfo);
+      
+      // Identify dependencies
+      const dependencyAnalysis = await this.analysisEngine.analyzeDependencies(projectInfo);
+      
+      // Assess migration complexity
+      const complexityAssessment = await this.assessMigrationComplexity(
+        structureAnalysis,
+        techStackAnalysis,
+        dependencyAnalysis
+      );
+      
+      // Generate migration plan with Claude assistance
+      const migrationPlan = await this.claudeSDK.generateMigrationPlan({
+        projectInfo: projectInfo,
+        techStack: techStackAnalysis,
+        dependencies: dependencyAnalysis,
+        complexity: complexityAssessment
+      });
+
+      return {
+        sourceInfo: {
+          type: importRequest.source,
+          url: importRequest.url,
+          size: projectInfo.size,
+          fileCount: projectInfo.fileCount
+        },
+        projectAnalysis: {
+          structure: structureAnalysis,
+          techStack: techStackAnalysis,
+          dependencies: dependencyAnalysis,
+          complexity: complexityAssessment
+        },
+        migrationPlan: migrationPlan,
+        estimatedTime: this.calculateMigrationTime(complexityAssessment),
+        recommendedApproach: this.recommendMigrationApproach(complexityAssessment),
+        potentialIssues: await this.identifyPotentialIssues(projectInfo, techStackAnalysis),
+        compatibilityScore: this.calculateCompatibilityScore(techStackAnalysis)
+      };
+      
+    } catch (error) {
+      throw new ImportError(`Failed to analyze import source: ${error.message}`);
+    }
+  }
+
+  async importProject(importRequest: ImportRequest, options?: ImportOptions): Promise<ImportResult> {
+    const importId = this.generateImportId();
+    
+    try {
+      // Start import process
+      await this.notifyImportStarted(importId, importRequest);
+      
+      // Analyze source (if not already done)
+      const analysis = options?.analysis || await this.analyzeImportSource(importRequest);
+      
+      // Extract source files
+      const extractedFiles = await this.extractSourceFiles(importRequest, analysis);
+      
+      // Convert and transform files
+      const convertedFiles = await this.convertProjectFiles(extractedFiles, analysis);
+      
+      // Create Vaporform project
+      const project = await this.createVaporformProject(importRequest, analysis, convertedFiles);
+      
+      // Setup project infrastructure
+      await this.setupProjectInfrastructure(project, analysis);
+      
+      // Apply Vaporform enhancements
+      const enhancedProject = await this.applyVaporformEnhancements(project, analysis);
+      
+      // Validate imported project
+      const validation = await this.validateImportedProject(enhancedProject);
+      
+      await this.notifyImportCompleted(importId, enhancedProject, validation);
+      
+      return {
+        importId: importId,
+        success: true,
+        project: enhancedProject,
+        validation: validation,
+        migrationReport: await this.generateMigrationReport(importId, analysis, enhancedProject),
+        nextSteps: await this.generateNextSteps(enhancedProject, analysis)
+      };
+      
+    } catch (error) {
+      await this.notifyImportFailed(importId, error);
+      throw new ImportError(`Import failed: ${error.message}`);
+    }
+  }
+
+  async migrateFromGitHub(githubUrl: string, options?: GitHubImportOptions): Promise<ImportResult> {
+    const importRequest: ImportRequest = {
+      source: 'github',
+      url: githubUrl,
+      branch: options?.branch || 'main',
+      accessToken: options?.accessToken,
+      includeHistory: options?.includeHistory || false,
+      includeIssues: options?.includeIssues || false
+    };
+
+    return await this.importProject(importRequest, options);
+  }
+
+  async migrateFromVSCode(workspacePath: string, options?: VSCodeImportOptions): Promise<ImportResult> {
+    const importRequest: ImportRequest = {
+      source: 'vscode',
+      url: workspacePath,
+      includeSettings: options?.includeSettings || true,
+      includeExtensions: options?.includeExtensions || true,
+      includeTasks: options?.includeTasks || true
+    };
+
+    return await this.importProject(importRequest, options);
+  }
+
+  async migrateFromZip(zipFile: File, options?: ZipImportOptions): Promise<ImportResult> {
+    const importRequest: ImportRequest = {
+      source: 'zip',
+      file: zipFile,
+      extractPath: options?.extractPath || '/tmp/import',
+      preserveStructure: options?.preserveStructure || true
+    };
+
+    return await this.importProject(importRequest, options);
+  }
+
+  private async extractSourceFiles(
+    importRequest: ImportRequest, 
+    analysis: ImportAnalysis
+  ): Promise<ExtractedFiles> {
+    const sourceHandler = this.getSourceHandler(importRequest.source);
+    
+    const files = await sourceHandler.extractFiles(importRequest);
+    
+    // Filter files based on analysis recommendations
+    const filteredFiles = this.filterRelevantFiles(files, analysis);
+    
+    // Organize files by type
+    const organizedFiles = this.organizeFilesByType(filteredFiles);
+    
+    return {
+      sourceFiles: organizedFiles.source,
+      configFiles: organizedFiles.config,
+      documentationFiles: organizedFiles.documentation,
+      testFiles: organizedFiles.tests,
+      assetFiles: organizedFiles.assets,
+      totalSize: files.reduce((sum, file) => sum + file.size, 0),
+      fileCount: files.length
+    };
+  }
+
+  private async convertProjectFiles(
+    extractedFiles: ExtractedFiles, 
+    analysis: ImportAnalysis
+  ): Promise<ConvertedFiles> {
+    const conversions: FileConversion[] = [];
+    
+    // Convert configuration files
+    const configConversions = await this.convertConfigurationFiles(
+      extractedFiles.configFiles, 
+      analysis.projectAnalysis.techStack
+    );
+    conversions.push(...configConversions);
+    
+    // Convert build files
+    const buildConversions = await this.convertBuildFiles(
+      extractedFiles.configFiles,
+      analysis.projectAnalysis.techStack
+    );
+    conversions.push(...buildConversions);
+    
+    // Convert environment files
+    const envConversions = await this.convertEnvironmentFiles(
+      extractedFiles.configFiles,
+      analysis.migrationPlan
+    );
+    conversions.push(...envConversions);
+    
+    // Convert source files (if needed)
+    const sourceConversions = await this.convertSourceFiles(
+      extractedFiles.sourceFiles,
+      analysis.projectAnalysis.techStack
+    );
+    conversions.push(...sourceConversions);
+
+    return {
+      conversions: conversions,
+      convertedFiles: conversions.map(c => c.outputFile),
+      skippedFiles: conversions.filter(c => c.skipped).map(c => c.inputFile),
+      errors: conversions.filter(c => c.error).map(c => ({ file: c.inputFile, error: c.error }))
+    };
+  }
+
+  private async applyVaporformEnhancements(
+    project: VaporformProject, 
+    analysis: ImportAnalysis
+  ): Promise<VaporformProject> {
+    const enhancements: ProjectEnhancement[] = [];
+    
+    // Add AI-powered code suggestions
+    const codeSuggestions = await this.claudeSDK.generateCodeImprovements({
+      projectFiles: project.files,
+      techStack: analysis.projectAnalysis.techStack,
+      migrationContext: analysis.migrationPlan
+    });
+    enhancements.push({
+      type: 'code_improvements',
+      description: 'AI-suggested code improvements',
+      changes: codeSuggestions
+    });
+    
+    // Add Vaporform-specific configuration
+    const vaporformConfig = await this.generateVaporformConfiguration(project, analysis);
+    enhancements.push({
+      type: 'vaporform_config',
+      description: 'Vaporform-specific project configuration',
+      changes: [vaporformConfig]
+    });
+    
+    // Add development tools integration
+    const devToolsIntegration = await this.setupDevToolsIntegration(project, analysis);
+    enhancements.push({
+      type: 'dev_tools',
+      description: 'Development tools and scripts',
+      changes: devToolsIntegration
+    });
+    
+    // Add monitoring and analytics
+    const monitoringSetup = await this.setupMonitoringAndAnalytics(project, analysis);
+    enhancements.push({
+      type: 'monitoring',
+      description: 'Monitoring and analytics setup',
+      changes: monitoringSetup
+    });
+
+    return {
+      ...project,
+      enhancements: enhancements,
+      enhancedAt: new Date()
+    };
+  }
+
+  private initializeSourceHandlers(): void {
+    this.sourceHandlers.set('github', new GitHubSourceHandler());
+    this.sourceHandlers.set('gitlab', new GitLabSourceHandler());
+    this.sourceHandlers.set('bitbucket', new BitbucketSourceHandler());
+    this.sourceHandlers.set('vscode', new VSCodeSourceHandler());
+    this.sourceHandlers.set('zip', new ZipSourceHandler());
+    this.sourceHandlers.set('local', new LocalFileSourceHandler());
+    this.sourceHandlers.set('replit', new ReplitSourceHandler());
+    this.sourceHandlers.set('codesandbox', new CodeSandboxSourceHandler());
+    this.sourceHandlers.set('glitch', new GlitchSourceHandler());
+  }
+
+  private getSourceHandler(source: ImportSource): SourceHandler {
+    const handler = this.sourceHandlers.get(source);
+    if (!handler) {
+      throw new ImportError(`Unsupported import source: ${source}`);
+    }
+    return handler;
+  }
+
+  private generateImportId(): string {
+    return `import_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+}
+
+type ImportSource = 'github' | 'gitlab' | 'bitbucket' | 'vscode' | 'zip' | 'local' | 'replit' | 'codesandbox' | 'glitch';
+
+interface ImportRequest {
+  source: ImportSource;
+  url?: string;
+  file?: File;
+  branch?: string;
+  accessToken?: string;
+  includeHistory?: boolean;
+  includeIssues?: boolean;
+  includeSettings?: boolean;
+  includeExtensions?: boolean;
+  includeTasks?: boolean;
+  extractPath?: string;
+  preserveStructure?: boolean;
+}
+
+interface ImportAnalysis {
+  sourceInfo: {
+    type: ImportSource;
+    url?: string;
+    size: number;
+    fileCount: number;
+  };
+  projectAnalysis: {
+    structure: ProjectStructure;
+    techStack: TechStackAnalysis;
+    dependencies: DependencyAnalysis;
+    complexity: ComplexityAssessment;
+  };
+  migrationPlan: MigrationPlan;
+  estimatedTime: string;
+  recommendedApproach: MigrationApproach;
+  potentialIssues: PotentialIssue[];
+  compatibilityScore: number;
+}
+
+interface ImportResult {
+  importId: string;
+  success: boolean;
+  project: VaporformProject;
+  validation: ProjectValidation;
+  migrationReport: MigrationReport;
+  nextSteps: NextStep[];
+}
+```
+
+### 2. GitHub Integration Handler
+
+```typescript
+// migration/sources/GitHubSourceHandler.ts
+export class GitHubSourceHandler implements SourceHandler {
+  private githubAPI: GitHubAPI;
+  
+  constructor() {
+    this.githubAPI = new GitHubAPI();
+  }
+
+  async extractProjectInfo(importRequest: ImportRequest): Promise<ProjectInfo> {
+    const repoInfo = this.parseGitHubURL(importRequest.url!);
+    
+    // Get repository metadata
+    const repository = await this.githubAPI.getRepository(
+      repoInfo.owner, 
+      repoInfo.repo,
+      importRequest.accessToken
+    );
+    
+    // Get repository contents
+    const contents = await this.githubAPI.getRepositoryContents(
+      repoInfo.owner,
+      repoInfo.repo,
+      importRequest.branch || 'main',
+      importRequest.accessToken
+    );
+    
+    // Get package.json or equivalent for dependency analysis
+    const packageFiles = await this.getPackageFiles(contents);
+    
+    // Get README and documentation
+    const documentation = await this.getDocumentationFiles(contents);
+
+    return {
+      name: repository.name,
+      description: repository.description || '',
+      url: importRequest.url!,
+      size: repository.size * 1024, // GitHub returns size in KB
+      fileCount: this.calculateFileCount(contents),
+      files: contents,
+      packageFiles: packageFiles,
+      documentation: documentation,
+      metadata: {
+        language: repository.language,
+        defaultBranch: repository.default_branch,
+        createdAt: repository.created_at,
+        updatedAt: repository.updated_at,
+        stars: repository.stargazers_count,
+        forks: repository.forks_count,
+        hasIssues: repository.has_issues,
+        hasWiki: repository.has_wiki,
+        topics: repository.topics || []
+      }
+    };
+  }
+
+  async extractFiles(importRequest: ImportRequest): Promise<ExtractedFile[]> {
+    const repoInfo = this.parseGitHubURL(importRequest.url!);
+    const files: ExtractedFile[] = [];
+    
+    // Download repository as ZIP
+    const zipContent = await this.githubAPI.downloadRepositoryZip(
+      repoInfo.owner,
+      repoInfo.repo,
+      importRequest.branch || 'main',
+      importRequest.accessToken
+    );
+    
+    // Extract files from ZIP
+    const extractedFiles = await this.extractZipContents(zipContent);
+    
+    for (const file of extractedFiles) {
+      files.push({
+        path: file.path,
+        name: path.basename(file.path),
+        content: file.content,
+        size: file.size,
+        type: this.getFileType(file.path),
+        encoding: this.detectEncoding(file.content),
+        lastModified: new Date(), // GitHub API doesn't provide individual file dates in ZIP
+        isDirectory: file.isDirectory
+      });
+    }
+    
+    return files;
+  }
+
+  private parseGitHubURL(url: string): { owner: string; repo: string } {
+    const patterns = [
+      /github\.com\/([^\/]+)\/([^\/]+)/,
+      /github\.com\/([^\/]+)\/([^\/]+)\.git/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) {
+        return {
+          owner: match[1],
+          repo: match[2].replace(/\.git$/, '')
+        };
+      }
+    }
+    
+    throw new ImportError('Invalid GitHub URL format');
+  }
+
+  private async getPackageFiles(contents: GitHubContent[]): Promise<PackageFile[]> {
+    const packageFileNames = [
+      'package.json',
+      'requirements.txt',
+      'Pipfile',
+      'Gemfile',
+      'pom.xml',
+      'build.gradle',
+      'composer.json',
+      'go.mod',
+      'Cargo.toml'
+    ];
+    
+    const packageFiles: PackageFile[] = [];
+    
+    for (const content of contents) {
+      if (packageFileNames.includes(content.name) && content.type === 'file') {
+        const fileContent = await this.githubAPI.getFileContent(content.download_url);
+        packageFiles.push({
+          name: content.name,
+          content: fileContent,
+          path: content.path,
+          type: this.getPackageFileType(content.name)
+        });
+      }
+    }
+    
+    return packageFiles;
+  }
+
+  private getPackageFileType(fileName: string): PackageFileType {
+    const typeMap: Record<string, PackageFileType> = {
+      'package.json': 'npm',
+      'requirements.txt': 'pip',
+      'Pipfile': 'pipenv',
+      'Gemfile': 'bundler',
+      'pom.xml': 'maven',
+      'build.gradle': 'gradle',
+      'composer.json': 'composer',
+      'go.mod': 'go-modules',
+      'Cargo.toml': 'cargo'
+    };
+    
+    return typeMap[fileName] || 'unknown';
+  }
+}
+
+interface GitHubContent {
+  name: string;
+  path: string;
+  type: 'file' | 'dir';
+  size: number;
+  download_url?: string;
+  git_url: string;
+}
+
+interface PackageFile {
+  name: string;
+  content: string;
+  path: string;
+  type: PackageFileType;
+}
+
+type PackageFileType = 'npm' | 'pip' | 'pipenv' | 'bundler' | 'maven' | 'gradle' | 'composer' | 'go-modules' | 'cargo' | 'unknown';
+```
+
+### 3. Project Analysis Engine
+
+```typescript
+// migration/ProjectAnalysisEngine.ts
+export class ProjectAnalysisEngine {
+  private languageDetector: LanguageDetector;
+  private frameworkDetector: FrameworkDetector;
+  private dependencyAnalyzer: DependencyAnalyzer;
+  private claudeSDK: VaporformClaudeSDK;
+  
+  constructor() {
+    this.languageDetector = new LanguageDetector();
+    this.frameworkDetector = new FrameworkDetector();
+    this.dependencyAnalyzer = new DependencyAnalyzer();
+    this.claudeSDK = new VaporformClaudeSDK();
+  }
+
+  async analyzeStructure(projectInfo: ProjectInfo): Promise<ProjectStructure> {
+    const files = projectInfo.files;
+    
+    // Analyze directory structure
+    const directoryStructure = this.analyzeDirectoryStructure(files);
+    
+    // Identify project type
+    const projectType = await this.identifyProjectType(files, projectInfo.packageFiles);
+    
+    // Analyze file organization
+    const fileOrganization = this.analyzeFileOrganization(files);
+    
+    // Identify entry points
+    const entryPoints = await this.identifyEntryPoints(files, projectType);
+    
+    // Analyze build configuration
+    const buildConfig = await this.analyzeBuildConfiguration(files, projectInfo.packageFiles);
+
+    return {
+      type: projectType,
+      directoryStructure: directoryStructure,
+      fileOrganization: fileOrganization,
+      entryPoints: entryPoints,
+      buildConfiguration: buildConfig,
+      hasTests: this.hasTestDirectory(files),
+      hasDocumentation: this.hasDocumentation(files),
+      configurationFiles: this.findConfigurationFiles(files)
+    };
+  }
+
+  async detectTechStack(projectInfo: ProjectInfo): Promise<TechStackAnalysis> {
+    const files = projectInfo.files;
+    const packageFiles = projectInfo.packageFiles;
+    
+    // Detect primary languages
+    const languages = await this.languageDetector.detectLanguages(files);
+    
+    // Detect frameworks
+    const frameworks = await this.frameworkDetector.detectFrameworks(files, packageFiles);
+    
+    // Detect build tools
+    const buildTools = await this.detectBuildTools(files, packageFiles);
+    
+    // Detect databases
+    const databases = await this.detectDatabases(files, packageFiles);
+    
+    // Detect deployment platforms
+    const deploymentPlatforms = await this.detectDeploymentPlatforms(files);
+    
+    // Use Claude for additional analysis
+    const aiAnalysis = await this.claudeSDK.analyzeTechStack({
+      files: files.slice(0, 20), // Limit for API efficiency
+      packageFiles: packageFiles,
+      projectMetadata: projectInfo.metadata
+    });
+
+    return {
+      languages: languages,
+      frameworks: frameworks,
+      buildTools: buildTools,
+      databases: databases,
+      deploymentPlatforms: deploymentPlatforms,
+      aiInsights: aiAnalysis,
+      confidence: this.calculateConfidence(languages, frameworks, buildTools),
+      modernizationOpportunities: await this.identifyModernizationOpportunities(
+        languages, 
+        frameworks, 
+        buildTools
+      )
+    };
+  }
+
+  async analyzeDependencies(projectInfo: ProjectInfo): Promise<DependencyAnalysis> {
+    const packageFiles = projectInfo.packageFiles;
+    const dependencies: DependencyInfo[] = [];
+    
+    for (const packageFile of packageFiles) {
+      const fileDependencies = await this.dependencyAnalyzer.analyze(packageFile);
+      dependencies.push(...fileDependencies);
+    }
+    
+    // Analyze dependency health
+    const healthAnalysis = await this.analyzeDependencyHealth(dependencies);
+    
+    // Identify security vulnerabilities
+    const securityAnalysis = await this.analyzeSecurityVulnerabilities(dependencies);
+    
+    // Find outdated dependencies
+    const outdatedAnalysis = await this.findOutdatedDependencies(dependencies);
+    
+    // Generate dependency graph
+    const dependencyGraph = await this.generateDependencyGraph(dependencies);
+
+    return {
+      totalDependencies: dependencies.length,
+      directDependencies: dependencies.filter(d => d.isDirect).length,
+      transitiveDependencies: dependencies.filter(d => !d.isDirect).length,
+      dependencies: dependencies,
+      healthScore: healthAnalysis.overallScore,
+      securityIssues: securityAnalysis.issues,
+      outdatedPackages: outdatedAnalysis.outdated,
+      dependencyGraph: dependencyGraph,
+      recommendations: await this.generateDependencyRecommendations(
+        dependencies,
+        healthAnalysis,
+        securityAnalysis,
+        outdatedAnalysis
+      )
+    };
+  }
+
+  private async identifyProjectType(
+    files: ExtractedFile[], 
+    packageFiles: PackageFile[]
+  ): Promise<ProjectType> {
+    // Check for specific project type indicators
+    const indicators = {
+      'react': this.hasReactIndicators(files, packageFiles),
+      'vue': this.hasVueIndicators(files, packageFiles),
+      'angular': this.hasAngularIndicators(files, packageFiles),
+      'next': this.hasNextJSIndicators(files, packageFiles),
+      'nuxt': this.hasNuxtIndicators(files, packageFiles),
+      'express': this.hasExpressIndicators(files, packageFiles),
+      'django': this.hasDjangoIndicators(files),
+      'rails': this.hasRailsIndicators(files),
+      'spring': this.hasSpringIndicators(files, packageFiles),
+      'laravel': this.hasLaravelIndicators(files),
+      'static': this.isStaticSite(files),
+      'library': this.isLibrary(files, packageFiles)
+    };
+    
+    // Find the most likely project type
+    const scores = Object.entries(indicators).map(([type, score]) => ({ type, score }));
+    scores.sort((a, b) => b.score - a.score);
+    
+    return scores[0].type as ProjectType;
+  }
+
+  private async identifyModernizationOpportunities(
+    languages: LanguageInfo[],
+    frameworks: FrameworkInfo[],
+    buildTools: BuildToolInfo[]
+  ): Promise<ModernizationOpportunity[]> {
+    const opportunities: ModernizationOpportunity[] = [];
+    
+    // Check for outdated language versions
+    for (const language of languages) {
+      if (this.isLanguageVersionOutdated(language)) {
+        opportunities.push({
+          type: 'language_upgrade',
+          current: `${language.name} ${language.version}`,
+          recommended: `${language.name} ${this.getLatestLanguageVersion(language.name)}`,
+          impact: 'medium',
+          effort: 'low',
+          benefits: ['Security improvements', 'Performance gains', 'New language features']
+        });
+      }
+    }
+    
+    // Check for legacy frameworks
+    for (const framework of frameworks) {
+      if (this.isFrameworkLegacy(framework)) {
+        const modernAlternative = this.getModernFrameworkAlternative(framework);
+        opportunities.push({
+          type: 'framework_modernization',
+          current: `${framework.name} ${framework.version}`,
+          recommended: modernAlternative,
+          impact: 'high',
+          effort: 'high',
+          benefits: ['Better performance', 'Modern development experience', 'Active community support']
+        });
+      }
+    }
+    
+    // Check for build tool improvements
+    for (const buildTool of buildTools) {
+      if (this.canImproveBuildTool(buildTool)) {
+        const betterTool = this.getSuggestedBuildTool(buildTool);
+        opportunities.push({
+          type: 'build_optimization',
+          current: `${buildTool.name} ${buildTool.version}`,
+          recommended: betterTool,
+          impact: 'medium',
+          effort: 'medium',
+          benefits: ['Faster build times', 'Better developer experience', 'Modern tooling']
+        });
+      }
+    }
+    
+    return opportunities;
+  }
+}
+
+interface ProjectStructure {
+  type: ProjectType;
+  directoryStructure: DirectoryNode;
+  fileOrganization: FileOrganization;
+  entryPoints: EntryPoint[];
+  buildConfiguration: BuildConfiguration;
+  hasTests: boolean;
+  hasDocumentation: boolean;
+  configurationFiles: ConfigurationFile[];
+}
+
+interface TechStackAnalysis {
+  languages: LanguageInfo[];
+  frameworks: FrameworkInfo[];
+  buildTools: BuildToolInfo[];
+  databases: DatabaseInfo[];
+  deploymentPlatforms: DeploymentPlatform[];
+  aiInsights: AITechStackInsights;
+  confidence: number;
+  modernizationOpportunities: ModernizationOpportunity[];
+}
+
+interface DependencyAnalysis {
+  totalDependencies: number;
+  directDependencies: number;
+  transitiveDependencies: number;
+  dependencies: DependencyInfo[];
+  healthScore: number;
+  securityIssues: SecurityIssue[];
+  outdatedPackages: OutdatedPackage[];
+  dependencyGraph: DependencyGraph;
+  recommendations: DependencyRecommendation[];
+}
+
+type ProjectType = 'react' | 'vue' | 'angular' | 'next' | 'nuxt' | 'express' | 'django' | 'rails' | 'spring' | 'laravel' | 'static' | 'library' | 'unknown';
+
+interface ModernizationOpportunity {
+  type: 'language_upgrade' | 'framework_modernization' | 'build_optimization' | 'dependency_update';
+  current: string;
+  recommended: string;
+  impact: 'low' | 'medium' | 'high';
+  effort: 'low' | 'medium' | 'high';
+  benefits: string[];
+}
+```
+
+### 4. Migration Wizard Interface
+
+```typescript
+// migration/MigrationWizard.ts
+export class MigrationWizard {
+  private importer: UniversalProjectImporter;
+  private progressTracker: MigrationProgressTracker;
+  
+  constructor() {
+    this.importer = new UniversalProjectImporter();
+    this.progressTracker = new MigrationProgressTracker();
+  }
+
+  async startMigrationWizard(userId: string): Promise<MigrationWizardSession> {
+    const sessionId = this.generateSessionId();
+    
+    const session: MigrationWizardSession = {
+      id: sessionId,
+      userId: userId,
+      currentStep: 'source_selection',
+      steps: [
+        'source_selection',
+        'source_analysis',
+        'migration_planning',
+        'confirmation',
+        'execution',
+        'completion'
+      ],
+      progress: 0,
+      data: {},
+      startedAt: new Date(),
+      status: 'active'
+    };
+    
+    await this.saveSession(session);
+    return session;
+  }
+
+  async processWizardStep(
+    sessionId: string, 
+    stepData: WizardStepData
+  ): Promise<WizardStepResult> {
+    const session = await this.getSession(sessionId);
+    
+    switch (session.currentStep) {
+      case 'source_selection':
+        return await this.processSourceSelection(session, stepData);
+      case 'source_analysis':
+        return await this.processSourceAnalysis(session, stepData);
+      case 'migration_planning':
+        return await this.processMigrationPlanning(session, stepData);
+      case 'confirmation':
+        return await this.processConfirmation(session, stepData);
+      case 'execution':
+        return await this.processExecution(session, stepData);
+      default:
+        throw new Error(`Unknown wizard step: ${session.currentStep}`);
+    }
+  }
+
+  private async processSourceSelection(
+    session: MigrationWizardSession, 
+    stepData: WizardStepData
+  ): Promise<WizardStepResult> {
+    const sourceData = stepData as SourceSelectionData;
+    
+    // Validate source information
+    await this.validateSourceData(sourceData);
+    
+    // Test connection to source
+    const connectionTest = await this.testSourceConnection(sourceData);
+    
+    if (!connectionTest.success) {
+      return {
+        success: false,
+        errors: connectionTest.errors,
+        nextStep: 'source_selection'
+      };
+    }
+    
+    // Store source data and move to analysis
+    session.data.source = sourceData;
+    session.currentStep = 'source_analysis';
+    session.progress = 20;
+    
+    await this.updateSession(session);
+    
+    return {
+      success: true,
+      nextStep: 'source_analysis',
+      data: {
+        connectionTest: connectionTest,
+        estimatedAnalysisTime: this.estimateAnalysisTime(sourceData)
+      }
+    };
+  }
+
+  private async processSourceAnalysis(
+    session: MigrationWizardSession, 
+    stepData: WizardStepData
+  ): Promise<WizardStepResult> {
+    const sourceData = session.data.source as SourceSelectionData;
+    
+    try {
+      // Perform project analysis
+      const analysis = await this.importer.analyzeImportSource({
+        source: sourceData.type,
+        url: sourceData.url,
+        accessToken: sourceData.accessToken,
+        branch: sourceData.branch
+      });
+      
+      // Store analysis results
+      session.data.analysis = analysis;
+      session.currentStep = 'migration_planning';
+      session.progress = 50;
+      
+      await this.updateSession(session);
+      
+      return {
+        success: true,
+        nextStep: 'migration_planning',
+        data: {
+          analysis: analysis,
+          recommendations: this.generateUserRecommendations(analysis)
+        }
+      };
+      
+    } catch (error) {
+      return {
+        success: false,
+        errors: [error.message],
+        nextStep: 'source_selection'
+      };
+    }
+  }
+
+  private async processMigrationPlanning(
+    session: MigrationWizardSession, 
+    stepData: WizardStepData
+  ): Promise<WizardStepResult> {
+    const planningData = stepData as MigrationPlanningData;
+    const analysis = session.data.analysis as ImportAnalysis;
+    
+    // Customize migration plan based on user preferences
+    const customizedPlan = await this.customizeMigrationPlan(analysis.migrationPlan, planningData);
+    
+    // Validate plan feasibility
+    const planValidation = await this.validateMigrationPlan(customizedPlan);
+    
+    if (!planValidation.isValid) {
+      return {
+        success: false,
+        errors: planValidation.errors,
+        nextStep: 'migration_planning'
+      };
+    }
+    
+    // Store customized plan
+    session.data.migrationPlan = customizedPlan;
+    session.currentStep = 'confirmation';
+    session.progress = 70;
+    
+    await this.updateSession(session);
+    
+    return {
+      success: true,
+      nextStep: 'confirmation',
+      data: {
+        finalPlan: customizedPlan,
+        estimatedTime: this.calculateTotalMigrationTime(customizedPlan),
+        riskAssessment: this.assessMigrationRisks(customizedPlan)
+      }
+    };
+  }
+
+  private async processConfirmation(
+    session: MigrationWizardSession, 
+    stepData: WizardStepData
+  ): Promise<WizardStepResult> {
+    const confirmationData = stepData as ConfirmationData;
+    
+    if (!confirmationData.confirmed) {
+      return {
+        success: false,
+        errors: ['Migration not confirmed'],
+        nextStep: 'migration_planning'
+      };
+    }
+    
+    // Start migration execution
+    session.currentStep = 'execution';
+    session.progress = 80;
+    session.data.executionOptions = confirmationData.options;
+    
+    await this.updateSession(session);
+    
+    // Start asynchronous migration process
+    this.startMigrationExecution(session);
+    
+    return {
+      success: true,
+      nextStep: 'execution',
+      data: {
+        executionStarted: true,
+        trackingId: session.id
+      }
+    };
+  }
+
+  private async startMigrationExecution(session: MigrationWizardSession): Promise<void> {
+    try {
+      const sourceData = session.data.source as SourceSelectionData;
+      const migrationPlan = session.data.migrationPlan as MigrationPlan;
+      
+      // Execute migration
+      const importResult = await this.importer.importProject({
+        source: sourceData.type,
+        url: sourceData.url,
+        accessToken: sourceData.accessToken,
+        branch: sourceData.branch
+      }, {
+        analysis: session.data.analysis,
+        migrationPlan: migrationPlan,
+        executionOptions: session.data.executionOptions
+      });
+      
+      // Update session with results
+      session.data.importResult = importResult;
+      session.currentStep = 'completion';
+      session.progress = 100;
+      session.status = 'completed';
+      session.completedAt = new Date();
+      
+      await this.updateSession(session);
+      
+      // Notify user of completion
+      await this.notifyMigrationCompleted(session, importResult);
+      
+    } catch (error) {
+      session.status = 'failed';
+      session.data.error = error.message;
+      await this.updateSession(session);
+      
+      // Notify user of failure
+      await this.notifyMigrationFailed(session, error);
+    }
+  }
+
+  private generateUserRecommendations(analysis: ImportAnalysis): UserRecommendation[] {
+    const recommendations: UserRecommendation[] = [];
+    
+    // Technology stack recommendations
+    if (analysis.projectAnalysis.techStack.modernizationOpportunities.length > 0) {
+      recommendations.push({
+        type: 'modernization',
+        title: 'Consider Technology Modernization',
+        description: 'Your project could benefit from updating to newer technologies',
+        opportunities: analysis.projectAnalysis.techStack.modernizationOpportunities,
+        impact: 'medium'
+      });
+    }
+    
+    // Security recommendations
+    if (analysis.projectAnalysis.dependencies.securityIssues.length > 0) {
+      recommendations.push({
+        type: 'security',
+        title: 'Address Security Vulnerabilities',
+        description: 'Some dependencies have known security vulnerabilities',
+        issues: analysis.projectAnalysis.dependencies.securityIssues,
+        impact: 'high'
+      });
+    }
+    
+    // Performance recommendations
+    if (analysis.projectAnalysis.complexity.score > 7) {
+      recommendations.push({
+        type: 'performance',
+        title: 'Optimize Project Structure',
+        description: 'The project could benefit from restructuring for better performance',
+        suggestions: ['Consider code splitting', 'Optimize bundle size', 'Implement lazy loading'],
+        impact: 'medium'
+      });
+    }
+    
+    return recommendations;
+  }
+}
+
+interface MigrationWizardSession {
+  id: string;
+  userId: string;
+  currentStep: WizardStep;
+  steps: WizardStep[];
+  progress: number;
+  data: any;
+  startedAt: Date;
+  completedAt?: Date;
+  status: 'active' | 'completed' | 'failed' | 'cancelled';
+}
+
+interface UserRecommendation {
+  type: 'modernization' | 'security' | 'performance' | 'best_practices';
+  title: string;
+  description: string;
+  opportunities?: ModernizationOpportunity[];
+  issues?: SecurityIssue[];
+  suggestions?: string[];
+  impact: 'low' | 'medium' | 'high';
+}
+
+type WizardStep = 'source_selection' | 'source_analysis' | 'migration_planning' | 'confirmation' | 'execution' | 'completion';
+```
+
+This comprehensive migration and import system enables users to seamlessly bring their existing projects into Vaporform while providing intelligent analysis, guided migration workflows, and automated enhancements powered by AI.

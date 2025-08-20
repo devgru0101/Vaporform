@@ -1,0 +1,1063 @@
+# VSCode Extension System Compatibility
+
+## Overview
+
+Vaporform maintains full compatibility with the VSCode extension ecosystem while adding enhanced AI-powered features. The extension system provides seamless integration of existing VSCode extensions, custom Vaporform extensions, and intelligent extension recommendations based on project context.
+
+## Extension Compatibility Layer
+
+### 1. VSCode Extension Host
+
+```typescript
+// extensions/ExtensionHost.ts
+import { Worker } from 'worker_threads';
+import { EventEmitter } from 'events';
+import * as vscode from 'vscode';
+
+export class VaporformExtensionHost extends EventEmitter {
+  private extensions: Map<string, LoadedExtension> = new Map();
+  private activationEvents: Map<string, string[]> = new Map();
+  private extensionWorkers: Map<string, Worker> = new Map();
+  private apiProvider: VaporformAPIProvider;
+  private securityManager: ExtensionSecurityManager;
+  
+  constructor() {
+    super();
+    this.apiProvider = new VaporformAPIProvider();
+    this.securityManager = new ExtensionSecurityManager();
+    this.setupExtensionEnvironment();
+  }
+
+  async loadExtension(extensionPath: string): Promise<LoadedExtension> {
+    try {
+      const manifest = await this.loadExtensionManifest(extensionPath);
+      
+      // Validate extension
+      await this.validateExtension(manifest, extensionPath);
+      
+      // Create extension context
+      const extensionContext = await this.createExtensionContext(manifest, extensionPath);
+      
+      // Load extension code
+      const extensionModule = await this.loadExtensionModule(extensionPath, manifest.main);
+      
+      // Create sandboxed environment
+      const sandbox = await this.createExtensionSandbox(manifest, extensionContext);
+      
+      const loadedExtension: LoadedExtension = {
+        id: manifest.name,
+        manifest: manifest,
+        context: extensionContext,
+        module: extensionModule,
+        sandbox: sandbox,
+        isActive: false,
+        activationEvents: manifest.activationEvents || [],
+        loadedAt: new Date()
+      };
+      
+      this.extensions.set(manifest.name, loadedExtension);
+      
+      // Register activation events
+      this.registerActivationEvents(manifest.name, manifest.activationEvents || []);
+      
+      this.emit('extension_loaded', loadedExtension);
+      
+      return loadedExtension;
+      
+    } catch (error) {
+      console.error(`Failed to load extension from ${extensionPath}:`, error);
+      throw new ExtensionError(`Extension loading failed: ${error.message}`);
+    }
+  }
+
+  async activateExtension(extensionId: string, activationEvent?: string): Promise<void> {
+    const extension = this.extensions.get(extensionId);
+    if (!extension) {
+      throw new ExtensionError(`Extension ${extensionId} not found`);
+    }
+    
+    if (extension.isActive) {
+      return; // Already active
+    }
+    
+    try {
+      // Call extension's activate function
+      if (extension.module && typeof extension.module.activate === 'function') {
+        await extension.module.activate(extension.context);
+      }
+      
+      extension.isActive = true;
+      extension.activatedAt = new Date();
+      extension.activationEvent = activationEvent;
+      
+      this.emit('extension_activated', { extension, activationEvent });
+      
+    } catch (error) {
+      console.error(`Failed to activate extension ${extensionId}:`, error);
+      throw new ExtensionError(`Extension activation failed: ${error.message}`);
+    }
+  }
+
+  async deactivateExtension(extensionId: string): Promise<void> {
+    const extension = this.extensions.get(extensionId);
+    if (!extension || !extension.isActive) {
+      return;
+    }
+    
+    try {
+      // Call extension's deactivate function if it exists
+      if (extension.module && typeof extension.module.deactivate === 'function') {
+        await extension.module.deactivate();
+      }
+      
+      // Clean up extension resources
+      await this.cleanupExtensionResources(extension);
+      
+      extension.isActive = false;
+      extension.deactivatedAt = new Date();
+      
+      this.emit('extension_deactivated', extension);
+      
+    } catch (error) {
+      console.error(`Failed to deactivate extension ${extensionId}:`, error);
+    }
+  }
+
+  async installExtension(extensionInfo: ExtensionInstallInfo): Promise<string> {
+    try {
+      // Download extension
+      const extensionPath = await this.downloadExtension(extensionInfo);
+      
+      // Verify extension integrity
+      await this.verifyExtensionIntegrity(extensionPath, extensionInfo);
+      
+      // Install to extensions directory
+      const installedPath = await this.installExtensionFiles(extensionPath);
+      
+      // Load the extension
+      const loadedExtension = await this.loadExtension(installedPath);
+      
+      // Auto-activate if needed
+      if (this.shouldAutoActivate(loadedExtension)) {
+        await this.activateExtension(loadedExtension.id);
+      }
+      
+      return loadedExtension.id;
+      
+    } catch (error) {
+      console.error('Extension installation failed:', error);
+      throw new ExtensionError(`Extension installation failed: ${error.message}`);
+    }
+  }
+
+  async uninstallExtension(extensionId: string): Promise<void> {
+    const extension = this.extensions.get(extensionId);
+    if (!extension) {
+      throw new ExtensionError(`Extension ${extensionId} not found`);
+    }
+    
+    try {
+      // Deactivate if active
+      if (extension.isActive) {
+        await this.deactivateExtension(extensionId);
+      }
+      
+      // Remove extension files
+      await this.removeExtensionFiles(extension);
+      
+      // Remove from loaded extensions
+      this.extensions.delete(extensionId);
+      
+      this.emit('extension_uninstalled', extensionId);
+      
+    } catch (error) {
+      console.error(`Failed to uninstall extension ${extensionId}:`, error);
+      throw new ExtensionError(`Extension uninstall failed: ${error.message}`);
+    }
+  }
+
+  async getExtensionAPI(extensionId: string): Promise<any> {
+    const extension = this.extensions.get(extensionId);
+    if (!extension || !extension.isActive) {
+      return null;
+    }
+    
+    return extension.context.exports;
+  }
+
+  triggerActivationEvent(event: string, ...args: any[]): void {
+    const extensionsToActivate = this.activationEvents.get(event);
+    if (!extensionsToActivate) {
+      return;
+    }
+    
+    extensionsToActivate.forEach(extensionId => {
+      const extension = this.extensions.get(extensionId);
+      if (extension && !extension.isActive) {
+        this.activateExtension(extensionId, event).catch(error => {
+          console.error(`Failed to activate extension ${extensionId} for event ${event}:`, error);
+        });
+      }
+    });
+  }
+
+  private async createExtensionContext(
+    manifest: ExtensionManifest, 
+    extensionPath: string
+  ): Promise<vscode.ExtensionContext> {
+    const context: vscode.ExtensionContext = {
+      subscriptions: [],
+      workspaceState: new ExtensionWorkspaceState(manifest.name),
+      globalState: new ExtensionGlobalState(manifest.name),
+      secrets: new ExtensionSecrets(manifest.name),
+      extensionUri: vscode.Uri.file(extensionPath),
+      extensionPath: extensionPath,
+      environmentVariableCollection: new ExtensionEnvironmentVariableCollection(),
+      asAbsolutePath: (relativePath: string) => path.join(extensionPath, relativePath),
+      storageUri: vscode.Uri.file(this.getExtensionStoragePath(manifest.name)),
+      globalStorageUri: vscode.Uri.file(this.getGlobalStoragePath()),
+      logUri: vscode.Uri.file(this.getExtensionLogPath(manifest.name)),
+      extensionMode: vscode.ExtensionMode.Production,
+      extension: {
+        id: manifest.name,
+        extensionUri: vscode.Uri.file(extensionPath),
+        extensionPath: extensionPath,
+        isActive: false,
+        packageJSON: manifest,
+        exports: undefined
+      }
+    };
+    
+    return context;
+  }
+
+  private async createExtensionSandbox(
+    manifest: ExtensionManifest, 
+    context: vscode.ExtensionContext
+  ): Promise<ExtensionSandbox> {
+    const sandbox: ExtensionSandbox = {
+      vscode: this.createVSCodeAPI(context),
+      console: this.createSandboxedConsole(manifest.name),
+      require: this.createSandboxedRequire(context.extensionPath),
+      process: this.createSandboxedProcess(),
+      Buffer: Buffer,
+      global: {},
+      setTimeout: setTimeout,
+      clearTimeout: clearTimeout,
+      setInterval: setInterval,
+      clearInterval: clearInterval
+    };
+    
+    return sandbox;
+  }
+
+  private createVSCodeAPI(context: vscode.ExtensionContext): typeof vscode {
+    return {
+      ...this.apiProvider.getVSCodeAPI(),
+      // Add Vaporform-specific enhancements
+      claude: this.apiProvider.getClaudeAPI(),
+      vaporform: this.apiProvider.getVaporformAPI()
+    } as any;
+  }
+
+  private async loadExtensionManifest(extensionPath: string): Promise<ExtensionManifest> {
+    const manifestPath = path.join(extensionPath, 'package.json');
+    const manifestContent = await fs.readFile(manifestPath, 'utf8');
+    return JSON.parse(manifestContent);
+  }
+
+  private async validateExtension(
+    manifest: ExtensionManifest, 
+    extensionPath: string
+  ): Promise<void> {
+    // Validate manifest
+    if (!manifest.name || !manifest.version) {
+      throw new ExtensionError('Invalid extension manifest: missing name or version');
+    }
+    
+    // Check engine compatibility
+    if (manifest.engines?.vscode) {
+      const isCompatible = this.checkVSCodeCompatibility(manifest.engines.vscode);
+      if (!isCompatible) {
+        throw new ExtensionError(`Extension requires VSCode ${manifest.engines.vscode}`);
+      }
+    }
+    
+    // Security validation
+    await this.securityManager.validateExtension(manifest, extensionPath);
+  }
+
+  private registerActivationEvents(extensionId: string, events: string[]): void {
+    events.forEach(event => {
+      if (!this.activationEvents.has(event)) {
+        this.activationEvents.set(event, []);
+      }
+      this.activationEvents.get(event)!.push(extensionId);
+    });
+  }
+
+  private shouldAutoActivate(extension: LoadedExtension): boolean {
+    return extension.activationEvents.includes('*') || 
+           extension.activationEvents.includes('onStartupFinished');
+  }
+
+  private getExtensionStoragePath(extensionId: string): string {
+    return path.join(process.env.VAPORFORM_EXTENSIONS_STORAGE || '/tmp/vaporform/extensions', extensionId);
+  }
+
+  private getGlobalStoragePath(): string {
+    return path.join(process.env.VAPORFORM_GLOBAL_STORAGE || '/tmp/vaporform/global');
+  }
+
+  private getExtensionLogPath(extensionId: string): string {
+    return path.join(process.env.VAPORFORM_LOGS || '/tmp/vaporform/logs', `${extensionId}.log`);
+  }
+
+  getLoadedExtensions(): LoadedExtension[] {
+    return Array.from(this.extensions.values());
+  }
+
+  getActiveExtensions(): LoadedExtension[] {
+    return Array.from(this.extensions.values()).filter(ext => ext.isActive);
+  }
+}
+
+interface LoadedExtension {
+  id: string;
+  manifest: ExtensionManifest;
+  context: vscode.ExtensionContext;
+  module: any;
+  sandbox: ExtensionSandbox;
+  isActive: boolean;
+  activationEvents: string[];
+  loadedAt: Date;
+  activatedAt?: Date;
+  deactivatedAt?: Date;
+  activationEvent?: string;
+}
+
+interface ExtensionManifest {
+  name: string;
+  version: string;
+  description?: string;
+  publisher?: string;
+  engines?: {
+    vscode?: string;
+  };
+  main?: string;
+  activationEvents?: string[];
+  contributes?: any;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
+interface ExtensionSandbox {
+  vscode: typeof vscode;
+  console: Console;
+  require: NodeRequire;
+  process: Partial<NodeJS.Process>;
+  Buffer: typeof Buffer;
+  global: any;
+  setTimeout: typeof setTimeout;
+  clearTimeout: typeof clearTimeout;
+  setInterval: typeof setInterval;
+  clearInterval: typeof clearInterval;
+}
+
+interface ExtensionInstallInfo {
+  id: string;
+  version?: string;
+  source: 'marketplace' | 'vsix' | 'git';
+  url?: string;
+  checksum?: string;
+}
+
+class ExtensionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ExtensionError';
+  }
+}
+```
+
+### 2. Vaporform API Provider
+
+```typescript
+// extensions/VaporformAPIProvider.ts
+export class VaporformAPIProvider {
+  private claudeService: VaporformClaudeSDK;
+  private projectService: ProjectService;
+  private fileSystemService: VirtualFileSystemManager;
+  
+  constructor() {
+    this.claudeService = new VaporformClaudeSDK();
+    this.projectService = new ProjectService();
+    this.fileSystemService = new VirtualFileSystemManager();
+  }
+
+  getVSCodeAPI(): Partial<typeof vscode> {
+    return {
+      commands: this.createCommandsAPI(),
+      window: this.createWindowAPI(),
+      workspace: this.createWorkspaceAPI(),
+      languages: this.createLanguagesAPI(),
+      debug: this.createDebugAPI(),
+      extensions: this.createExtensionsAPI(),
+      env: this.createEnvAPI(),
+      Uri: vscode.Uri,
+      Position: vscode.Position,
+      Range: vscode.Range,
+      Selection: vscode.Selection,
+      Location: vscode.Location,
+      Diagnostic: vscode.Diagnostic,
+      DiagnosticSeverity: vscode.DiagnosticSeverity,
+      // Add other VSCode API namespaces as needed
+    };
+  }
+
+  getClaudeAPI(): ClaudeAPI {
+    return {
+      generateCode: async (prompt: string, context?: any) => {
+        return await this.claudeService.generateCode(prompt, context);
+      },
+      
+      improveCode: async (code: string, instructions: string) => {
+        return await this.claudeService.improveCode(code, instructions);
+      },
+      
+      explainCode: async (code: string) => {
+        return await this.claudeService.explainCode(code);
+      },
+      
+      debugCode: async (code: string, error: string) => {
+        return await this.claudeService.debugCode(code, error);
+      },
+      
+      generateTests: async (code: string) => {
+        return await this.claudeService.generateTests(code);
+      },
+      
+      generateDocumentation: async (code: string) => {
+        return await this.claudeService.generateDocumentation(code);
+      },
+      
+      chat: async (message: string, context?: any) => {
+        return await this.claudeService.chat(message, context);
+      }
+    };
+  }
+
+  getVaporformAPI(): VaporformAPI {
+    return {
+      project: {
+        getCurrent: () => this.projectService.getCurrentProject(),
+        getFiles: (projectId: string) => this.fileSystemService.getProjectFiles(projectId),
+        createFile: (projectId: string, path: string, content: string) => 
+          this.fileSystemService.createFile(projectId, path, content),
+        updateFile: (projectId: string, path: string, content: string) =>
+          this.fileSystemService.updateFile(projectId, path, content),
+        deleteFile: (projectId: string, path: string) =>
+          this.fileSystemService.deleteFile(projectId, path)
+      },
+      
+      ai: {
+        analyzeProject: (projectId: string) => this.claudeService.analyzeProject(projectId),
+        suggestImprovements: (projectId: string) => this.claudeService.suggestImprovements(projectId),
+        generateFeature: (description: string, projectId: string) =>
+          this.claudeService.generateFeature(description, projectId)
+      },
+      
+      collaboration: {
+        shareProject: (projectId: string, userId: string, permissions: string[]) =>
+          this.projectService.shareProject(projectId, userId, permissions),
+        getCollaborators: (projectId: string) => this.projectService.getCollaborators(projectId)
+      },
+      
+      deployment: {
+        deploy: (projectId: string, environment: string) =>
+          this.deploymentService.deploy(projectId, environment),
+        getDeploymentStatus: (projectId: string) =>
+          this.deploymentService.getStatus(projectId)
+      }
+    };
+  }
+
+  private createCommandsAPI(): typeof vscode.commands {
+    const commands = new Map<string, (...args: any[]) => any>();
+    const disposables: vscode.Disposable[] = [];
+    
+    return {
+      registerCommand: (command: string, callback: (...args: any[]) => any) => {
+        commands.set(command, callback);
+        const disposable = { dispose: () => commands.delete(command) };
+        disposables.push(disposable);
+        return disposable;
+      },
+      
+      executeCommand: async (command: string, ...rest: any[]) => {
+        const handler = commands.get(command);
+        if (handler) {
+          return await handler(...rest);
+        }
+        throw new Error(`Command '${command}' not found`);
+      },
+      
+      getCommands: async (filterInternal?: boolean) => {
+        return Array.from(commands.keys());
+      },
+      
+      registerTextEditorCommand: (command: string, callback: any) => {
+        return this.registerCommand(command, callback);
+      }
+    } as any;
+  }
+
+  private createWindowAPI(): typeof vscode.window {
+    return {
+      showInformationMessage: async (message: string, ...items: string[]) => {
+        // Integrate with Vaporform notification system
+        this.showNotification('info', message, items);
+        return items[0]; // Return first item for now
+      },
+      
+      showWarningMessage: async (message: string, ...items: string[]) => {
+        this.showNotification('warning', message, items);
+        return items[0];
+      },
+      
+      showErrorMessage: async (message: string, ...items: string[]) => {
+        this.showNotification('error', message, items);
+        return items[0];
+      },
+      
+      showInputBox: async (options?: vscode.InputBoxOptions) => {
+        // Integrate with Vaporform input system
+        return await this.showInputDialog(options);
+      },
+      
+      showQuickPick: async (items: any, options?: any) => {
+        // Integrate with Vaporform quick pick system
+        return await this.showQuickPickDialog(items, options);
+      },
+      
+      createStatusBarItem: (alignment?: vscode.StatusBarAlignment, priority?: number) => {
+        return this.createStatusBarItem(alignment, priority);
+      },
+      
+      createOutputChannel: (name: string) => {
+        return this.createOutputChannel(name);
+      },
+      
+      createWebviewPanel: (viewType: string, title: string, showOptions: any, options?: any) => {
+        return this.createWebviewPanel(viewType, title, showOptions, options);
+      },
+      
+      createTerminal: (options?: vscode.TerminalOptions) => {
+        return this.createTerminal(options);
+      },
+      
+      // Add other window API methods as needed
+      get activeTextEditor() {
+        return this.getActiveTextEditor();
+      },
+      
+      get visibleTextEditors() {
+        return this.getVisibleTextEditors();
+      }
+    } as any;
+  }
+
+  private createWorkspaceAPI(): typeof vscode.workspace {
+    return {
+      get workspaceFolders() {
+        return this.getWorkspaceFolders();
+      },
+      
+      get name() {
+        return this.getWorkspaceName();
+      },
+      
+      getConfiguration: (section?: string, resource?: vscode.Uri) => {
+        return this.getConfiguration(section, resource);
+      },
+      
+      openTextDocument: async (uri: vscode.Uri | string) => {
+        return await this.openTextDocument(uri);
+      },
+      
+      saveAll: async (includeUntitled?: boolean) => {
+        return await this.saveAllDocuments(includeUntitled);
+      },
+      
+      findFiles: async (include: vscode.GlobPattern, exclude?: vscode.GlobPattern) => {
+        return await this.findFiles(include, exclude);
+      },
+      
+      createFileSystemWatcher: (globPattern: vscode.GlobPattern, ignoreCreateEvents?: boolean) => {
+        return this.createFileSystemWatcher(globPattern, ignoreCreateEvents);
+      },
+      
+      onDidOpenTextDocument: (listener: (document: vscode.TextDocument) => any) => {
+        return this.onDidOpenTextDocument(listener);
+      },
+      
+      onDidCloseTextDocument: (listener: (document: vscode.TextDocument) => any) => {
+        return this.onDidCloseTextDocument(listener);
+      },
+      
+      onDidChangeTextDocument: (listener: (event: vscode.TextDocumentChangeEvent) => any) => {
+        return this.onDidChangeTextDocument(listener);
+      }
+    } as any;
+  }
+
+  private showNotification(type: 'info' | 'warning' | 'error', message: string, actions?: string[]): void {
+    // Integrate with Vaporform notification system
+    const notification = {
+      type,
+      message,
+      actions,
+      timestamp: new Date()
+    };
+    
+    // Emit to notification system
+    this.emit('notification', notification);
+  }
+
+  private async showInputDialog(options?: vscode.InputBoxOptions): Promise<string | undefined> {
+    // Create input dialog in Vaporform UI
+    return new Promise((resolve) => {
+      const dialog = this.createInputDialog(options);
+      dialog.onComplete = (value: string | undefined) => resolve(value);
+      dialog.show();
+    });
+  }
+
+  private getActiveTextEditor(): vscode.TextEditor | undefined {
+    // Get current active editor from Vaporform editor service
+    return this.editorService.getActiveEditor();
+  }
+
+  private getWorkspaceFolders(): vscode.WorkspaceFolder[] | undefined {
+    // Get workspace folders from current project
+    const currentProject = this.projectService.getCurrentProject();
+    if (!currentProject) return undefined;
+    
+    return [{
+      uri: vscode.Uri.file(currentProject.rootPath),
+      name: currentProject.name,
+      index: 0
+    }];
+  }
+}
+
+interface ClaudeAPI {
+  generateCode(prompt: string, context?: any): Promise<string>;
+  improveCode(code: string, instructions: string): Promise<string>;
+  explainCode(code: string): Promise<string>;
+  debugCode(code: string, error: string): Promise<string>;
+  generateTests(code: string): Promise<string>;
+  generateDocumentation(code: string): Promise<string>;
+  chat(message: string, context?: any): Promise<string>;
+}
+
+interface VaporformAPI {
+  project: {
+    getCurrent(): Promise<any>;
+    getFiles(projectId: string): Promise<any[]>;
+    createFile(projectId: string, path: string, content: string): Promise<void>;
+    updateFile(projectId: string, path: string, content: string): Promise<void>;
+    deleteFile(projectId: string, path: string): Promise<void>;
+  };
+  ai: {
+    analyzeProject(projectId: string): Promise<any>;
+    suggestImprovements(projectId: string): Promise<any>;
+    generateFeature(description: string, projectId: string): Promise<any>;
+  };
+  collaboration: {
+    shareProject(projectId: string, userId: string, permissions: string[]): Promise<void>;
+    getCollaborators(projectId: string): Promise<any[]>;
+  };
+  deployment: {
+    deploy(projectId: string, environment: string): Promise<any>;
+    getDeploymentStatus(projectId: string): Promise<any>;
+  };
+}
+```
+
+### 3. Extension Marketplace Integration
+
+```typescript
+// extensions/ExtensionMarketplace.ts
+export class ExtensionMarketplace {
+  private marketplaceUrl: string;
+  private cache: Map<string, ExtensionInfo[]> = new Map();
+  private installedExtensions: Set<string> = new Set();
+  
+  constructor() {
+    this.marketplaceUrl = process.env.VSCODE_MARKETPLACE_URL || 'https://marketplace.visualstudio.com';
+    this.loadInstalledExtensions();
+  }
+
+  async searchExtensions(query: string, filters?: ExtensionFilters): Promise<ExtensionSearchResult> {
+    const cacheKey = this.getCacheKey(query, filters);
+    
+    // Check cache first
+    if (this.cache.has(cacheKey)) {
+      const cachedResults = this.cache.get(cacheKey)!;
+      return {
+        extensions: cachedResults,
+        totalCount: cachedResults.length,
+        query: query
+      };
+    }
+
+    try {
+      const searchParams = this.buildSearchParams(query, filters);
+      const response = await fetch(`${this.marketplaceUrl}/_apis/public/gallery/extensionquery`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json;api-version=3.0-preview.1'
+        },
+        body: JSON.stringify({
+          filters: [{
+            criteria: searchParams,
+            direction: 2,
+            pageSize: 50,
+            pagingToken: null,
+            sortBy: 0,
+            sortOrder: 0
+          }],
+          assetTypes: [],
+          flags: 914
+        })
+      });
+
+      const data = await response.json();
+      const extensions = this.parseMarketplaceResponse(data);
+      
+      // Cache results
+      this.cache.set(cacheKey, extensions);
+      
+      return {
+        extensions: extensions,
+        totalCount: extensions.length,
+        query: query
+      };
+
+    } catch (error) {
+      console.error('Extension search failed:', error);
+      throw new ExtensionError(`Failed to search extensions: ${error.message}`);
+    }
+  }
+
+  async getExtensionDetails(extensionId: string): Promise<ExtensionDetails> {
+    try {
+      const response = await fetch(`${this.marketplaceUrl}/items?itemName=${extensionId}`);
+      const data = await response.json();
+      
+      return this.parseExtensionDetails(data);
+      
+    } catch (error) {
+      console.error('Failed to get extension details:', error);
+      throw new ExtensionError(`Failed to get extension details: ${error.message}`);
+    }
+  }
+
+  async downloadExtension(extensionId: string, version?: string): Promise<string> {
+    try {
+      const downloadUrl = this.buildDownloadUrl(extensionId, version);
+      const response = await fetch(downloadUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.statusText}`);
+      }
+      
+      const buffer = await response.arrayBuffer();
+      const extensionPath = await this.saveExtensionFile(extensionId, buffer);
+      
+      return extensionPath;
+      
+    } catch (error) {
+      console.error('Extension download failed:', error);
+      throw new ExtensionError(`Failed to download extension: ${error.message}`);
+    }
+  }
+
+  async getRecommendedExtensions(projectContext: ProjectContext): Promise<ExtensionRecommendation[]> {
+    const recommendations: ExtensionRecommendation[] = [];
+    
+    // Language-specific recommendations
+    const languageExtensions = await this.getLanguageExtensions(projectContext.languages);
+    recommendations.push(...languageExtensions);
+    
+    // Framework-specific recommendations
+    const frameworkExtensions = await this.getFrameworkExtensions(projectContext.frameworks);
+    recommendations.push(...frameworkExtensions);
+    
+    // Tool-specific recommendations
+    const toolExtensions = await this.getToolExtensions(projectContext.tools);
+    recommendations.push(...toolExtensions);
+    
+    // Popular extensions
+    const popularExtensions = await this.getPopularExtensions();
+    recommendations.push(...popularExtensions);
+    
+    // Remove already installed extensions
+    const filteredRecommendations = recommendations.filter(rec => 
+      !this.installedExtensions.has(rec.extensionId)
+    );
+    
+    // Sort by relevance score
+    return filteredRecommendations.sort((a, b) => b.relevanceScore - a.relevanceScore);
+  }
+
+  async getInstalledExtensions(): Promise<InstalledExtension[]> {
+    const extensionHost = VaporformExtensionHost.getInstance();
+    const loadedExtensions = extensionHost.getLoadedExtensions();
+    
+    return loadedExtensions.map(ext => ({
+      id: ext.id,
+      name: ext.manifest.name,
+      version: ext.manifest.version,
+      publisher: ext.manifest.publisher || 'unknown',
+      description: ext.manifest.description || '',
+      isActive: ext.isActive,
+      activationEvents: ext.activationEvents,
+      installedAt: ext.loadedAt
+    }));
+  }
+
+  async installRecommendedExtensions(projectId: string): Promise<InstallationResult[]> {
+    const project = await this.getProjectDetails(projectId);
+    const projectContext = this.extractProjectContext(project);
+    const recommendations = await this.getRecommendedExtensions(projectContext);
+    
+    const results: InstallationResult[] = [];
+    
+    // Install top 5 most relevant extensions
+    const topRecommendations = recommendations.slice(0, 5);
+    
+    for (const recommendation of topRecommendations) {
+      try {
+        const extensionHost = VaporformExtensionHost.getInstance();
+        await extensionHost.installExtension({
+          id: recommendation.extensionId,
+          source: 'marketplace'
+        });
+        
+        results.push({
+          extensionId: recommendation.extensionId,
+          success: true,
+          reason: recommendation.reason
+        });
+        
+      } catch (error) {
+        results.push({
+          extensionId: recommendation.extensionId,
+          success: false,
+          error: error.message,
+          reason: recommendation.reason
+        });
+      }
+    }
+    
+    return results;
+  }
+
+  private async getLanguageExtensions(languages: string[]): Promise<ExtensionRecommendation[]> {
+    const languageMap: Record<string, ExtensionRecommendation[]> = {
+      'typescript': [
+        {
+          extensionId: 'ms-vscode.vscode-typescript-next',
+          reason: 'Enhanced TypeScript support',
+          relevanceScore: 0.9,
+          category: 'language'
+        }
+      ],
+      'python': [
+        {
+          extensionId: 'ms-python.python',
+          reason: 'Python language support and debugging',
+          relevanceScore: 0.9,
+          category: 'language'
+        }
+      ],
+      'javascript': [
+        {
+          extensionId: 'ms-vscode.vscode-json',
+          reason: 'Enhanced JavaScript and JSON support',
+          relevanceScore: 0.8,
+          category: 'language'
+        }
+      ],
+      'rust': [
+        {
+          extensionId: 'rust-lang.rust-analyzer',
+          reason: 'Rust language server and analysis',
+          relevanceScore: 0.9,
+          category: 'language'
+        }
+      ],
+      'go': [
+        {
+          extensionId: 'golang.go',
+          reason: 'Go language support and tools',
+          relevanceScore: 0.9,
+          category: 'language'
+        }
+      ]
+    };
+    
+    const recommendations: ExtensionRecommendation[] = [];
+    
+    for (const language of languages) {
+      const langRecommendations = languageMap[language.toLowerCase()];
+      if (langRecommendations) {
+        recommendations.push(...langRecommendations);
+      }
+    }
+    
+    return recommendations;
+  }
+
+  private async getFrameworkExtensions(frameworks: string[]): Promise<ExtensionRecommendation[]> {
+    const frameworkMap: Record<string, ExtensionRecommendation[]> = {
+      'react': [
+        {
+          extensionId: 'ms-vscode.vscode-react-native',
+          reason: 'React development tools and snippets',
+          relevanceScore: 0.8,
+          category: 'framework'
+        }
+      ],
+      'vue': [
+        {
+          extensionId: 'Vue.volar',
+          reason: 'Vue.js language support',
+          relevanceScore: 0.8,
+          category: 'framework'
+        }
+      ],
+      'angular': [
+        {
+          extensionId: 'Angular.ng-template',
+          reason: 'Angular template support',
+          relevanceScore: 0.8,
+          category: 'framework'
+        }
+      ],
+      'svelte': [
+        {
+          extensionId: 'svelte.svelte-vscode',
+          reason: 'Svelte language support',
+          relevanceScore: 0.8,
+          category: 'framework'
+        }
+      ]
+    };
+    
+    const recommendations: ExtensionRecommendation[] = [];
+    
+    for (const framework of frameworks) {
+      const frameworkRecommendations = frameworkMap[framework.toLowerCase()];
+      if (frameworkRecommendations) {
+        recommendations.push(...frameworkRecommendations);
+      }
+    }
+    
+    return recommendations;
+  }
+
+  private async getPopularExtensions(): Promise<ExtensionRecommendation[]> {
+    return [
+      {
+        extensionId: 'ms-vscode.vscode-eslint',
+        reason: 'Essential linting for JavaScript/TypeScript',
+        relevanceScore: 0.7,
+        category: 'tools'
+      },
+      {
+        extensionId: 'esbenp.prettier-vscode',
+        reason: 'Code formatting',
+        relevanceScore: 0.7,
+        category: 'tools'
+      },
+      {
+        extensionId: 'ms-vscode.vscode-git',
+        reason: 'Enhanced Git integration',
+        relevanceScore: 0.6,
+        category: 'tools'
+      },
+      {
+        extensionId: 'ms-vscode.vscode-intellicode',
+        reason: 'AI-assisted code completion',
+        relevanceScore: 0.6,
+        category: 'ai'
+      }
+    ];
+  }
+
+  private getCacheKey(query: string, filters?: ExtensionFilters): string {
+    return `${query}_${JSON.stringify(filters || {})}`;
+  }
+
+  private buildDownloadUrl(extensionId: string, version?: string): string {
+    const [publisher, name] = extensionId.split('.');
+    const versionParam = version ? `/${version}` : '';
+    return `${this.marketplaceUrl}/_apis/public/gallery/publishers/${publisher}/vsextensions/${name}${versionParam}/vspackage`;
+  }
+
+  private async loadInstalledExtensions(): Promise<void> {
+    try {
+      const installed = await this.getInstalledExtensions();
+      this.installedExtensions = new Set(installed.map(ext => ext.id));
+    } catch (error) {
+      console.error('Failed to load installed extensions:', error);
+    }
+  }
+}
+
+interface ExtensionInfo {
+  id: string;
+  name: string;
+  publisher: string;
+  version: string;
+  description: string;
+  downloadCount: number;
+  rating: number;
+  lastUpdated: Date;
+  categories: string[];
+  tags: string[];
+}
+
+interface ExtensionSearchResult {
+  extensions: ExtensionInfo[];
+  totalCount: number;
+  query: string;
+}
+
+interface ExtensionRecommendation {
+  extensionId: string;
+  reason: string;
+  relevanceScore: number;
+  category: 'language' | 'framework' | 'tools' | 'ai' | 'theme';
+}
+
+interface ProjectContext {
+  languages: string[];
+  frameworks: string[];
+  tools: string[];
+  dependencies: string[];
+}
+
+interface InstallationResult {
+  extensionId: string;
+  success: boolean;
+  error?: string;
+  reason: string;
+}
+```
+
+This comprehensive extension system ensures full VSCode compatibility while adding Vaporform's enhanced AI-powered features, providing users with access to the entire VSCode extension ecosystem plus additional intelligent capabilities.

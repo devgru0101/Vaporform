@@ -1,0 +1,963 @@
+# Monitoring, Observability & Configuration Management
+
+## Observability Stack Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          Observability Architecture                            │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                           Data Collection Layer                            │ │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │ │
+│  │  │     Metrics     │  │      Logs       │  │     Traces      │            │ │
+│  │  │  (Prometheus)   │  │     (Loki)      │  │    (Jaeger)     │            │ │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘            │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                     │                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                      Visualization & Analysis Layer                        │ │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │ │
+│  │  │    Grafana      │  │   AlertManager  │  │   Custom        │            │ │
+│  │  │   Dashboards    │  │                 │  │   Analytics     │            │ │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘            │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                     │                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                         Application Layer                                  │ │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │ │
+│  │  │   Vaporform     │  │  User Project   │  │  Infrastructure │            │ │
+│  │  │   Services      │  │   Containers    │  │   Components    │            │ │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘            │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Metrics Collection & Monitoring
+
+### 1. Prometheus Configuration
+
+```yaml
+# monitoring/prometheus/prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'vaporform-production'
+    environment: 'production'
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
+scrape_configs:
+  # Vaporform backend services
+  - job_name: 'vaporform-backend'
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+            - vaporform-production
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        action: keep
+        regex: vaporform-backend-service
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: metrics
+    scrape_interval: 10s
+    metrics_path: /metrics
+
+  # Kubernetes cluster metrics
+  - job_name: 'kubernetes-apiservers'
+    kubernetes_sd_configs:
+      - role: endpoints
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: default;kubernetes;https
+
+  # Node metrics
+  - job_name: 'kubernetes-nodes'
+    kubernetes_sd_configs:
+      - role: node
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+
+  # Container metrics
+  - job_name: 'kubernetes-cadvisor'
+    kubernetes_sd_configs:
+      - role: node
+    scheme: https
+    tls_config:
+      ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+    relabel_configs:
+      - action: labelmap
+        regex: __meta_kubernetes_node_label_(.+)
+      - target_label: __address__
+        replacement: kubernetes.default.svc:443
+      - source_labels: [__meta_kubernetes_node_name]
+        regex: (.+)
+        target_label: __metrics_path__
+        replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+
+  # User project containers
+  - job_name: 'vaporform-user-containers'
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 30s
+    relabel_configs:
+      - source_labels: [__meta_docker_container_label_vaporform_project]
+        action: keep
+        regex: (.+)
+      - source_labels: [__meta_docker_container_label_vaporform_project]
+        target_label: project_id
+      - source_labels: [__meta_docker_container_label_vaporform_user_id]
+        target_label: user_id
+```
+
+### 2. Custom Metrics Implementation
+
+```typescript
+// monitoring/MetricsCollector.ts
+import { register, Counter, Histogram, Gauge } from 'prom-client';
+
+export class VaporformMetrics {
+  // Application metrics
+  private static projectsCreated = new Counter({
+    name: 'vaporform_projects_created_total',
+    help: 'Total number of projects created',
+    labelNames: ['user_tier', 'tech_stack', 'template']
+  });
+
+  private static activeProjects = new Gauge({
+    name: 'vaporform_active_projects',
+    help: 'Number of currently active projects',
+    labelNames: ['status', 'tech_stack']
+  });
+
+  private static projectBuildTime = new Histogram({
+    name: 'vaporform_project_build_duration_seconds',
+    help: 'Time taken to build and deploy projects',
+    labelNames: ['tech_stack', 'complexity'],
+    buckets: [1, 5, 10, 30, 60, 120, 300, 600]
+  });
+
+  // Claude API metrics
+  private static claudeRequestDuration = new Histogram({
+    name: 'vaporform_claude_request_duration_seconds',
+    help: 'Duration of Claude API requests',
+    labelNames: ['operation_type', 'success'],
+    buckets: [0.1, 0.5, 1, 2, 5, 10, 30]
+  });
+
+  private static claudeTokenUsage = new Counter({
+    name: 'vaporform_claude_tokens_used_total',
+    help: 'Total tokens used in Claude API calls',
+    labelNames: ['user_id', 'project_id', 'operation_type']
+  });
+
+  // Container metrics
+  private static containerResourceUsage = new Histogram({
+    name: 'vaporform_container_resource_usage',
+    help: 'Container resource usage distribution',
+    labelNames: ['resource_type', 'project_id'],
+    buckets: [0.1, 0.25, 0.5, 1, 2, 4, 8]
+  });
+
+  private static containerRestarts = new Counter({
+    name: 'vaporform_container_restarts_total',
+    help: 'Total number of container restarts',
+    labelNames: ['project_id', 'reason']
+  });
+
+  // User engagement metrics
+  private static userSessions = new Histogram({
+    name: 'vaporform_user_session_duration_seconds',
+    help: 'User session duration',
+    labelNames: ['user_tier'],
+    buckets: [60, 300, 900, 1800, 3600, 7200, 14400]
+  });
+
+  private static chatInteractions = new Counter({
+    name: 'vaporform_chat_interactions_total',
+    help: 'Total chat interactions with Claude',
+    labelNames: ['user_id', 'interaction_type']
+  });
+
+  // Business metrics
+  private static subscriptionEvents = new Counter({
+    name: 'vaporform_subscription_events_total',
+    help: 'Subscription-related events',
+    labelNames: ['event_type', 'plan', 'user_tier']
+  });
+
+  static recordProjectCreated(userTier: string, techStack: string, template: string): void {
+    this.projectsCreated.inc({ user_tier: userTier, tech_stack: techStack, template });
+  }
+
+  static setActiveProjects(count: number, status: string, techStack: string): void {
+    this.activeProjects.set({ status, tech_stack: techStack }, count);
+  }
+
+  static recordProjectBuildTime(duration: number, techStack: string, complexity: string): void {
+    this.projectBuildTime.observe({ tech_stack: techStack, complexity }, duration);
+  }
+
+  static recordClaudeRequest(duration: number, operationType: string, success: boolean): void {
+    this.claudeRequestDuration.observe(
+      { operation_type: operationType, success: success.toString() }, 
+      duration
+    );
+  }
+
+  static recordClaudeTokenUsage(tokens: number, userId: string, projectId: string, operationType: string): void {
+    this.claudeTokenUsage.inc({ user_id: userId, project_id: projectId, operation_type: operationType }, tokens);
+  }
+
+  static recordContainerResourceUsage(usage: number, resourceType: string, projectId: string): void {
+    this.containerResourceUsage.observe({ resource_type: resourceType, project_id: projectId }, usage);
+  }
+
+  static recordContainerRestart(projectId: string, reason: string): void {
+    this.containerRestarts.inc({ project_id: projectId, reason });
+  }
+
+  static recordUserSession(duration: number, userTier: string): void {
+    this.userSessions.observe({ user_tier: userTier }, duration);
+  }
+
+  static recordChatInteraction(userId: string, interactionType: string): void {
+    this.chatInteractions.inc({ user_id: userId, interaction_type: interactionType });
+  }
+
+  static recordSubscriptionEvent(eventType: string, plan: string, userTier: string): void {
+    this.subscriptionEvents.inc({ event_type: eventType, plan, user_tier: userTier });
+  }
+
+  static getMetrics(): string {
+    return register.metrics();
+  }
+}
+```
+
+### 3. Alert Rules Configuration
+
+```yaml
+# monitoring/alerts/vaporform-alerts.yml
+groups:
+  - name: vaporform.rules
+    rules:
+      # High-level service availability
+      - alert: VaporformServiceDown
+        expr: up{job="vaporform-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Vaporform service is down"
+          description: "Vaporform backend service has been down for more than 1 minute"
+
+      - alert: VaporformHighErrorRate
+        expr: rate(vaporform_http_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value }} errors per second"
+
+      # Performance alerts
+      - alert: VaporformHighResponseTime
+        expr: histogram_quantile(0.95, vaporform_http_request_duration_seconds_bucket) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High response time"
+          description: "95th percentile response time is {{ $value }}s"
+
+      - alert: VaporformHighMemoryUsage
+        expr: container_memory_usage_bytes{pod=~"vaporform-.*"} / container_spec_memory_limit_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Container {{ $labels.pod }} memory usage is above 80%"
+
+      # Business metrics alerts
+      - alert: VaporformLowProjectCreationRate
+        expr: rate(vaporform_projects_created_total[1h]) < 0.1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low project creation rate"
+          description: "Project creation rate has dropped to {{ $value }} per hour"
+
+      - alert: VaporformHighContainerRestartRate
+        expr: rate(vaporform_container_restarts_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High container restart rate"
+          description: "Container restart rate is {{ $value }} restarts per second"
+
+      # Claude API alerts
+      - alert: VaporformClaudeAPIErrors
+        expr: rate(vaporform_claude_request_duration_seconds_count{success="false"}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Claude API error rate"
+          description: "Claude API error rate is {{ $value }} errors per second"
+
+      - alert: VaporformClaudeHighLatency
+        expr: histogram_quantile(0.95, vaporform_claude_request_duration_seconds_bucket) > 10
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Claude API latency"
+          description: "95th percentile Claude API latency is {{ $value }}s"
+
+  - name: infrastructure.rules
+    rules:
+      # Kubernetes cluster health
+      - alert: KubernetesNodeNotReady
+        expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kubernetes node not ready"
+          description: "Node {{ $labels.node }} has been not ready for more than 2 minutes"
+
+      - alert: KubernetesPodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pod crash looping"
+          description: "Pod {{ $labels.pod }} is crash looping"
+
+      # Database alerts
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database is down"
+
+      - alert: PostgreSQLHighConnections
+        expr: pg_stat_database_numbackends / pg_settings_max_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High PostgreSQL connection usage"
+          description: "PostgreSQL connection usage is above 80%"
+
+      # Redis alerts
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache is down"
+
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Redis memory usage"
+          description: "Redis memory usage is above 90%"
+```
+
+## Logging Strategy
+
+### 1. Structured Logging Implementation
+
+```typescript
+// logging/StructuredLogger.ts
+import winston from 'winston';
+import { v4 as uuidv4 } from 'uuid';
+
+export class StructuredLogger {
+  private logger: winston.Logger;
+  private correlationId: string;
+  
+  constructor(service: string, correlationId?: string) {
+    this.correlationId = correlationId || uuidv4();
+    
+    this.logger = winston.createLogger({
+      level: process.env.LOG_LEVEL || 'info',
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.errors({ stack: true }),
+        winston.format.json(),
+        winston.format.printf(info => {
+          return JSON.stringify({
+            timestamp: info.timestamp,
+            level: info.level,
+            service: service,
+            correlationId: this.correlationId,
+            message: info.message,
+            ...info.meta,
+            ...(info.stack && { stack: info.stack })
+          });
+        })
+      ),
+      transports: [
+        new winston.transports.Console(),
+        new winston.transports.File({ 
+          filename: '/var/log/vaporform/error.log', 
+          level: 'error' 
+        }),
+        new winston.transports.File({ 
+          filename: '/var/log/vaporform/combined.log' 
+        })
+      ]
+    });
+  }
+
+  info(message: string, meta?: any): void {
+    this.logger.info(message, { meta });
+  }
+
+  warn(message: string, meta?: any): void {
+    this.logger.warn(message, { meta });
+  }
+
+  error(message: string, error?: Error, meta?: any): void {
+    this.logger.error(message, { 
+      meta,
+      error: error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      } : undefined
+    });
+  }
+
+  debug(message: string, meta?: any): void {
+    this.logger.debug(message, { meta });
+  }
+
+  // Specialized logging methods
+  logUserAction(action: string, userId: string, projectId?: string, meta?: any): void {
+    this.info(`User action: ${action}`, {
+      actionType: 'user_action',
+      userId,
+      projectId,
+      action,
+      ...meta
+    });
+  }
+
+  logClaudeInteraction(operation: string, projectId: string, duration: number, success: boolean, meta?: any): void {
+    this.info(`Claude interaction: ${operation}`, {
+      actionType: 'claude_interaction',
+      operation,
+      projectId,
+      duration,
+      success,
+      ...meta
+    });
+  }
+
+  logContainerEvent(event: string, containerId: string, projectId: string, meta?: any): void {
+    this.info(`Container event: ${event}`, {
+      actionType: 'container_event',
+      event,
+      containerId,
+      projectId,
+      ...meta
+    });
+  }
+
+  logSecurityEvent(event: string, userId?: string, severity: 'low' | 'medium' | 'high' = 'medium', meta?: any): void {
+    this.warn(`Security event: ${event}`, {
+      actionType: 'security_event',
+      event,
+      userId,
+      severity,
+      ...meta
+    });
+  }
+
+  logPerformanceMetric(metric: string, value: number, unit: string, meta?: any): void {
+    this.info(`Performance metric: ${metric}`, {
+      actionType: 'performance_metric',
+      metric,
+      value,
+      unit,
+      ...meta
+    });
+  }
+
+  createChildLogger(additionalContext: any): StructuredLogger {
+    const childLogger = new StructuredLogger('child', this.correlationId);
+    // Add additional context to all child logs
+    childLogger.logger.defaultMeta = { ...additionalContext };
+    return childLogger;
+  }
+}
+```
+
+### 2. Log Aggregation Configuration
+
+```yaml
+# monitoring/loki/loki-config.yml
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+query_range:
+  results_cache:
+    cache:
+      embedded_cache:
+        enabled: true
+        max_size_mb: 100
+
+schema_config:
+  configs:
+    - from: 2020-10-24
+      store: boltdb-shipper
+      object_store: filesystem
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
+
+ruler:
+  alertmanager_url: http://alertmanager:9093
+
+# Retention policy
+limits_config:
+  retention_period: 744h  # 31 days
+  ingestion_rate_mb: 16
+  ingestion_burst_size_mb: 32
+  max_query_parallelism: 32
+  max_streams_per_user: 10000
+  max_line_size: 256000
+
+chunk_store_config:
+  max_look_back_period: 0s
+
+table_manager:
+  retention_deletes_enabled: true
+  retention_period: 744h
+```
+
+## Configuration Management
+
+### 1. Environment Configuration
+
+```typescript
+// config/ConfigurationManager.ts
+import { z } from 'zod';
+
+const ConfigSchema = z.object({
+  // Server configuration
+  server: z.object({
+    port: z.number().min(1000).max(65535),
+    host: z.string(),
+    cors: z.object({
+      origin: z.union([z.string(), z.array(z.string())]),
+      credentials: z.boolean()
+    })
+  }),
+
+  // Database configuration
+  database: z.object({
+    url: z.string().url(),
+    poolSize: z.number().min(1).max(100),
+    ssl: z.boolean(),
+    connectionTimeout: z.number(),
+    queryTimeout: z.number()
+  }),
+
+  // Redis configuration
+  redis: z.object({
+    url: z.string().url(),
+    password: z.string().optional(),
+    db: z.number().min(0).max(15),
+    keyPrefix: z.string()
+  }),
+
+  // Claude API configuration
+  claude: z.object({
+    apiKey: z.string().min(1),
+    baseUrl: z.string().url(),
+    timeout: z.number().min(1000),
+    rateLimitPerMinute: z.number().min(1),
+    maxTokensPerRequest: z.number().min(100)
+  }),
+
+  // Security configuration
+  security: z.object({
+    jwtSecret: z.string().min(32),
+    jwtExpirationTime: z.string(),
+    bcryptRounds: z.number().min(10).max(15),
+    rateLimitWindowMs: z.number(),
+    rateLimitMaxRequests: z.number()
+  }),
+
+  // Container configuration
+  containers: z.object({
+    dockerHost: z.string(),
+    defaultMemoryLimit: z.string(),
+    defaultCpuLimit: z.number(),
+    maxContainersPerUser: z.number(),
+    containerTimeout: z.number(),
+    networkName: z.string()
+  }),
+
+  // Monitoring configuration
+  monitoring: z.object({
+    metricsEnabled: z.boolean(),
+    tracingEnabled: z.boolean(),
+    logLevel: z.enum(['error', 'warn', 'info', 'debug']),
+    prometheusPort: z.number(),
+    jaegerEndpoint: z.string().optional()
+  }),
+
+  // Feature flags
+  features: z.object({
+    enableClaudeIntegration: z.boolean(),
+    enableRealTimeCollaboration: z.boolean(),
+    enableContainerScaling: z.boolean(),
+    enableAdvancedAnalytics: z.boolean(),
+    maxProjectsPerUser: z.number()
+  })
+});
+
+export type VaporformConfig = z.infer<typeof ConfigSchema>;
+
+export class ConfigurationManager {
+  private static instance: ConfigurationManager;
+  private config: VaporformConfig;
+  private environment: string;
+
+  private constructor() {
+    this.environment = process.env.NODE_ENV || 'development';
+    this.config = this.loadConfiguration();
+  }
+
+  static getInstance(): ConfigurationManager {
+    if (!ConfigurationManager.instance) {
+      ConfigurationManager.instance = new ConfigurationManager();
+    }
+    return ConfigurationManager.instance;
+  }
+
+  private loadConfiguration(): VaporformConfig {
+    const rawConfig = {
+      server: {
+        port: parseInt(process.env.PORT || '4000'),
+        host: process.env.HOST || '0.0.0.0',
+        cors: {
+          origin: this.parseStringOrArray(process.env.CORS_ORIGIN || 'http://localhost:3000'),
+          credentials: process.env.CORS_CREDENTIALS === 'true'
+        }
+      },
+      database: {
+        url: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/vaporform',
+        poolSize: parseInt(process.env.DB_POOL_SIZE || '20'),
+        ssl: process.env.DB_SSL === 'true',
+        connectionTimeout: parseInt(process.env.DB_CONNECTION_TIMEOUT || '60000'),
+        queryTimeout: parseInt(process.env.DB_QUERY_TIMEOUT || '30000')
+      },
+      redis: {
+        url: process.env.REDIS_URL || 'redis://localhost:6379',
+        password: process.env.REDIS_PASSWORD,
+        db: parseInt(process.env.REDIS_DB || '0'),
+        keyPrefix: process.env.REDIS_KEY_PREFIX || 'vaporform:'
+      },
+      claude: {
+        apiKey: process.env.CLAUDE_API_KEY || '',
+        baseUrl: process.env.CLAUDE_API_BASE_URL || 'https://api.anthropic.com',
+        timeout: parseInt(process.env.CLAUDE_TIMEOUT || '30000'),
+        rateLimitPerMinute: parseInt(process.env.CLAUDE_RATE_LIMIT || '100'),
+        maxTokensPerRequest: parseInt(process.env.CLAUDE_MAX_TOKENS || '4000')
+      },
+      security: {
+        jwtSecret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
+        jwtExpirationTime: process.env.JWT_EXPIRATION || '24h',
+        bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '12'),
+        rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW || '900000'), // 15 minutes
+        rateLimitMaxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100')
+      },
+      containers: {
+        dockerHost: process.env.DOCKER_HOST || 'unix:///var/run/docker.sock',
+        defaultMemoryLimit: process.env.DEFAULT_MEMORY_LIMIT || '512m',
+        defaultCpuLimit: parseFloat(process.env.DEFAULT_CPU_LIMIT || '0.5'),
+        maxContainersPerUser: parseInt(process.env.MAX_CONTAINERS_PER_USER || '5'),
+        containerTimeout: parseInt(process.env.CONTAINER_TIMEOUT || '1800000'), // 30 minutes
+        networkName: process.env.CONTAINER_NETWORK || 'vaporform-network'
+      },
+      monitoring: {
+        metricsEnabled: process.env.METRICS_ENABLED !== 'false',
+        tracingEnabled: process.env.TRACING_ENABLED === 'true',
+        logLevel: (process.env.LOG_LEVEL || 'info') as 'error' | 'warn' | 'info' | 'debug',
+        prometheusPort: parseInt(process.env.PROMETHEUS_PORT || '9090'),
+        jaegerEndpoint: process.env.JAEGER_ENDPOINT
+      },
+      features: {
+        enableClaudeIntegration: process.env.ENABLE_CLAUDE !== 'false',
+        enableRealTimeCollaboration: process.env.ENABLE_REALTIME !== 'false',
+        enableContainerScaling: process.env.ENABLE_SCALING === 'true',
+        enableAdvancedAnalytics: process.env.ENABLE_ANALYTICS === 'true',
+        maxProjectsPerUser: parseInt(process.env.MAX_PROJECTS_PER_USER || '10')
+      }
+    };
+
+    try {
+      return ConfigSchema.parse(rawConfig);
+    } catch (error) {
+      console.error('Configuration validation failed:', error);
+      throw new Error('Invalid configuration');
+    }
+  }
+
+  private parseStringOrArray(value: string): string | string[] {
+    if (value.includes(',')) {
+      return value.split(',').map(s => s.trim());
+    }
+    return value;
+  }
+
+  getConfig(): VaporformConfig {
+    return this.config;
+  }
+
+  get<T extends keyof VaporformConfig>(section: T): VaporformConfig[T] {
+    return this.config[section];
+  }
+
+  isProduction(): boolean {
+    return this.environment === 'production';
+  }
+
+  isDevelopment(): boolean {
+    return this.environment === 'development';
+  }
+
+  getEnvironment(): string {
+    return this.environment;
+  }
+
+  // Hot reload configuration in development
+  reloadConfiguration(): void {
+    if (this.isDevelopment()) {
+      this.config = this.loadConfiguration();
+    }
+  }
+}
+```
+
+### 2. Feature Flag Management
+
+```typescript
+// config/FeatureFlagManager.ts
+export class FeatureFlagManager {
+  private flags: Map<string, FeatureFlag> = new Map();
+  private redis: RedisClient;
+  private logger: StructuredLogger;
+
+  constructor() {
+    this.redis = new RedisClient();
+    this.logger = new StructuredLogger('FeatureFlagManager');
+    this.initializeFlags();
+  }
+
+  private initializeFlags(): void {
+    const defaultFlags: FeatureFlag[] = [
+      {
+        key: 'enable_claude_integration',
+        name: 'Claude Integration',
+        description: 'Enable Claude AI integration for code generation',
+        enabled: true,
+        rolloutPercentage: 100,
+        userSegments: ['all'],
+        environments: ['development', 'staging', 'production']
+      },
+      {
+        key: 'enable_realtime_collaboration',
+        name: 'Real-time Collaboration',
+        description: 'Enable real-time collaborative editing',
+        enabled: true,
+        rolloutPercentage: 100,
+        userSegments: ['premium', 'enterprise'],
+        environments: ['staging', 'production']
+      },
+      {
+        key: 'enable_advanced_analytics',
+        name: 'Advanced Analytics',
+        description: 'Enable advanced analytics and reporting',
+        enabled: false,
+        rolloutPercentage: 25,
+        userSegments: ['beta_testers'],
+        environments: ['development', 'staging']
+      },
+      {
+        key: 'enable_container_scaling',
+        name: 'Container Auto-scaling',
+        description: 'Enable automatic container scaling based on usage',
+        enabled: false,
+        rolloutPercentage: 0,
+        userSegments: [],
+        environments: ['development']
+      }
+    ];
+
+    defaultFlags.forEach(flag => {
+      this.flags.set(flag.key, flag);
+    });
+  }
+
+  async isEnabled(flagKey: string, context: FeatureFlagContext): Promise<boolean> {
+    const flag = await this.getFlag(flagKey);
+    
+    if (!flag) {
+      this.logger.warn(`Feature flag not found: ${flagKey}`);
+      return false;
+    }
+
+    // Check environment
+    if (!flag.environments.includes(context.environment)) {
+      return false;
+    }
+
+    // Check if globally disabled
+    if (!flag.enabled) {
+      return false;
+    }
+
+    // Check user segment
+    if (flag.userSegments.length > 0 && !flag.userSegments.includes('all')) {
+      if (!context.userSegment || !flag.userSegments.includes(context.userSegment)) {
+        return false;
+      }
+    }
+
+    // Check rollout percentage
+    if (flag.rolloutPercentage < 100) {
+      const userHash = this.hashUser(context.userId || 'anonymous');
+      const rolloutValue = userHash % 100;
+      
+      if (rolloutValue >= flag.rolloutPercentage) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  async getFlag(flagKey: string): Promise<FeatureFlag | null> {
+    // Try to get from Redis cache first
+    const cachedFlag = await this.redis.get(`feature_flag:${flagKey}`);
+    if (cachedFlag) {
+      return JSON.parse(cachedFlag);
+    }
+
+    // Fall back to in-memory flags
+    const flag = this.flags.get(flagKey);
+    if (flag) {
+      // Cache in Redis for 5 minutes
+      await this.redis.setex(`feature_flag:${flagKey}`, 300, JSON.stringify(flag));
+    }
+
+    return flag || null;
+  }
+
+  async updateFlag(flagKey: string, updates: Partial<FeatureFlag>): Promise<void> {
+    const existingFlag = this.flags.get(flagKey);
+    if (!existingFlag) {
+      throw new Error(`Feature flag not found: ${flagKey}`);
+    }
+
+    const updatedFlag = { ...existingFlag, ...updates };
+    this.flags.set(flagKey, updatedFlag);
+
+    // Update Redis cache
+    await this.redis.setex(`feature_flag:${flagKey}`, 300, JSON.stringify(updatedFlag));
+
+    this.logger.info(`Feature flag updated: ${flagKey}`, { updates });
+  }
+
+  private hashUser(userId: string): number {
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) {
+      const char = userId.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash);
+  }
+
+  getAllFlags(): FeatureFlag[] {
+    return Array.from(this.flags.values());
+  }
+}
+
+interface FeatureFlag {
+  key: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  rolloutPercentage: number;
+  userSegments: string[];
+  environments: string[];
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+interface FeatureFlagContext {
+  userId?: string;
+  userSegment?: string;
+  environment: string;
+  projectId?: string;
+}
+```
+
+This comprehensive monitoring and configuration system ensures Vaporform operates reliably with full visibility into performance, user behavior, and system health while providing flexible configuration management for different environments and feature rollouts.

@@ -1,0 +1,1243 @@
+# File System Management
+
+## Overview
+
+Vaporform's file system management provides secure, efficient, and scalable file operations for user projects. It includes virtual file systems, version control integration, real-time synchronization, and advanced file manipulation capabilities while maintaining security and performance.
+
+## Core File System Service
+
+### 1. Virtual File System Manager
+
+```typescript
+// filesystem/VirtualFileSystemManager.ts
+import { promises as fs } from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import { EventEmitter } from 'events';
+
+export class VirtualFileSystemManager extends EventEmitter {
+  private projectRoots: Map<string, string> = new Map();
+  private fileWatchers: Map<string, FileWatcher> = new Map();
+  private fileCache: Map<string, CachedFile> = new Map();
+  private accessControl: FileAccessControl;
+  
+  constructor() {
+    super();
+    this.accessControl = new FileAccessControl();
+    this.setupCacheCleanup();
+  }
+
+  async initializeProjectFileSystem(projectId: string, userId: string): Promise<ProjectFileSystem> {
+    const projectRoot = this.getProjectPath(projectId);
+    
+    // Create project directory structure
+    await this.createProjectStructure(projectRoot);
+    
+    // Set up file watching
+    await this.setupFileWatching(projectId, projectRoot);
+    
+    // Initialize version control
+    await this.initializeVersionControl(projectRoot);
+    
+    // Set up access control
+    await this.accessControl.setupProjectAccess(projectId, userId);
+    
+    this.projectRoots.set(projectId, projectRoot);
+    
+    const filesystem: ProjectFileSystem = {
+      projectId,
+      rootPath: projectRoot,
+      initialized: true,
+      watchingEnabled: true,
+      versionControlEnabled: true
+    };
+
+    this.emit('filesystem_initialized', { projectId, filesystem });
+    
+    return filesystem;
+  }
+
+  async writeFile(request: WriteFileRequest): Promise<WriteFileResult> {
+    try {
+      // Validate access
+      await this.accessControl.checkWriteAccess(request.projectId, request.userId, request.filePath);
+      
+      // Validate file path
+      this.validateFilePath(request.filePath);
+      
+      // Get absolute path
+      const absolutePath = this.getAbsolutePath(request.projectId, request.filePath);
+      
+      // Ensure directory exists
+      await this.ensureDirectoryExists(path.dirname(absolutePath));
+      
+      // Create backup if file exists
+      const backup = await this.createBackup(absolutePath);
+      
+      try {
+        // Write file content
+        await fs.writeFile(absolutePath, request.content, { encoding: request.encoding || 'utf8' });
+        
+        // Calculate file hash
+        const fileHash = this.calculateFileHash(request.content);
+        
+        // Update file metadata
+        const fileInfo = await this.updateFileMetadata(request.projectId, request.filePath, {
+          size: Buffer.byteLength(request.content, request.encoding || 'utf8'),
+          hash: fileHash,
+          lastModified: new Date(),
+          modifiedBy: request.userId
+        });
+        
+        // Update cache
+        this.updateFileCache(request.projectId, request.filePath, {
+          content: request.content,
+          metadata: fileInfo,
+          timestamp: new Date()
+        });
+        
+        // Log activity
+        await this.logFileActivity(request.projectId, request.userId, 'write', request.filePath);
+        
+        // Emit change event
+        this.emit('file_changed', {
+          projectId: request.projectId,
+          filePath: request.filePath,
+          changeType: 'write',
+          userId: request.userId,
+          metadata: fileInfo
+        });
+        
+        return {
+          success: true,
+          filePath: request.filePath,
+          size: fileInfo.size,
+          hash: fileInfo.hash,
+          lastModified: fileInfo.lastModified
+        };
+        
+      } catch (writeError) {
+        // Restore backup if write failed
+        if (backup) {
+          await this.restoreBackup(absolutePath, backup);
+        }
+        throw writeError;
+      }
+      
+    } catch (error) {
+      console.error('Failed to write file:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async readFile(request: ReadFileRequest): Promise<ReadFileResult> {
+    try {
+      // Validate access
+      await this.accessControl.checkReadAccess(request.projectId, request.userId, request.filePath);
+      
+      // Check cache first
+      const cachedFile = this.getFromCache(request.projectId, request.filePath);
+      if (cachedFile && !this.isCacheExpired(cachedFile)) {
+        return {
+          success: true,
+          content: cachedFile.content,
+          metadata: cachedFile.metadata
+        };
+      }
+      
+      // Get absolute path
+      const absolutePath = this.getAbsolutePath(request.projectId, request.filePath);
+      
+      // Check if file exists
+      if (!await this.fileExists(absolutePath)) {
+        return {
+          success: false,
+          error: 'File not found'
+        };
+      }
+      
+      // Read file content
+      const content = await fs.readFile(absolutePath, { encoding: request.encoding || 'utf8' });
+      
+      // Get file metadata
+      const stats = await fs.stat(absolutePath);
+      const metadata: FileMetadata = {
+        size: stats.size,
+        lastModified: stats.mtime,
+        created: stats.birthtime,
+        isDirectory: stats.isDirectory(),
+        permissions: stats.mode,
+        hash: this.calculateFileHash(content)
+      };
+      
+      // Update cache
+      this.updateFileCache(request.projectId, request.filePath, {
+        content: content as string,
+        metadata,
+        timestamp: new Date()
+      });
+      
+      // Log activity
+      await this.logFileActivity(request.projectId, request.userId, 'read', request.filePath);
+      
+      return {
+        success: true,
+        content: content as string,
+        metadata
+      };
+      
+    } catch (error) {
+      console.error('Failed to read file:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async deleteFile(request: DeleteFileRequest): Promise<DeleteFileResult> {
+    try {
+      // Validate access
+      await this.accessControl.checkDeleteAccess(request.projectId, request.userId, request.filePath);
+      
+      // Get absolute path
+      const absolutePath = this.getAbsolutePath(request.projectId, request.filePath);
+      
+      // Check if file exists
+      if (!await this.fileExists(absolutePath)) {
+        return {
+          success: false,
+          error: 'File not found'
+        };
+      }
+      
+      // Create backup before deletion
+      const backup = await this.createBackup(absolutePath);
+      
+      // Delete file
+      await fs.unlink(absolutePath);
+      
+      // Remove from cache
+      this.removeFromCache(request.projectId, request.filePath);
+      
+      // Update file metadata (mark as deleted)
+      await this.updateFileMetadata(request.projectId, request.filePath, {
+        deleted: true,
+        deletedAt: new Date(),
+        deletedBy: request.userId
+      });
+      
+      // Log activity
+      await this.logFileActivity(request.projectId, request.userId, 'delete', request.filePath);
+      
+      // Emit change event
+      this.emit('file_changed', {
+        projectId: request.projectId,
+        filePath: request.filePath,
+        changeType: 'delete',
+        userId: request.userId
+      });
+      
+      return {
+        success: true,
+        filePath: request.filePath,
+        backup: backup ? {
+          id: backup.id,
+          path: backup.path,
+          timestamp: backup.timestamp
+        } : undefined
+      };
+      
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async listFiles(request: ListFilesRequest): Promise<ListFilesResult> {
+    try {
+      // Validate access
+      await this.accessControl.checkReadAccess(request.projectId, request.userId, request.directoryPath || '/');
+      
+      const directoryPath = request.directoryPath || '/';
+      const absolutePath = this.getAbsolutePath(request.projectId, directoryPath);
+      
+      // Check if directory exists
+      if (!await this.directoryExists(absolutePath)) {
+        return {
+          success: false,
+          error: 'Directory not found'
+        };
+      }
+      
+      // Read directory contents
+      const entries = await fs.readdir(absolutePath, { withFileTypes: true });
+      
+      const files: FileEntry[] = [];
+      const directories: DirectoryEntry[] = [];
+      
+      for (const entry of entries) {
+        const entryPath = path.join(directoryPath, entry.name);
+        const absoluteEntryPath = path.join(absolutePath, entry.name);
+        
+        if (entry.isDirectory()) {
+          const stats = await fs.stat(absoluteEntryPath);
+          directories.push({
+            name: entry.name,
+            path: entryPath,
+            lastModified: stats.mtime,
+            permissions: stats.mode
+          });
+        } else {
+          const stats = await fs.stat(absoluteEntryPath);
+          const metadata = await this.getFileMetadata(request.projectId, entryPath);
+          
+          files.push({
+            name: entry.name,
+            path: entryPath,
+            size: stats.size,
+            lastModified: stats.mtime,
+            created: stats.birthtime,
+            permissions: stats.mode,
+            type: this.getFileType(entry.name),
+            hash: metadata?.hash
+          });
+        }
+      }
+      
+      // Apply filters
+      const filteredFiles = this.applyFileFilters(files, request.filters);
+      const filteredDirectories = this.applyDirectoryFilters(directories, request.filters);
+      
+      // Apply sorting
+      const sortedFiles = this.sortFiles(filteredFiles, request.sort);
+      const sortedDirectories = this.sortDirectories(filteredDirectories, request.sort);
+      
+      return {
+        success: true,
+        files: sortedFiles,
+        directories: sortedDirectories,
+        totalFiles: filteredFiles.length,
+        totalDirectories: filteredDirectories.length
+      };
+      
+    } catch (error) {
+      console.error('Failed to list files:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async createDirectory(request: CreateDirectoryRequest): Promise<CreateDirectoryResult> {
+    try {
+      // Validate access
+      await this.accessControl.checkWriteAccess(request.projectId, request.userId, request.directoryPath);
+      
+      // Validate directory path
+      this.validateDirectoryPath(request.directoryPath);
+      
+      // Get absolute path
+      const absolutePath = this.getAbsolutePath(request.projectId, request.directoryPath);
+      
+      // Create directory recursively
+      await fs.mkdir(absolutePath, { recursive: true });
+      
+      // Log activity
+      await this.logFileActivity(request.projectId, request.userId, 'create_directory', request.directoryPath);
+      
+      // Emit change event
+      this.emit('directory_created', {
+        projectId: request.projectId,
+        directoryPath: request.directoryPath,
+        userId: request.userId
+      });
+      
+      return {
+        success: true,
+        directoryPath: request.directoryPath
+      };
+      
+    } catch (error) {
+      console.error('Failed to create directory:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async moveFile(request: MoveFileRequest): Promise<MoveFileResult> {
+    try {
+      // Validate access for both source and destination
+      await this.accessControl.checkWriteAccess(request.projectId, request.userId, request.sourcePath);
+      await this.accessControl.checkWriteAccess(request.projectId, request.userId, request.destinationPath);
+      
+      const sourceAbsolutePath = this.getAbsolutePath(request.projectId, request.sourcePath);
+      const destinationAbsolutePath = this.getAbsolutePath(request.projectId, request.destinationPath);
+      
+      // Check if source exists
+      if (!await this.fileExists(sourceAbsolutePath)) {
+        return {
+          success: false,
+          error: 'Source file not found'
+        };
+      }
+      
+      // Ensure destination directory exists
+      await this.ensureDirectoryExists(path.dirname(destinationAbsolutePath));
+      
+      // Move file
+      await fs.rename(sourceAbsolutePath, destinationAbsolutePath);
+      
+      // Update cache
+      const cachedFile = this.getFromCache(request.projectId, request.sourcePath);
+      if (cachedFile) {
+        this.removeFromCache(request.projectId, request.sourcePath);
+        this.updateFileCache(request.projectId, request.destinationPath, cachedFile);
+      }
+      
+      // Update file metadata
+      await this.updateFileMetadata(request.projectId, request.destinationPath, {
+        lastModified: new Date(),
+        modifiedBy: request.userId,
+        originalPath: request.sourcePath
+      });
+      
+      // Log activity
+      await this.logFileActivity(request.projectId, request.userId, 'move', request.sourcePath, {
+        destinationPath: request.destinationPath
+      });
+      
+      // Emit change events
+      this.emit('file_moved', {
+        projectId: request.projectId,
+        sourcePath: request.sourcePath,
+        destinationPath: request.destinationPath,
+        userId: request.userId
+      });
+      
+      return {
+        success: true,
+        sourcePath: request.sourcePath,
+        destinationPath: request.destinationPath
+      };
+      
+    } catch (error) {
+      console.error('Failed to move file:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async copyFile(request: CopyFileRequest): Promise<CopyFileResult> {
+    try {
+      // Validate access
+      await this.accessControl.checkReadAccess(request.projectId, request.userId, request.sourcePath);
+      await this.accessControl.checkWriteAccess(request.projectId, request.userId, request.destinationPath);
+      
+      const sourceAbsolutePath = this.getAbsolutePath(request.projectId, request.sourcePath);
+      const destinationAbsolutePath = this.getAbsolutePath(request.projectId, request.destinationPath);
+      
+      // Check if source exists
+      if (!await this.fileExists(sourceAbsolutePath)) {
+        return {
+          success: false,
+          error: 'Source file not found'
+        };
+      }
+      
+      // Ensure destination directory exists
+      await this.ensureDirectoryExists(path.dirname(destinationAbsolutePath));
+      
+      // Copy file
+      await fs.copyFile(sourceAbsolutePath, destinationAbsolutePath);
+      
+      // Get file stats
+      const stats = await fs.stat(destinationAbsolutePath);
+      
+      // Update file metadata
+      await this.updateFileMetadata(request.projectId, request.destinationPath, {
+        size: stats.size,
+        lastModified: stats.mtime,
+        created: new Date(),
+        modifiedBy: request.userId,
+        copiedFrom: request.sourcePath
+      });
+      
+      // Log activity
+      await this.logFileActivity(request.projectId, request.userId, 'copy', request.sourcePath, {
+        destinationPath: request.destinationPath
+      });
+      
+      // Emit change event
+      this.emit('file_copied', {
+        projectId: request.projectId,
+        sourcePath: request.sourcePath,
+        destinationPath: request.destinationPath,
+        userId: request.userId
+      });
+      
+      return {
+        success: true,
+        sourcePath: request.sourcePath,
+        destinationPath: request.destinationPath,
+        size: stats.size
+      };
+      
+    } catch (error) {
+      console.error('Failed to copy file:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Utility methods
+  private getProjectPath(projectId: string): string {
+    return path.join(process.env.PROJECTS_ROOT || '/var/vaporform/projects', projectId);
+  }
+
+  private getAbsolutePath(projectId: string, filePath: string): string {
+    const projectRoot = this.projectRoots.get(projectId);
+    if (!projectRoot) {
+      throw new Error('Project filesystem not initialized');
+    }
+    
+    // Ensure path is within project root (prevent directory traversal)
+    const normalizedPath = path.normalize(filePath);
+    if (normalizedPath.startsWith('..')) {
+      throw new Error('Invalid file path: directory traversal not allowed');
+    }
+    
+    return path.join(projectRoot, normalizedPath);
+  }
+
+  private validateFilePath(filePath: string): void {
+    // Validate file path to prevent security issues
+    if (!filePath || filePath.trim() === '') {
+      throw new Error('File path cannot be empty');
+    }
+    
+    if (filePath.includes('..')) {
+      throw new Error('Directory traversal not allowed');
+    }
+    
+    if (filePath.includes('\0')) {
+      throw new Error('Null bytes not allowed in file path');
+    }
+    
+    // Check for invalid characters
+    const invalidChars = /[<>:"|?*]/;
+    if (invalidChars.test(filePath)) {
+      throw new Error('File path contains invalid characters');
+    }
+  }
+
+  private calculateFileHash(content: string): string {
+    return crypto.createHash('sha256').update(content).digest('hex');
+  }
+
+  private async createBackup(filePath: string): Promise<FileBackup | null> {
+    try {
+      if (!await this.fileExists(filePath)) {
+        return null;
+      }
+      
+      const backupId = this.generateBackupId();
+      const backupPath = `${filePath}.backup.${backupId}`;
+      
+      await fs.copyFile(filePath, backupPath);
+      
+      return {
+        id: backupId,
+        path: backupPath,
+        originalPath: filePath,
+        timestamp: new Date()
+      };
+    } catch (error) {
+      console.error('Failed to create backup:', error);
+      return null;
+    }
+  }
+
+  private updateFileCache(projectId: string, filePath: string, cachedFile: CachedFile): void {
+    const cacheKey = `${projectId}:${filePath}`;
+    this.fileCache.set(cacheKey, {
+      ...cachedFile,
+      timestamp: new Date()
+    });
+  }
+
+  private getFromCache(projectId: string, filePath: string): CachedFile | null {
+    const cacheKey = `${projectId}:${filePath}`;
+    return this.fileCache.get(cacheKey) || null;
+  }
+
+  private isCacheExpired(cachedFile: CachedFile): boolean {
+    const cacheMaxAge = 5 * 60 * 1000; // 5 minutes
+    return Date.now() - cachedFile.timestamp.getTime() > cacheMaxAge;
+  }
+
+  private setupCacheCleanup(): void {
+    // Clean up expired cache entries every 10 minutes
+    setInterval(() => {
+      for (const [key, cachedFile] of this.fileCache) {
+        if (this.isCacheExpired(cachedFile)) {
+          this.fileCache.delete(key);
+        }
+      }
+    }, 10 * 60 * 1000);
+  }
+
+  private generateBackupId(): string {
+    return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+}
+
+// Type definitions
+interface WriteFileRequest {
+  projectId: string;
+  userId: string;
+  filePath: string;
+  content: string;
+  encoding?: BufferEncoding;
+}
+
+interface WriteFileResult {
+  success: boolean;
+  filePath?: string;
+  size?: number;
+  hash?: string;
+  lastModified?: Date;
+  error?: string;
+}
+
+interface ReadFileRequest {
+  projectId: string;
+  userId: string;
+  filePath: string;
+  encoding?: BufferEncoding;
+}
+
+interface ReadFileResult {
+  success: boolean;
+  content?: string;
+  metadata?: FileMetadata;
+  error?: string;
+}
+
+interface DeleteFileRequest {
+  projectId: string;
+  userId: string;
+  filePath: string;
+}
+
+interface DeleteFileResult {
+  success: boolean;
+  filePath?: string;
+  backup?: {
+    id: string;
+    path: string;
+    timestamp: Date;
+  };
+  error?: string;
+}
+
+interface ListFilesRequest {
+  projectId: string;
+  userId: string;
+  directoryPath?: string;
+  filters?: FileFilters;
+  sort?: FileSortOptions;
+}
+
+interface ListFilesResult {
+  success: boolean;
+  files?: FileEntry[];
+  directories?: DirectoryEntry[];
+  totalFiles?: number;
+  totalDirectories?: number;
+  error?: string;
+}
+
+interface FileMetadata {
+  size: number;
+  lastModified: Date;
+  created: Date;
+  isDirectory: boolean;
+  permissions: number;
+  hash?: string;
+  deleted?: boolean;
+  deletedAt?: Date;
+  deletedBy?: string;
+  modifiedBy?: string;
+}
+
+interface CachedFile {
+  content: string;
+  metadata: FileMetadata;
+  timestamp: Date;
+}
+
+interface FileBackup {
+  id: string;
+  path: string;
+  originalPath: string;
+  timestamp: Date;
+}
+
+interface ProjectFileSystem {
+  projectId: string;
+  rootPath: string;
+  initialized: boolean;
+  watchingEnabled: boolean;
+  versionControlEnabled: boolean;
+}
+
+interface FileEntry {
+  name: string;
+  path: string;
+  size: number;
+  lastModified: Date;
+  created: Date;
+  permissions: number;
+  type: string;
+  hash?: string;
+}
+
+interface DirectoryEntry {
+  name: string;
+  path: string;
+  lastModified: Date;
+  permissions: number;
+}
+```
+
+### 2. File Access Control System
+
+```typescript
+// filesystem/FileAccessControl.ts
+export class FileAccessControl {
+  private projectPermissions: Map<string, ProjectPermissions> = new Map();
+  private userRoles: Map<string, UserRole> = new Map();
+  
+  async setupProjectAccess(projectId: string, ownerId: string): Promise<void> {
+    const permissions: ProjectPermissions = {
+      projectId,
+      ownerId,
+      userPermissions: new Map([[ownerId, 'owner']]),
+      filePermissions: new Map(),
+      defaultPermissions: {
+        read: true,
+        write: true,
+        delete: true,
+        admin: true
+      }
+    };
+    
+    this.projectPermissions.set(projectId, permissions);
+  }
+
+  async checkReadAccess(projectId: string, userId: string, filePath: string): Promise<boolean> {
+    const permissions = this.projectPermissions.get(projectId);
+    if (!permissions) {
+      throw new Error('Project permissions not found');
+    }
+    
+    // Owner always has access
+    if (permissions.ownerId === userId) {
+      return true;
+    }
+    
+    // Check user-level permissions
+    const userPermission = permissions.userPermissions.get(userId);
+    if (!userPermission) {
+      return false; // No access if user not found
+    }
+    
+    // Check file-specific permissions
+    const filePermission = permissions.filePermissions.get(filePath);
+    if (filePermission) {
+      return this.hasFileAccess(filePermission, userId, 'read');
+    }
+    
+    // Use default permissions based on user role
+    return this.hasDefaultAccess(userPermission, 'read');
+  }
+
+  async checkWriteAccess(projectId: string, userId: string, filePath: string): Promise<boolean> {
+    const permissions = this.projectPermissions.get(projectId);
+    if (!permissions) {
+      throw new Error('Project permissions not found');
+    }
+    
+    // Owner always has access
+    if (permissions.ownerId === userId) {
+      return true;
+    }
+    
+    // Check if file is protected
+    if (this.isProtectedFile(filePath)) {
+      return false; // System files cannot be modified by non-owners
+    }
+    
+    const userPermission = permissions.userPermissions.get(userId);
+    if (!userPermission) {
+      return false;
+    }
+    
+    const filePermission = permissions.filePermissions.get(filePath);
+    if (filePermission) {
+      return this.hasFileAccess(filePermission, userId, 'write');
+    }
+    
+    return this.hasDefaultAccess(userPermission, 'write');
+  }
+
+  async checkDeleteAccess(projectId: string, userId: string, filePath: string): Promise<boolean> {
+    const permissions = this.projectPermissions.get(projectId);
+    if (!permissions) {
+      throw new Error('Project permissions not found');
+    }
+    
+    // Owner always has access
+    if (permissions.ownerId === userId) {
+      return true;
+    }
+    
+    // Critical files cannot be deleted by non-owners
+    if (this.isCriticalFile(filePath)) {
+      return false;
+    }
+    
+    const userPermission = permissions.userPermissions.get(userId);
+    if (!userPermission) {
+      return false;
+    }
+    
+    const filePermission = permissions.filePermissions.get(filePath);
+    if (filePermission) {
+      return this.hasFileAccess(filePermission, userId, 'delete');
+    }
+    
+    return this.hasDefaultAccess(userPermission, 'delete');
+  }
+
+  async grantUserAccess(
+    projectId: string, 
+    granterId: string, 
+    userId: string, 
+    role: UserPermissionLevel
+  ): Promise<void> {
+    const permissions = this.projectPermissions.get(projectId);
+    if (!permissions) {
+      throw new Error('Project permissions not found');
+    }
+    
+    // Only owner or admin can grant access
+    if (permissions.ownerId !== granterId && !this.hasAdminAccess(permissions, granterId)) {
+      throw new Error('Insufficient permissions to grant access');
+    }
+    
+    permissions.userPermissions.set(userId, role);
+    await this.savePermissions(projectId, permissions);
+  }
+
+  async revokeUserAccess(projectId: string, revokerId: string, userId: string): Promise<void> {
+    const permissions = this.projectPermissions.get(projectId);
+    if (!permissions) {
+      throw new Error('Project permissions not found');
+    }
+    
+    // Only owner can revoke access (or user can revoke their own access)
+    if (permissions.ownerId !== revokerId && userId !== revokerId) {
+      throw new Error('Insufficient permissions to revoke access');
+    }
+    
+    // Cannot revoke owner access
+    if (permissions.ownerId === userId) {
+      throw new Error('Cannot revoke owner access');
+    }
+    
+    permissions.userPermissions.delete(userId);
+    await this.savePermissions(projectId, permissions);
+  }
+
+  async setFilePermissions(
+    projectId: string, 
+    userId: string, 
+    filePath: string, 
+    permissions: FilePermissions
+  ): Promise<void> {
+    const projectPermissions = this.projectPermissions.get(projectId);
+    if (!projectPermissions) {
+      throw new Error('Project permissions not found');
+    }
+    
+    // Only owner or admin can set file permissions
+    if (projectPermissions.ownerId !== userId && !this.hasAdminAccess(projectPermissions, userId)) {
+      throw new Error('Insufficient permissions to set file permissions');
+    }
+    
+    projectPermissions.filePermissions.set(filePath, permissions);
+    await this.savePermissions(projectId, projectPermissions);
+  }
+
+  private hasFileAccess(
+    filePermission: FilePermissions, 
+    userId: string, 
+    accessType: 'read' | 'write' | 'delete'
+  ): boolean {
+    switch (accessType) {
+      case 'read':
+        return filePermission.allowedReaders.includes(userId) || 
+               filePermission.allowedWriters.includes(userId) ||
+               filePermission.publicRead;
+      case 'write':
+        return filePermission.allowedWriters.includes(userId);
+      case 'delete':
+        return filePermission.allowedWriters.includes(userId) && 
+               !filePermission.preventDelete;
+      default:
+        return false;
+    }
+  }
+
+  private hasDefaultAccess(userRole: UserPermissionLevel, accessType: 'read' | 'write' | 'delete'): boolean {
+    const rolePermissions = {
+      owner: { read: true, write: true, delete: true, admin: true },
+      admin: { read: true, write: true, delete: true, admin: true },
+      editor: { read: true, write: true, delete: false, admin: false },
+      viewer: { read: true, write: false, delete: false, admin: false }
+    };
+    
+    return rolePermissions[userRole]?.[accessType] || false;
+  }
+
+  private hasAdminAccess(permissions: ProjectPermissions, userId: string): boolean {
+    const userRole = permissions.userPermissions.get(userId);
+    return userRole === 'owner' || userRole === 'admin';
+  }
+
+  private isProtectedFile(filePath: string): boolean {
+    const protectedFiles = [
+      'package.json',
+      'package-lock.json',
+      'yarn.lock',
+      '.env',
+      '.env.production',
+      'Dockerfile',
+      'docker-compose.yml',
+      '.vaporform',
+      '.git'
+    ];
+    
+    const fileName = path.basename(filePath);
+    return protectedFiles.includes(fileName) || fileName.startsWith('.vaporform');
+  }
+
+  private isCriticalFile(filePath: string): boolean {
+    const criticalFiles = [
+      'package.json',
+      '.env',
+      '.env.production',
+      'Dockerfile',
+      '.vaporform'
+    ];
+    
+    const fileName = path.basename(filePath);
+    return criticalFiles.includes(fileName);
+  }
+
+  private async savePermissions(projectId: string, permissions: ProjectPermissions): Promise<void> {
+    // Save to database
+    await db.exec`
+      UPDATE project_permissions 
+      SET permissions = ${JSON.stringify(permissions)}, updated_at = NOW()
+      WHERE project_id = ${projectId}
+    `;
+  }
+}
+
+type UserPermissionLevel = 'owner' | 'admin' | 'editor' | 'viewer';
+
+interface ProjectPermissions {
+  projectId: string;
+  ownerId: string;
+  userPermissions: Map<string, UserPermissionLevel>;
+  filePermissions: Map<string, FilePermissions>;
+  defaultPermissions: {
+    read: boolean;
+    write: boolean;
+    delete: boolean;
+    admin: boolean;
+  };
+}
+
+interface FilePermissions {
+  allowedReaders: string[];
+  allowedWriters: string[];
+  publicRead: boolean;
+  preventDelete: boolean;
+}
+
+interface UserRole {
+  userId: string;
+  role: string;
+  permissions: string[];
+}
+```
+
+### 3. File Synchronization Service
+
+```typescript
+// filesystem/FileSyncService.ts
+export class FileSyncService extends EventEmitter {
+  private syncQueues: Map<string, SyncQueue> = new Map();
+  private conflictResolver: ConflictResolver;
+  private versionControl: VersionControlService;
+  
+  constructor() {
+    super();
+    this.conflictResolver = new ConflictResolver();
+    this.versionControl = new VersionControlService();
+    this.startSyncProcessing();
+  }
+
+  async syncFileChange(change: FileChange): Promise<SyncResult> {
+    const projectId = change.projectId;
+    
+    // Get or create sync queue for project
+    let syncQueue = this.syncQueues.get(projectId);
+    if (!syncQueue) {
+      syncQueue = new SyncQueue(projectId);
+      this.syncQueues.set(projectId, syncQueue);
+    }
+    
+    // Add change to queue
+    const syncId = await syncQueue.enqueue(change);
+    
+    // Process queue
+    await this.processSyncQueue(projectId);
+    
+    return {
+      syncId,
+      status: 'queued',
+      projectId
+    };
+  }
+
+  private async processSyncQueue(projectId: string): Promise<void> {
+    const syncQueue = this.syncQueues.get(projectId);
+    if (!syncQueue) return;
+    
+    while (!syncQueue.isEmpty()) {
+      const change = syncQueue.dequeue();
+      if (!change) break;
+      
+      try {
+        await this.processFileChange(change);
+        this.emit('sync_success', { projectId, change });
+      } catch (error) {
+        console.error('Sync processing failed:', error);
+        
+        if (error instanceof ConflictError) {
+          await this.handleConflict(change, error);
+        } else {
+          this.emit('sync_error', { projectId, change, error });
+        }
+      }
+    }
+  }
+
+  private async processFileChange(change: FileChange): Promise<void> {
+    // Check for conflicts
+    const conflict = await this.detectConflict(change);
+    if (conflict) {
+      throw new ConflictError('File conflict detected', conflict);
+    }
+    
+    // Apply change
+    switch (change.operation) {
+      case 'create':
+        await this.applyCreateChange(change);
+        break;
+      case 'update':
+        await this.applyUpdateChange(change);
+        break;
+      case 'delete':
+        await this.applyDeleteChange(change);
+        break;
+      case 'move':
+        await this.applyMoveChange(change);
+        break;
+    }
+    
+    // Update version control
+    await this.versionControl.commitChange(change);
+    
+    // Broadcast change to other clients
+    this.broadcastChange(change);
+  }
+
+  private async detectConflict(change: FileChange): Promise<FileConflict | null> {
+    const currentVersion = await this.versionControl.getCurrentVersion(
+      change.projectId, 
+      change.filePath
+    );
+    
+    if (change.baseVersion && change.baseVersion !== currentVersion) {
+      // Version mismatch - potential conflict
+      const currentContent = await this.getCurrentFileContent(change.projectId, change.filePath);
+      
+      if (currentContent && this.hasContentConflict(change.content, currentContent)) {
+        return {
+          type: 'content',
+          filePath: change.filePath,
+          baseVersion: change.baseVersion,
+          currentVersion: currentVersion,
+          incomingContent: change.content,
+          currentContent: currentContent
+        };
+      }
+    }
+    
+    return null;
+  }
+
+  private async handleConflict(change: FileChange, conflictError: ConflictError): Promise<void> {
+    const resolution = await this.conflictResolver.resolveConflict(
+      change, 
+      conflictError.conflict
+    );
+    
+    switch (resolution.strategy) {
+      case 'merge':
+        // Apply merged content
+        const mergedChange = {
+          ...change,
+          content: resolution.mergedContent,
+          baseVersion: resolution.newBaseVersion
+        };
+        await this.processFileChange(mergedChange);
+        break;
+        
+      case 'overwrite':
+        // Force overwrite
+        const overwriteChange = {
+          ...change,
+          forceOverwrite: true
+        };
+        await this.processFileChange(overwriteChange);
+        break;
+        
+      case 'manual':
+        // Require manual resolution
+        this.emit('conflict_requires_manual_resolution', {
+          change,
+          conflict: conflictError.conflict,
+          resolution
+        });
+        break;
+    }
+  }
+
+  private hasContentConflict(incomingContent: string, currentContent: string): boolean {
+    // Simple content comparison - in production, use more sophisticated diff
+    return incomingContent !== currentContent;
+  }
+
+  private broadcastChange(change: FileChange): void {
+    this.emit('file_change_broadcast', {
+      projectId: change.projectId,
+      filePath: change.filePath,
+      operation: change.operation,
+      userId: change.userId,
+      timestamp: change.timestamp
+    });
+  }
+
+  private startSyncProcessing(): void {
+    // Process sync queues periodically
+    setInterval(() => {
+      for (const [projectId] of this.syncQueues) {
+        this.processSyncQueue(projectId).catch(error => {
+          console.error(`Sync processing failed for project ${projectId}:`, error);
+        });
+      }
+    }, 1000); // Process every second
+  }
+}
+
+class SyncQueue {
+  private queue: FileChange[] = [];
+  
+  constructor(private projectId: string) {}
+  
+  async enqueue(change: FileChange): Promise<string> {
+    const syncId = this.generateSyncId();
+    change.syncId = syncId;
+    this.queue.push(change);
+    return syncId;
+  }
+  
+  dequeue(): FileChange | undefined {
+    return this.queue.shift();
+  }
+  
+  isEmpty(): boolean {
+    return this.queue.length === 0;
+  }
+  
+  private generateSyncId(): string {
+    return `sync_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+}
+
+interface FileChange {
+  syncId?: string;
+  projectId: string;
+  filePath: string;
+  operation: 'create' | 'update' | 'delete' | 'move';
+  content?: string;
+  userId: string;
+  timestamp: Date;
+  baseVersion?: string;
+  forceOverwrite?: boolean;
+}
+
+interface FileConflict {
+  type: 'content' | 'version' | 'permission';
+  filePath: string;
+  baseVersion?: string;
+  currentVersion?: string;
+  incomingContent?: string;
+  currentContent?: string;
+}
+
+interface SyncResult {
+  syncId: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  projectId: string;
+}
+
+class ConflictError extends Error {
+  constructor(message: string, public conflict: FileConflict) {
+    super(message);
+    this.name = 'ConflictError';
+  }
+}
+```
+
+This comprehensive file system management solution provides Vaporform with secure, efficient, and scalable file operations while maintaining data integrity and supporting real-time collaboration features.

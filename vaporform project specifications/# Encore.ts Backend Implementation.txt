@@ -1,0 +1,623 @@
+# Encore.ts Backend Implementation Plan
+
+## Service Architecture
+
+Vaporform's backend is built on Encore.ts with a microservices architecture that provides clear separation of concerns while maintaining simplicity.
+
+```
+vaporform-backend/
+├── api/                    # API definitions and shared types
+├── auth/                   # Authentication service
+├── projects/               # Project management service
+├── claude/                 # Claude Code SDK integration
+├── containers/             # Container management service
+├── infrastructure/         # Infrastructure automation service
+├── files/                  # File system operations service
+├── websocket/             # Real-time communication service
+└── shared/                # Shared utilities and types
+```
+
+## Service Definitions
+
+### 1. Authentication Service (`auth/`)
+
+```typescript
+// auth/auth.ts
+import { api, Header } from "encore.dev/api";
+import { authHandler } from "encore.dev/auth";
+
+interface User {
+  id: string;
+  email: string;
+  name: string;
+  avatar?: string;
+  createdAt: Date;
+  lastLoginAt: Date;
+}
+
+interface AuthParams {
+  email: string;
+  password: string;
+}
+
+export const authenticate = authHandler(
+  async (token: string): Promise<{ userID: string; userData?: User }> => {
+    // JWT token validation logic
+    const user = await validateToken(token);
+    return { 
+      userID: user.id, 
+      userData: user 
+    };
+  }
+);
+
+export const login = api(
+  { expose: true, method: "POST", path: "/auth/login" },
+  async ({ email, password }: AuthParams): Promise<{ token: string; user: User }> => {
+    // Login implementation
+    const user = await validateCredentials(email, password);
+    const token = await generateJWT(user);
+    return { token, user };
+  }
+);
+
+export const register = api(
+  { expose: true, method: "POST", path: "/auth/register" },
+  async ({ email, password, name }: AuthParams & { name: string }): Promise<{ user: User }> => {
+    // Registration implementation
+    const user = await createUser(email, password, name);
+    return { user };
+  }
+);
+```
+
+### 2. Projects Service (`projects/`)
+
+```typescript
+// projects/projects.ts
+import { api } from "encore.dev/api";
+import { SQLDatabase } from "encore.dev/storage/sqldb";
+
+interface Project {
+  id: string;
+  userId: string;
+  name: string;
+  description: string;
+  type: 'pwa' | 'microservices' | 'monolithic';
+  status: 'creating' | 'running' | 'stopped' | 'error';
+  config: ProjectConfig;
+  containerId?: string;
+  serviceUrl?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ProjectConfig {
+  architecture: string;
+  backend: {
+    language: string;
+    framework: string;
+    isBaaS: boolean;
+  };
+  frontend: {
+    framework: string;
+    cssFrameworks: string[];
+    buildTool: string;
+  };
+  database: string[];
+  integrations: {
+    apis: string[];
+    packages: string[];
+  };
+}
+
+const db = new SQLDatabase("projects", {
+  migrations: "./migrations",
+});
+
+export const createProject = api(
+  { expose: true, method: "POST", path: "/projects", auth: true },
+  async ({ name, description, config }: {
+    name: string;
+    description: string;
+    config: ProjectConfig;
+  }): Promise<{ project: Project }> => {
+    const project = await db.exec`
+      INSERT INTO projects (id, user_id, name, description, config, status)
+      VALUES (${generateId()}, ${auth.userID}, ${name}, ${description}, ${JSON.stringify(config)}, 'creating')
+      RETURNING *
+    `;
+    
+    // Trigger project creation in Claude service
+    await claude.createProject({
+      projectId: project.id,
+      config: config
+    });
+    
+    return { project };
+  }
+);
+
+export const getProjects = api(
+  { expose: true, method: "GET", path: "/projects", auth: true },
+  async (): Promise<{ projects: Project[] }> => {
+    const projects = await db.query`
+      SELECT * FROM projects WHERE user_id = ${auth.userID} ORDER BY created_at DESC
+    `;
+    return { projects };
+  }
+);
+
+export const getProject = api(
+  { expose: true, method: "GET", path: "/projects/:id", auth: true },
+  async ({ id }: { id: string }): Promise<{ project: Project }> => {
+    const project = await db.queryRow`
+      SELECT * FROM projects WHERE id = ${id} AND user_id = ${auth.userID}
+    `;
+    if (!project) throw new Error("Project not found");
+    return { project };
+  }
+);
+
+export const updateProjectStatus = api(
+  { expose: false, method: "POST", path: "/projects/:id/status" },
+  async ({ id, status, containerId, serviceUrl }: {
+    id: string;
+    status: Project['status'];
+    containerId?: string;
+    serviceUrl?: string;
+  }): Promise<void> => {
+    await db.exec`
+      UPDATE projects 
+      SET status = ${status}, container_id = ${containerId}, service_url = ${serviceUrl}, updated_at = NOW()
+      WHERE id = ${id}
+    `;
+  }
+);
+```
+
+### 3. Claude Integration Service (`claude/`)
+
+```typescript
+// claude/claude.ts
+import { api } from "encore.dev/api";
+import { Topic } from "encore.dev/pubsub";
+
+interface ClaudeRequest {
+  projectId: string;
+  message: string;
+  type: 'create' | 'modify' | 'debug' | 'deploy';
+  context?: any;
+}
+
+interface ClaudeResponse {
+  success: boolean;
+  message: string;
+  changes?: FileChange[];
+  commands?: Command[];
+}
+
+interface FileChange {
+  path: string;
+  content: string;
+  operation: 'create' | 'update' | 'delete';
+}
+
+interface Command {
+  command: string;
+  args: string[];
+  workingDirectory: string;
+}
+
+// Topic for async Claude processing
+export const claudeProcessingTopic = new Topic<ClaudeRequest>("claude-processing", {
+  deliveryGuarantee: "at-least-once",
+});
+
+export const processWithClaude = api(
+  { expose: true, method: "POST", path: "/claude/process", auth: true },
+  async (request: ClaudeRequest): Promise<{ requestId: string }> => {
+    const requestId = generateId();
+    
+    // Publish to async processing queue
+    await claudeProcessingTopic.publish({
+      ...request,
+      requestId,
+      userId: auth.userID
+    });
+    
+    return { requestId };
+  }
+);
+
+export const createProject = api(
+  { expose: false, method: "POST", path: "/claude/create-project" },
+  async ({ projectId, config }: {
+    projectId: string;
+    config: ProjectConfig;
+  }): Promise<ClaudeResponse> => {
+    
+    // Initialize Claude Code SDK
+    const claudeSDK = new ClaudeCodeSDK({
+      apiKey: process.env.CLAUDE_API_KEY!,
+      projectId: projectId
+    });
+    
+    // Generate project structure
+    const result = await claudeSDK.createProject({
+      name: config.name,
+      description: config.description,
+      architecture: config.architecture,
+      techStack: config
+    });
+    
+    if (result.success) {
+      // Save generated files
+      await files.saveProjectFiles({
+        projectId,
+        files: result.files
+      });
+      
+      // Create container
+      await containers.createContainer({
+        projectId,
+        config: result.containerConfig
+      });
+    }
+    
+    return {
+      success: result.success,
+      message: result.message,
+      changes: result.files,
+      commands: result.setupCommands
+    };
+  }
+);
+
+export const modifyProject = api(
+  { expose: true, method: "POST", path: "/claude/modify", auth: true },
+  async ({ projectId, instruction, files }: {
+    projectId: string;
+    instruction: string;
+    files?: string[];
+  }): Promise<ClaudeResponse> => {
+    
+    // Get current project context
+    const project = await projects.getProject({ id: projectId });
+    const projectFiles = await files.getProjectFiles({ projectId });
+    
+    // Process with Claude
+    const claudeSDK = new ClaudeCodeSDK({
+      apiKey: process.env.CLAUDE_API_KEY!,
+      projectId: projectId
+    });
+    
+    const result = await claudeSDK.modifyProject({
+      instruction,
+      currentFiles: projectFiles,
+      targetFiles: files,
+      projectContext: project.config
+    });
+    
+    if (result.success && result.changes) {
+      // Apply changes
+      await files.applyFileChanges({
+        projectId,
+        changes: result.changes
+      });
+      
+      // Hot reload container if needed
+      await containers.reloadContainer({ projectId });
+    }
+    
+    return result;
+  }
+);
+
+// Subscription handler for async processing
+claudeProcessingTopic.subscribe(async (message: ClaudeRequest) => {
+  try {
+    let response: ClaudeResponse;
+    
+    switch (message.type) {
+      case 'create':
+        response = await createProject({
+          projectId: message.projectId,
+          config: message.context
+        });
+        break;
+      case 'modify':
+        response = await modifyProject({
+          projectId: message.projectId,
+          instruction: message.message,
+          files: message.context?.files
+        });
+        break;
+      default:
+        throw new Error(`Unsupported Claude request type: ${message.type}`);
+    }
+    
+    // Notify frontend via WebSocket
+    await websocket.notifyProject({
+      projectId: message.projectId,
+      type: 'claude-response',
+      data: response
+    });
+    
+  } catch (error) {
+    console.error('Claude processing error:', error);
+    await websocket.notifyProject({
+      projectId: message.projectId,
+      type: 'claude-error',
+      data: { error: error.message }
+    });
+  }
+});
+```
+
+### 4. Container Management Service (`containers/`)
+
+```typescript
+// containers/containers.ts
+import { api } from "encore.dev/api";
+import Docker from 'dockerode';
+
+interface ContainerConfig {
+  projectId: string;
+  image: string;
+  ports: { [key: string]: number };
+  environment: { [key: string]: string };
+  volumes: { [key: string]: string };
+}
+
+interface ContainerInfo {
+  id: string;
+  projectId: string;
+  status: 'running' | 'stopped' | 'error';
+  ports: { [key: string]: number };
+  serviceUrl: string;
+  health: 'healthy' | 'unhealthy' | 'starting';
+  createdAt: Date;
+  lastActivity: Date;
+}
+
+const docker = new Docker();
+
+export const createContainer = api(
+  { expose: false, method: "POST", path: "/containers/create" },
+  async ({ projectId, config }: {
+    projectId: string;
+    config: ContainerConfig;
+  }): Promise<{ container: ContainerInfo }> => {
+    
+    const containerName = `vaporform-${projectId}`;
+    
+    // Create Docker container
+    const container = await docker.createContainer({
+      name: containerName,
+      Image: config.image,
+      Env: Object.entries(config.environment).map(([key, value]) => `${key}=${value}`),
+      ExposedPorts: Object.keys(config.ports).reduce((acc, port) => {
+        acc[`${port}/tcp`] = {};
+        return acc;
+      }, {} as any),
+      HostConfig: {
+        PortBindings: Object.entries(config.ports).reduce((acc, [containerPort, hostPort]) => {
+          acc[`${containerPort}/tcp`] = [{ HostPort: hostPort.toString() }];
+          return acc;
+        }, {} as any),
+        Binds: Object.entries(config.volumes).map(([containerPath, hostPath]) => 
+          `${hostPath}:${containerPath}`
+        ),
+        RestartPolicy: { Name: 'unless-stopped' }
+      },
+      Labels: {
+        'vaporform.project': projectId,
+        'traefik.enable': 'true',
+        'traefik.http.routers.${projectId}.rule': `Host(\`${projectId}.vaporform.local\`)`,
+        'traefik.http.services.${projectId}.loadbalancer.server.port': config.ports['3000']?.toString() || '3000'
+      }
+    });
+    
+    // Start container
+    await container.start();
+    
+    // Register with infrastructure service
+    const serviceUrl = await infrastructure.registerService({
+      projectId,
+      containerId: container.id,
+      port: config.ports['3000'] || 3000
+    });
+    
+    // Update project status
+    await projects.updateProjectStatus({
+      id: projectId,
+      status: 'running',
+      containerId: container.id,
+      serviceUrl
+    });
+    
+    const containerInfo: ContainerInfo = {
+      id: container.id,
+      projectId,
+      status: 'running',
+      ports: config.ports,
+      serviceUrl,
+      health: 'starting',
+      createdAt: new Date(),
+      lastActivity: new Date()
+    };
+    
+    return { container: containerInfo };
+  }
+);
+
+export const getContainers = api(
+  { expose: true, method: "GET", path: "/containers", auth: true },
+  async (): Promise<{ containers: ContainerInfo[] }> => {
+    // Get user's projects
+    const { projects } = await projects.getProjects();
+    
+    const containers: ContainerInfo[] = [];
+    
+    for (const project of projects) {
+      if (project.containerId) {
+        const container = docker.getContainer(project.containerId);
+        const info = await container.inspect();
+        
+        containers.push({
+          id: project.containerId,
+          projectId: project.id,
+          status: info.State.Running ? 'running' : 'stopped',
+          ports: extractPorts(info.NetworkSettings.Ports),
+          serviceUrl: project.serviceUrl || '',
+          health: info.State.Health?.Status || 'healthy',
+          createdAt: new Date(info.Created),
+          lastActivity: new Date()
+        });
+      }
+    }
+    
+    return { containers };
+  }
+);
+
+export const restartContainer = api(
+  { expose: true, method: "POST", path: "/containers/:projectId/restart", auth: true },
+  async ({ projectId }: { projectId: string }): Promise<{ success: boolean }> => {
+    const project = await projects.getProject({ id: projectId });
+    
+    if (project.containerId) {
+      const container = docker.getContainer(project.containerId);
+      await container.restart();
+      
+      await projects.updateProjectStatus({
+        id: projectId,
+        status: 'running'
+      });
+    }
+    
+    return { success: true };
+  }
+);
+
+export const stopContainer = api(
+  { expose: true, method: "POST", path: "/containers/:projectId/stop", auth: true },
+  async ({ projectId }: { projectId: string }): Promise<{ success: boolean }> => {
+    const project = await projects.getProject({ id: projectId });
+    
+    if (project.containerId) {
+      const container = docker.getContainer(project.containerId);
+      await container.stop();
+      
+      await projects.updateProjectStatus({
+        id: projectId,
+        status: 'stopped'
+      });
+    }
+    
+    return { success: true };
+  }
+);
+
+export const rebuildContainer = api(
+  { expose: true, method: "POST", path: "/containers/:projectId/rebuild", auth: true },
+  async ({ projectId }: { projectId: string }): Promise<{ success: boolean }> => {
+    const project = await projects.getProject({ id: projectId });
+    
+    if (project.containerId) {
+      // Stop and remove old container
+      const oldContainer = docker.getContainer(project.containerId);
+      await oldContainer.stop();
+      await oldContainer.remove();
+      
+      // Create new container with same config
+      const { container } = await createContainer({
+        projectId,
+        config: generateContainerConfig(project.config)
+      });
+      
+      await projects.updateProjectStatus({
+        id: projectId,
+        status: 'running',
+        containerId: container.id
+      });
+    }
+    
+    return { success: true };
+  }
+);
+
+function extractPorts(ports: any): { [key: string]: number } {
+  const result: { [key: string]: number } = {};
+  for (const [containerPort, hostPorts] of Object.entries(ports || {})) {
+    if (hostPorts && Array.isArray(hostPorts) && hostPorts.length > 0) {
+      const port = containerPort.split('/')[0];
+      result[port] = parseInt(hostPorts[0].HostPort);
+    }
+  }
+  return result;
+}
+```
+
+### 5. Database Schema
+
+```sql
+-- migrations/001_initial.up.sql
+
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  avatar TEXT,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  last_login_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  description TEXT NOT NULL,
+  type VARCHAR(50) NOT NULL DEFAULT 'monolithic',
+  status VARCHAR(50) NOT NULL DEFAULT 'creating',
+  config JSONB NOT NULL,
+  container_id VARCHAR(255),
+  service_url TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  UNIQUE(user_id, name)
+);
+
+CREATE TABLE project_files (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  file_path TEXT NOT NULL,
+  content TEXT NOT NULL,
+  file_type VARCHAR(50),
+  size_bytes INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  UNIQUE(project_id, file_path)
+);
+
+CREATE TABLE project_activity (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  activity_type VARCHAR(50) NOT NULL,
+  description TEXT,
+  metadata JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_projects_user_id ON projects(user_id);
+CREATE INDEX idx_projects_status ON projects(status);
+CREATE INDEX idx_project_files_project_id ON project_files(project_id);
+CREATE INDEX idx_project_activity_project_id ON project_activity(project_id);
+```
+
+This backend implementation provides a solid foundation for Vaporform with clear service boundaries, proper authentication, and scalable architecture using Encore.ts best practices.

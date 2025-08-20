@@ -1,0 +1,728 @@
+# Security & Authentication Implementation
+
+## Overview
+
+Vaporform implements a comprehensive security framework with multi-layered authentication, authorization, and data protection to ensure user projects and data remain secure while maintaining ease of use.
+
+## Authentication Architecture
+
+### 1. Core Authentication Service
+
+```typescript
+// auth/AuthenticationService.ts
+import { JWTService } from './JWTService';
+import { PasswordService } from './PasswordService';
+import { MFAService } from './MFAService';
+import { SessionService } from './SessionService';
+
+export class AuthenticationService {
+  constructor(
+    private jwtService: JWTService,
+    private passwordService: PasswordService,
+    private mfaService: MFAService,
+    private sessionService: SessionService
+  ) {}
+
+  async authenticate(credentials: LoginCredentials): Promise<AuthenticationResult> {
+    try {
+      // Rate limiting check
+      await this.checkRateLimit(credentials.email);
+      
+      // Validate credentials
+      const user = await this.validateCredentials(credentials);
+      if (!user) {
+        await this.logFailedAttempt(credentials.email);
+        throw new AuthenticationError('Invalid credentials');
+      }
+
+      // Check if MFA is required
+      if (user.mfaEnabled) {
+        if (!credentials.mfaCode) {
+          return {
+            success: false,
+            requiresMFA: true,
+            tempToken: await this.generateTempToken(user.id)
+          };
+        }
+        
+        const mfaValid = await this.mfaService.verify(user.id, credentials.mfaCode);
+        if (!mfaValid) {
+          throw new AuthenticationError('Invalid MFA code');
+        }
+      }
+
+      // Generate tokens
+      const accessToken = await this.jwtService.generateAccessToken(user);
+      const refreshToken = await this.jwtService.generateRefreshToken(user);
+      
+      // Create session
+      const session = await this.sessionService.createSession({
+        userId: user.id,
+        refreshToken,
+        userAgent: credentials.userAgent,
+        ipAddress: credentials.ipAddress
+      });
+
+      // Update user login timestamp
+      await this.updateLastLogin(user.id);
+
+      return {
+        success: true,
+        user: this.sanitizeUser(user),
+        accessToken,
+        refreshToken,
+        sessionId: session.id,
+        expiresAt: this.jwtService.getExpirationTime(accessToken)
+      };
+
+    } catch (error) {
+      console.error('Authentication failed:', error);
+      throw error;
+    }
+  }
+
+  async register(userData: RegistrationData): Promise<RegistrationResult> {
+    // Validate registration data
+    await this.validateRegistrationData(userData);
+    
+    // Check if user already exists
+    const existingUser = await this.findUserByEmail(userData.email);
+    if (existingUser) {
+      throw new AuthenticationError('User already exists');
+    }
+
+    // Hash password
+    const passwordHash = await this.passwordService.hash(userData.password);
+    
+    // Create user
+    const user = await this.createUser({
+      ...userData,
+      passwordHash,
+      emailVerificationToken: this.generateVerificationToken()
+    });
+
+    // Send verification email
+    await this.sendVerificationEmail(user);
+
+    return {
+      success: true,
+      user: this.sanitizeUser(user),
+      message: 'Registration successful. Please check your email to verify your account.'
+    };
+  }
+
+  async refreshToken(token: string): Promise<RefreshTokenResult> {
+    try {
+      // Validate refresh token
+      const payload = await this.jwtService.validateRefreshToken(token);
+      
+      // Get session
+      const session = await this.sessionService.getSession(payload.sessionId);
+      if (!session || session.isRevoked) {
+        throw new AuthenticationError('Invalid session');
+      }
+
+      // Get user
+      const user = await this.findUserById(payload.userId);
+      if (!user || !user.isActive) {
+        throw new AuthenticationError('User not found or inactive');
+      }
+
+      // Generate new tokens
+      const newAccessToken = await this.jwtService.generateAccessToken(user);
+      const newRefreshToken = await this.jwtService.generateRefreshToken(user);
+
+      // Update session
+      await this.sessionService.updateSession(session.id, {
+        refreshToken: newRefreshToken,
+        lastActivity: new Date()
+      });
+
+      return {
+        success: true,
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+        expiresAt: this.jwtService.getExpirationTime(newAccessToken)
+      };
+
+    } catch (error) {
+      throw new AuthenticationError('Token refresh failed');
+    }
+  }
+
+  private async validateCredentials(credentials: LoginCredentials): Promise<User | null> {
+    const user = await this.findUserByEmail(credentials.email);
+    if (!user) return null;
+
+    const isPasswordValid = await this.passwordService.verify(
+      credentials.password, 
+      user.passwordHash
+    );
+    
+    return isPasswordValid ? user : null;
+  }
+
+  private async checkRateLimit(email: string): Promise<void> {
+    const attempts = await this.getFailedAttempts(email);
+    const maxAttempts = 5;
+    const lockoutDuration = 15 * 60 * 1000; // 15 minutes
+
+    if (attempts.length >= maxAttempts) {
+      const lastAttempt = attempts[attempts.length - 1];
+      const timeSinceLastAttempt = Date.now() - lastAttempt.timestamp.getTime();
+      
+      if (timeSinceLastAttempt < lockoutDuration) {
+        throw new AuthenticationError('Account temporarily locked due to failed login attempts');
+      }
+    }
+  }
+}
+```
+
+### 2. JWT Service Implementation
+
+```typescript
+// auth/JWTService.ts
+import jwt from 'jsonwebtoken';
+import { User } from '../types/User';
+
+export class JWTService {
+  private accessTokenSecret: string;
+  private refreshTokenSecret: string;
+  private accessTokenExpiry = '15m';
+  private refreshTokenExpiry = '7d';
+
+  constructor() {
+    this.accessTokenSecret = process.env.JWT_ACCESS_SECRET!;
+    this.refreshTokenSecret = process.env.JWT_REFRESH_SECRET!;
+  }
+
+  async generateAccessToken(user: User): Promise<string> {
+    const payload: AccessTokenPayload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      permissions: user.permissions,
+      type: 'access'
+    };
+
+    return jwt.sign(payload, this.accessTokenSecret, {
+      expiresIn: this.accessTokenExpiry,
+      issuer: 'vaporform',
+      audience: 'vaporform-api'
+    });
+  }
+
+  async generateRefreshToken(user: User): Promise<string> {
+    const payload: RefreshTokenPayload = {
+      userId: user.id,
+      sessionId: this.generateSessionId(),
+      type: 'refresh'
+    };
+
+    return jwt.sign(payload, this.refreshTokenSecret, {
+      expiresIn: this.refreshTokenExpiry,
+      issuer: 'vaporform',
+      audience: 'vaporform-api'
+    });
+  }
+
+  async validateAccessToken(token: string): Promise<AccessTokenPayload> {
+    try {
+      const payload = jwt.verify(token, this.accessTokenSecret, {
+        issuer: 'vaporform',
+        audience: 'vaporform-api'
+      }) as AccessTokenPayload;
+
+      if (payload.type !== 'access') {
+        throw new Error('Invalid token type');
+      }
+
+      return payload;
+    } catch (error) {
+      throw new AuthenticationError('Invalid access token');
+    }
+  }
+
+  async validateRefreshToken(token: string): Promise<RefreshTokenPayload> {
+    try {
+      const payload = jwt.verify(token, this.refreshTokenSecret, {
+        issuer: 'vaporform',
+        audience: 'vaporform-api'
+      }) as RefreshTokenPayload;
+
+      if (payload.type !== 'refresh') {
+        throw new Error('Invalid token type');
+      }
+
+      return payload;
+    } catch (error) {
+      throw new AuthenticationError('Invalid refresh token');
+    }
+  }
+
+  getExpirationTime(token: string): Date {
+    const decoded = jwt.decode(token) as any;
+    return new Date(decoded.exp * 1000);
+  }
+
+  private generateSessionId(): string {
+    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+}
+
+interface AccessTokenPayload {
+  userId: string;
+  email: string;
+  role: string;
+  permissions: string[];
+  type: 'access';
+}
+
+interface RefreshTokenPayload {
+  userId: string;
+  sessionId: string;
+  type: 'refresh';
+}
+```
+
+### 3. Authorization Middleware
+
+```typescript
+// auth/AuthorizationMiddleware.ts
+import { Request, Response, NextFunction } from 'express';
+import { JWTService } from './JWTService';
+import { PermissionService } from './PermissionService';
+
+export class AuthorizationMiddleware {
+  constructor(
+    private jwtService: JWTService,
+    private permissionService: PermissionService
+  ) {}
+
+  authenticate() {
+    return async (req: Request, res: Response, next: NextFunction) => {
+      try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({ error: 'No valid authorization header' });
+        }
+
+        const token = authHeader.substring(7);
+        const payload = await this.jwtService.validateAccessToken(token);
+        
+        // Add user info to request
+        req.user = {
+          id: payload.userId,
+          email: payload.email,
+          role: payload.role,
+          permissions: payload.permissions
+        };
+
+        next();
+      } catch (error) {
+        return res.status(401).json({ error: 'Invalid token' });
+      }
+    };
+  }
+
+  requirePermission(permission: string) {
+    return async (req: Request, res: Response, next: NextFunction) => {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const hasPermission = await this.permissionService.checkPermission(
+        req.user.id,
+        permission
+      );
+
+      if (!hasPermission) {
+        return res.status(403).json({ error: 'Insufficient permissions' });
+      }
+
+      next();
+    };
+  }
+
+  requireProjectAccess(accessLevel: 'read' | 'write' | 'admin' = 'read') {
+    return async (req: Request, res: Response, next: NextFunction) => {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const projectId = req.params.projectId || req.body.projectId;
+      if (!projectId) {
+        return res.status(400).json({ error: 'Project ID required' });
+      }
+
+      const hasAccess = await this.permissionService.checkProjectAccess(
+        req.user.id,
+        projectId,
+        accessLevel
+      );
+
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Project access denied' });
+      }
+
+      req.projectId = projectId;
+      next();
+    };
+  }
+
+  requireOwnership() {
+    return async (req: Request, res: Response, next: NextFunction) => {
+      if (!req.user) {
+        return res.status(401).json({ error: 'Authentication required' });
+      }
+
+      const resourceId = req.params.id || req.params.projectId;
+      const isOwner = await this.permissionService.checkOwnership(
+        req.user.id,
+        resourceId
+      );
+
+      if (!isOwner) {
+        return res.status(403).json({ error: 'Resource access denied' });
+      }
+
+      next();
+    };
+  }
+}
+```
+
+## Multi-Factor Authentication
+
+### 1. MFA Service Implementation
+
+```typescript
+// auth/MFAService.ts
+import speakeasy from 'speakeasy';
+import QRCode from 'qrcode';
+
+export class MFAService {
+  async setupTOTP(userId: string): Promise<TOTPSetupResult> {
+    // Generate secret
+    const secret = speakeasy.generateSecret({
+      issuer: 'Vaporform',
+      name: `Vaporform (${userId})`,
+      length: 32
+    });
+
+    // Store secret in database (encrypted)
+    await this.storeMFASecret(userId, secret.base32);
+
+    // Generate QR code
+    const qrCodeUrl = await QRCode.toDataURL(secret.otpauth_url!);
+
+    return {
+      secret: secret.base32,
+      qrCode: qrCodeUrl,
+      backupCodes: await this.generateBackupCodes(userId)
+    };
+  }
+
+  async verifyTOTP(userId: string, token: string): Promise<boolean> {
+    const secret = await this.getMFASecret(userId);
+    if (!secret) return false;
+
+    // Verify with current time window
+    const verified = speakeasy.totp.verify({
+      secret: secret,
+      encoding: 'base32',
+      token: token,
+      window: 2 // Allow 2 time steps (1 minute) of drift
+    });
+
+    if (verified) {
+      // Check for replay attacks
+      const isReplay = await this.checkTokenReplay(userId, token);
+      if (isReplay) return false;
+
+      // Store token to prevent replay
+      await this.storeUsedToken(userId, token);
+    }
+
+    return verified;
+  }
+
+  async verifyBackupCode(userId: string, code: string): Promise<boolean> {
+    const isValid = await this.validateBackupCode(userId, code);
+    if (isValid) {
+      // Mark backup code as used
+      await this.markBackupCodeUsed(userId, code);
+    }
+    return isValid;
+  }
+
+  async generateBackupCodes(userId: string): Promise<string[]> {
+    const codes = [];
+    for (let i = 0; i < 10; i++) {
+      codes.push(this.generateRandomCode());
+    }
+
+    // Store encrypted backup codes
+    await this.storeBackupCodes(userId, codes);
+    
+    return codes;
+  }
+
+  private generateRandomCode(): string {
+    // Generate 8-digit backup code
+    return Math.random().toString().slice(2, 10);
+  }
+
+  private async storeMFASecret(userId: string, secret: string): Promise<void> {
+    const encrypted = await this.encrypt(secret);
+    await db.exec`
+      UPDATE users 
+      SET mfa_secret = ${encrypted}, mfa_enabled = false
+      WHERE id = ${userId}
+    `;
+  }
+
+  private async getMFASecret(userId: string): Promise<string | null> {
+    const result = await db.queryRow`
+      SELECT mfa_secret FROM users WHERE id = ${userId} AND mfa_enabled = true
+    `;
+    
+    if (!result?.mfa_secret) return null;
+    
+    return await this.decrypt(result.mfa_secret);
+  }
+}
+```
+
+## Project-Level Security
+
+### 1. Project Access Control
+
+```typescript
+// security/ProjectAccessControl.ts
+export class ProjectAccessControl {
+  async checkProjectAccess(
+    userId: string, 
+    projectId: string, 
+    requiredLevel: AccessLevel
+  ): Promise<boolean> {
+    // Check if user owns the project
+    const project = await this.getProject(projectId);
+    if (project.userId === userId) {
+      return true; // Owner has full access
+    }
+
+    // Check shared access
+    const sharedAccess = await this.getSharedAccess(userId, projectId);
+    if (!sharedAccess) return false;
+
+    // Verify access level
+    return this.hasRequiredAccessLevel(sharedAccess.level, requiredLevel);
+  }
+
+  async shareProject(
+    ownerId: string,
+    projectId: string, 
+    targetEmail: string,
+    accessLevel: AccessLevel,
+    expiresAt?: Date
+  ): Promise<ShareResult> {
+    // Verify ownership
+    const hasOwnership = await this.checkOwnership(ownerId, projectId);
+    if (!hasOwnership) {
+      throw new SecurityError('Only project owner can share projects');
+    }
+
+    // Find target user
+    const targetUser = await this.findUserByEmail(targetEmail);
+    if (!targetUser) {
+      throw new Error('User not found');
+    }
+
+    // Create share record
+    await db.exec`
+      INSERT INTO project_shares (
+        project_id, owner_id, shared_with_id, access_level, expires_at
+      ) VALUES (
+        ${projectId}, ${ownerId}, ${targetUser.id}, ${accessLevel}, ${expiresAt}
+      )
+      ON CONFLICT (project_id, shared_with_id) 
+      DO UPDATE SET 
+        access_level = ${accessLevel},
+        expires_at = ${expiresAt},
+        updated_at = NOW()
+    `;
+
+    // Send notification
+    await this.sendShareNotification(targetUser, projectId, accessLevel);
+
+    return { success: true, sharedWith: targetUser.email };
+  }
+
+  async revokeAccess(ownerId: string, projectId: string, userId: string): Promise<void> {
+    // Verify ownership
+    const hasOwnership = await this.checkOwnership(ownerId, projectId);
+    if (!hasOwnership) {
+      throw new SecurityError('Only project owner can revoke access');
+    }
+
+    await db.exec`
+      DELETE FROM project_shares 
+      WHERE project_id = ${projectId} AND shared_with_id = ${userId}
+    `;
+  }
+}
+
+type AccessLevel = 'read' | 'write' | 'admin';
+
+interface ShareResult {
+  success: boolean;
+  sharedWith: string;
+}
+```
+
+### 2. Container Security
+
+```typescript
+// security/ContainerSecurity.ts
+export class ContainerSecurity {
+  async configureContainerSecurity(projectId: string): Promise<SecurityConfig> {
+    return {
+      // Security options for Docker container
+      securityOpt: [
+        'no-new-privileges:true',
+        'seccomp:unconfined' // Adjust based on needs
+      ],
+      
+      // Resource limits to prevent abuse
+      memory: '1g',
+      cpus: '1.0',
+      
+      // Network isolation
+      networkMode: 'vaporform-isolated',
+      
+      // Read-only filesystem with specific writable mounts
+      readonlyRootfs: true,
+      tmpfs: {
+        '/tmp': 'rw,noexec,nosuid,size=100m',
+        '/var/tmp': 'rw,noexec,nosuid,size=100m'
+      },
+      
+      // User namespace remapping
+      usernsMode: 'host',
+      
+      // Capability dropping
+      capDrop: ['ALL'],
+      capAdd: ['CHOWN', 'SETUID', 'SETGID'], // Minimal required caps
+      
+      // Environment variable filtering
+      env: this.filterEnvironmentVariables(projectId),
+      
+      // Labels for identification and policies
+      labels: {
+        'vaporform.project': projectId,
+        'vaporform.security.level': 'standard',
+        'vaporform.isolation': 'enabled'
+      }
+    };
+  }
+
+  private filterEnvironmentVariables(projectId: string): string[] {
+    // Only allow safe environment variables
+    const allowedVars = [
+      'NODE_ENV',
+      'PORT',
+      'PROJECT_ID',
+      'API_URL'
+    ];
+
+    const projectEnv = this.getProjectEnvironment(projectId);
+    
+    return Object.entries(projectEnv)
+      .filter(([key]) => allowedVars.includes(key) || key.startsWith('VAPORFORM_'))
+      .map(([key, value]) => `${key}=${value}`);
+  }
+
+  async scanContainerForVulnerabilities(containerId: string): Promise<ScanResult> {
+    // Implement container vulnerability scanning
+    // This could integrate with tools like Trivy or Clair
+    return {
+      vulnerabilities: [],
+      riskLevel: 'low',
+      recommendations: []
+    };
+  }
+}
+```
+
+## Data Encryption
+
+### 1. Encryption Service
+
+```typescript
+// security/EncryptionService.ts
+import crypto from 'crypto';
+
+export class EncryptionService {
+  private algorithm = 'aes-256-gcm';
+  private keyLength = 32;
+  private ivLength = 16;
+  private tagLength = 16;
+
+  constructor(private masterKey: string) {}
+
+  async encrypt(data: string): Promise<string> {
+    const key = crypto.scryptSync(this.masterKey, 'salt', this.keyLength);
+    const iv = crypto.randomBytes(this.ivLength);
+    
+    const cipher = crypto.createCipher(this.algorithm, key, iv);
+    
+    let encrypted = cipher.update(data, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    
+    const tag = cipher.getAuthTag();
+    
+    // Combine iv + tag + encrypted data
+    return iv.toString('hex') + tag.toString('hex') + encrypted;
+  }
+
+  async decrypt(encryptedData: string): Promise<string> {
+    const key = crypto.scryptSync(this.masterKey, 'salt', this.keyLength);
+    
+    // Extract components
+    const iv = Buffer.from(encryptedData.slice(0, this.ivLength * 2), 'hex');
+    const tag = Buffer.from(encryptedData.slice(this.ivLength * 2, (this.ivLength + this.tagLength) * 2), 'hex');
+    const encrypted = encryptedData.slice((this.ivLength + this.tagLength) * 2);
+    
+    const decipher = crypto.createDecipher(this.algorithm, key, iv);
+    decipher.setAuthTag(tag);
+    
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    
+    return decrypted;
+  }
+
+  async hashPassword(password: string): Promise<string> {
+    const saltRounds = 12;
+    return bcrypt.hash(password, saltRounds);
+  }
+
+  async verifyPassword(password: string, hash: string): Promise<boolean> {
+    return bcrypt.compare(password, hash);
+  }
+
+  generateSecureToken(length: number = 32): string {
+    return crypto.randomBytes(length).toString('hex');
+  }
+
+  generateAPIKey(): string {
+    const prefix = 'vf_';
+    const key = this.generateSecureToken(32);
+    return prefix + key;
+  }
+}
+```
+
+This comprehensive security implementation provides multi-layered protection for Vaporform while maintaining usability and performance.

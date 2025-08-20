@@ -1,0 +1,798 @@
+# Claude Code SDK Integration & AI Agents
+
+## Overview
+
+The Claude Code SDK integration is the core AI engine powering Vaporform's intelligent development capabilities. It orchestrates multiple specialized AI agents to handle different aspects of application development, from project generation to debugging and optimization.
+
+## Claude Code SDK Wrapper
+
+### 1. Core SDK Integration Service
+
+```typescript
+// claude/ClaudeCodeSDK.ts
+import { AnthropicAPI } from '@anthropic/claude-code-sdk';
+import { ProjectContext } from '../types/ProjectContext';
+import { FileSystem } from '../services/FileSystem';
+
+export class VaporformClaudeSDK {
+  private anthropic: AnthropicAPI;
+  private agentOrchestrator: AgentOrchestrator;
+  private fileSystem: FileSystem;
+  
+  constructor() {
+    this.anthropic = new AnthropicAPI({
+      apiKey: process.env.CLAUDE_API_KEY!,
+      baseURL: process.env.CLAUDE_API_URL
+    });
+    
+    this.agentOrchestrator = new AgentOrchestrator(this.anthropic);
+    this.fileSystem = new FileSystem();
+  }
+
+  async createProject(request: ProjectCreationRequest): Promise<ProjectCreationResult> {
+    const projectContext: ProjectContext = {
+      projectId: request.projectId,
+      name: request.name,
+      description: request.description,
+      techStack: request.techStack,
+      integrations: request.integrations,
+      requirements: request.requirements
+    };
+
+    try {
+      // Step 1: Project Analysis
+      const analysis = await this.agentOrchestrator.analyzeProject(projectContext);
+      
+      // Step 2: Architecture Design
+      const architecture = await this.agentOrchestrator.designArchitecture(analysis);
+      
+      // Step 3: Generate Project Structure
+      const projectStructure = await this.agentOrchestrator.generateProjectStructure(architecture);
+      
+      // Step 4: Generate Code Files
+      const codeFiles = await this.agentOrchestrator.generateCodeFiles(projectStructure);
+      
+      // Step 5: Configure Dependencies
+      const dependencies = await this.agentOrchestrator.configureDependencies(projectStructure);
+      
+      // Step 6: Generate Configuration Files
+      const configFiles = await this.agentOrchestrator.generateConfigFiles(projectStructure);
+      
+      // Step 7: Setup Integration Code
+      const integrationCode = await this.agentOrchestrator.generateIntegrations(
+        projectContext.integrations,
+        projectStructure
+      );
+
+      // Combine all generated content
+      const allFiles = [
+        ...codeFiles,
+        ...configFiles,
+        ...integrationCode,
+        ...this.generateUtilityFiles(projectStructure)
+      ];
+
+      // Save files to project filesystem
+      await this.saveProjectFiles(request.projectId, allFiles);
+
+      return {
+        success: true,
+        projectId: request.projectId,
+        structure: projectStructure,
+        files: allFiles,
+        setupInstructions: await this.generateSetupInstructions(projectStructure),
+        estimatedCompletionTime: this.calculateCompletionTime(allFiles.length)
+      };
+
+    } catch (error) {
+      console.error('Project creation failed:', error);
+      return {
+        success: false,
+        error: error.message,
+        projectId: request.projectId
+      };
+    }
+  }
+
+  async modifyProject(request: ProjectModificationRequest): Promise<ProjectModificationResult> {
+    const projectContext = await this.loadProjectContext(request.projectId);
+    
+    try {
+      // Analyze the modification request
+      const modificationPlan = await this.agentOrchestrator.analyzeModification({
+        projectContext,
+        instruction: request.instruction,
+        targetFiles: request.targetFiles,
+        scope: request.scope
+      });
+
+      // Execute the modification plan
+      const results = await this.agentOrchestrator.executeModificationPlan(modificationPlan);
+
+      // Apply changes to filesystem
+      await this.applyFileChanges(request.projectId, results.fileChanges);
+
+      // Run any required commands
+      if (results.commands.length > 0) {
+        await this.executeCommands(request.projectId, results.commands);
+      }
+
+      return {
+        success: true,
+        changes: results.fileChanges,
+        commands: results.commands,
+        explanation: results.explanation,
+        affectedFiles: results.affectedFiles
+      };
+
+    } catch (error) {
+      console.error('Project modification failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async debugProject(request: ProjectDebugRequest): Promise<ProjectDebugResult> {
+    const projectContext = await this.loadProjectContext(request.projectId);
+    
+    try {
+      // Gather debug information
+      const debugInfo = await this.gatherDebugInformation(request);
+      
+      // Analyze the issue
+      const analysis = await this.agentOrchestrator.debugAnalysis({
+        projectContext,
+        errorLogs: debugInfo.errorLogs,
+        stackTrace: debugInfo.stackTrace,
+        userDescription: request.issueDescription,
+        reproduction: debugInfo.reproductionSteps
+      });
+
+      // Generate fixes
+      const fixes = await this.agentOrchestrator.generateFixes(analysis);
+
+      return {
+        success: true,
+        analysis: analysis.explanation,
+        possibleCauses: analysis.possibleCauses,
+        recommendedFixes: fixes,
+        confidence: analysis.confidence
+      };
+
+    } catch (error) {
+      console.error('Project debugging failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  private async saveProjectFiles(projectId: string, files: GeneratedFile[]): Promise<void> {
+    for (const file of files) {
+      await this.fileSystem.writeFile({
+        projectId,
+        path: file.path,
+        content: file.content,
+        encoding: file.encoding || 'utf-8'
+      });
+    }
+  }
+
+  private async loadProjectContext(projectId: string): Promise<ProjectContext> {
+    const project = await projects.getProject({ id: projectId });
+    const projectFiles = await this.fileSystem.getProjectFiles(projectId);
+    
+    return {
+      projectId,
+      name: project.name,
+      description: project.description,
+      techStack: project.config.techStack,
+      integrations: project.config.integrations,
+      files: projectFiles,
+      structure: await this.analyzeProjectStructure(projectFiles)
+    };
+  }
+}
+
+interface ProjectCreationRequest {
+  projectId: string;
+  name: string;
+  description: string;
+  techStack: TechStack;
+  integrations: Integration[];
+  requirements: ProjectRequirement[];
+}
+
+interface ProjectModificationRequest {
+  projectId: string;
+  instruction: string;
+  targetFiles?: string[];
+  scope: 'file' | 'component' | 'feature' | 'project';
+}
+
+interface ProjectDebugRequest {
+  projectId: string;
+  issueDescription: string;
+  errorLogs?: string[];
+  affectedFiles?: string[];
+}
+
+interface GeneratedFile {
+  path: string;
+  content: string;
+  encoding?: string;
+  type: 'source' | 'config' | 'documentation' | 'test';
+}
+```
+
+### 2. AI Agent Orchestrator
+
+```typescript
+// claude/AgentOrchestrator.ts
+export class AgentOrchestrator {
+  private agents: Map<string, AIAgent> = new Map();
+  
+  constructor(private anthropic: AnthropicAPI) {
+    this.initializeAgents();
+  }
+
+  private initializeAgents(): void {
+    this.agents.set('architect', new ArchitectureAgent(this.anthropic));
+    this.agents.set('coder', new CodeGenerationAgent(this.anthropic));
+    this.agents.set('integrator', new IntegrationAgent(this.anthropic));
+    this.agents.set('debugger', new DebuggingAgent(this.anthropic));
+    this.agents.set('optimizer', new OptimizationAgent(this.anthropic));
+    this.agents.set('tester', new TestingAgent(this.anthropic));
+    this.agents.set('documenter', new DocumentationAgent(this.anthropic));
+  }
+
+  async analyzeProject(context: ProjectContext): Promise<ProjectAnalysis> {
+    const architectAgent = this.agents.get('architect') as ArchitectureAgent;
+    
+    const prompt = this.buildAnalysisPrompt(context);
+    const response = await architectAgent.analyze(prompt);
+    
+    return {
+      projectType: response.projectType,
+      complexity: response.complexity,
+      recommendedPatterns: response.patterns,
+      potentialChallenges: response.challenges,
+      estimatedScope: response.scope
+    };
+  }
+
+  async generateProjectStructure(analysis: ProjectAnalysis): Promise<ProjectStructure> {
+    const architectAgent = this.agents.get('architect') as ArchitectureAgent;
+    
+    const structurePrompt = this.buildStructurePrompt(analysis);
+    const structure = await architectAgent.generateStructure(structurePrompt);
+    
+    return {
+      directories: structure.directories,
+      files: structure.files,
+      dependencies: structure.dependencies,
+      buildConfiguration: structure.buildConfig,
+      deployment: structure.deployment
+    };
+  }
+
+  async generateCodeFiles(structure: ProjectStructure): Promise<GeneratedFile[]> {
+    const coderAgent = this.agents.get('coder') as CodeGenerationAgent;
+    const files: GeneratedFile[] = [];
+    
+    // Generate files in parallel where possible
+    const coreFiles = await Promise.all(
+      structure.files.filter(f => f.priority === 'high').map(async (fileSpec) => {
+        const content = await coderAgent.generateFile({
+          path: fileSpec.path,
+          type: fileSpec.type,
+          dependencies: fileSpec.dependencies,
+          specifications: fileSpec.specifications
+        });
+        
+        return {
+          path: fileSpec.path,
+          content: content,
+          type: fileSpec.type
+        };
+      })
+    );
+    
+    files.push(...coreFiles);
+    
+    // Generate secondary files
+    const secondaryFiles = await Promise.all(
+      structure.files.filter(f => f.priority !== 'high').map(async (fileSpec) => {
+        const content = await coderAgent.generateFile({
+          path: fileSpec.path,
+          type: fileSpec.type,
+          dependencies: fileSpec.dependencies,
+          specifications: fileSpec.specifications,
+          existingFiles: files
+        });
+        
+        return {
+          path: fileSpec.path,
+          content: content,
+          type: fileSpec.type
+        };
+      })
+    );
+    
+    files.push(...secondaryFiles);
+    
+    return files;
+  }
+
+  async generateIntegrations(
+    integrations: Integration[], 
+    structure: ProjectStructure
+  ): Promise<GeneratedFile[]> {
+    const integratorAgent = this.agents.get('integrator') as IntegrationAgent;
+    const integrationFiles: GeneratedFile[] = [];
+    
+    for (const integration of integrations) {
+      const files = await integratorAgent.generateIntegration({
+        service: integration.service,
+        configuration: integration.configuration,
+        techStack: structure.techStack,
+        existingStructure: structure
+      });
+      
+      integrationFiles.push(...files);
+    }
+    
+    return integrationFiles;
+  }
+
+  async executeModificationPlan(plan: ModificationPlan): Promise<ModificationResult> {
+    const coderAgent = this.agents.get('coder') as CodeGenerationAgent;
+    const results: ModificationResult = {
+      fileChanges: [],
+      commands: [],
+      explanation: '',
+      affectedFiles: []
+    };
+    
+    // Execute file modifications
+    for (const modification of plan.fileModifications) {
+      const result = await coderAgent.modifyFile(modification);
+      results.fileChanges.push(result);
+      results.affectedFiles.push(modification.filePath);
+    }
+    
+    // Execute structural changes
+    for (const change of plan.structuralChanges) {
+      const structuralResult = await this.executeStructuralChange(change);
+      results.fileChanges.push(...structuralResult.fileChanges);
+      results.commands.push(...structuralResult.commands);
+    }
+    
+    results.explanation = await this.generateModificationExplanation(plan, results);
+    
+    return results;
+  }
+
+  private buildAnalysisPrompt(context: ProjectContext): string {
+    return `
+Analyze this project for architecture planning:
+
+Project Name: ${context.name}
+Description: ${context.description}
+
+Tech Stack:
+- Backend: ${context.techStack.backend.framework} (${context.techStack.backend.language})
+- Frontend: ${context.techStack.frontend.framework}
+- Database: ${context.techStack.database.join(', ')}
+
+Integrations: ${context.integrations.map(i => i.service).join(', ')}
+
+Please analyze:
+1. Project complexity level (beginner/intermediate/advanced)
+2. Recommended architectural patterns
+3. Potential technical challenges
+4. Estimated development scope
+5. Key components that will be needed
+
+Respond with structured analysis focusing on practical implementation approach.
+`;
+  }
+
+  private buildStructurePrompt(analysis: ProjectAnalysis): string {
+    return `
+Based on this project analysis, generate a comprehensive project structure:
+
+${JSON.stringify(analysis, null, 2)}
+
+Generate:
+1. Directory structure with clear organization
+2. Essential files with priorities (high/medium/low)
+3. Package dependencies with versions
+4. Build and deployment configuration
+5. Development workflow setup
+
+Focus on best practices for the tech stack and ensure scalability.
+`;
+  }
+}
+```
+
+### 3. Specialized AI Agents
+
+```typescript
+// claude/agents/CodeGenerationAgent.ts
+export class CodeGenerationAgent extends AIAgent {
+  async generateFile(request: FileGenerationRequest): Promise<string> {
+    const prompt = this.buildFileGenerationPrompt(request);
+    
+    const response = await this.anthropic.createCompletion({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      messages: [
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      system: this.getSystemPrompt('code_generation')
+    });
+    
+    return this.extractCodeFromResponse(response.content[0].text);
+  }
+
+  async modifyFile(modification: FileModification): Promise<FileChange> {
+    const currentContent = modification.currentContent;
+    const instruction = modification.instruction;
+    
+    const prompt = `
+Modify this ${modification.fileType} file according to the instruction:
+
+Current file content:
+\`\`\`${modification.fileType}
+${currentContent}
+\`\`\`
+
+Instruction: ${instruction}
+
+Provide the complete modified file content. Ensure:
+1. Code follows best practices and conventions
+2. Existing functionality is preserved unless explicitly changed
+3. New code integrates seamlessly with existing code
+4. Proper error handling and validation
+5. Comments explaining significant changes
+
+Return only the complete file content without additional explanation.
+`;
+
+    const response = await this.anthropic.createCompletion({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      messages: [{ role: 'user', content: prompt }],
+      system: this.getSystemPrompt('code_modification')
+    });
+
+    return {
+      filePath: modification.filePath,
+      operation: 'update',
+      content: this.extractCodeFromResponse(response.content[0].text),
+      explanation: `Modified ${modification.filePath}: ${instruction}`
+    };
+  }
+
+  private buildFileGenerationPrompt(request: FileGenerationRequest): string {
+    return `
+Generate a ${request.type} file for: ${request.path}
+
+Specifications:
+${JSON.stringify(request.specifications, null, 2)}
+
+Dependencies:
+${request.dependencies.join(', ')}
+
+${request.existingFiles ? `
+Consider these existing files for context:
+${request.existingFiles.map(f => `- ${f.path}: ${f.type}`).join('\n')}
+` : ''}
+
+Requirements:
+1. Follow best practices for the language/framework
+2. Include proper error handling
+3. Add meaningful comments
+4. Ensure type safety where applicable
+5. Make code production-ready
+
+Return only the complete file content without markdown code blocks or explanations.
+`;
+  }
+
+  private getSystemPrompt(type: string): string {
+    const prompts = {
+      code_generation: `
+You are an expert software developer specializing in generating high-quality, production-ready code.
+Your code should be:
+- Clean, readable, and well-structured
+- Following language/framework best practices
+- Properly typed (where applicable)
+- Include comprehensive error handling
+- Self-documenting with meaningful names
+- Secure and performant
+
+Always generate complete, functional code that can be used directly without modifications.
+`,
+      code_modification: `
+You are an expert software developer specializing in code modifications and refactoring.
+When modifying code:
+- Preserve existing functionality unless explicitly asked to change it
+- Maintain code style and patterns from the original
+- Add improvements where beneficial
+- Ensure backward compatibility
+- Include comments explaining significant changes
+- Follow the established architecture patterns
+
+Always return complete, functional code.
+`
+    };
+    
+    return prompts[type] || prompts.code_generation;
+  }
+
+  private extractCodeFromResponse(response: string): string {
+    // Remove markdown code blocks if present
+    const codeBlockRegex = /```[\s\S]*?\n([\s\S]*?)\n```/;
+    const match = response.match(codeBlockRegex);
+    
+    if (match) {
+      return match[1].trim();
+    }
+    
+    return response.trim();
+  }
+}
+
+// claude/agents/DebuggingAgent.ts
+export class DebuggingAgent extends AIAgent {
+  async debugAnalysis(request: DebugAnalysisRequest): Promise<DebugAnalysis> {
+    const prompt = this.buildDebugPrompt(request);
+    
+    const response = await this.anthropic.createCompletion({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: prompt }],
+      system: this.getDebugSystemPrompt()
+    });
+
+    return this.parseDebugResponse(response.content[0].text);
+  }
+
+  async generateFixes(analysis: DebugAnalysis): Promise<RecommendedFix[]> {
+    const fixes: RecommendedFix[] = [];
+    
+    for (const cause of analysis.possibleCauses) {
+      const fixPrompt = this.buildFixPrompt(cause, analysis);
+      
+      const response = await this.anthropic.createCompletion({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1500,
+        messages: [{ role: 'user', content: fixPrompt }],
+        system: this.getFixSystemPrompt()
+      });
+
+      const fix = this.parseFixResponse(response.content[0].text, cause);
+      fixes.push(fix);
+    }
+    
+    return fixes.sort((a, b) => b.confidence - a.confidence);
+  }
+
+  private buildDebugPrompt(request: DebugAnalysisRequest): string {
+    return `
+Debug this issue in a ${request.projectContext.techStack.backend.framework} project:
+
+User Description: ${request.userDescription}
+
+Error Logs:
+${request.errorLogs.join('\n')}
+
+Stack Trace:
+${request.stackTrace}
+
+Project Context:
+- Tech Stack: ${JSON.stringify(request.projectContext.techStack)}
+- Key Files: ${request.projectContext.files?.slice(0, 10).map(f => f.path).join(', ')}
+
+Analyze the issue and provide:
+1. Clear explanation of what's happening
+2. Possible root causes (ranked by likelihood)
+3. Confidence level (1-10)
+4. Affected components/files
+5. Recommended debugging steps
+
+Focus on practical, actionable insights.
+`;
+  }
+
+  private getDebugSystemPrompt(): string {
+    return `
+You are an expert debugging specialist with deep knowledge across all major programming languages and frameworks.
+Your analysis should be:
+- Methodical and systematic
+- Based on evidence from logs and stack traces
+- Practical and actionable
+- Clearly explained for developers of various skill levels
+
+Always provide specific, actionable recommendations for fixing issues.
+`;
+  }
+}
+
+// claude/agents/IntegrationAgent.ts
+export class IntegrationAgent extends AIAgent {
+  async generateIntegration(request: IntegrationRequest): Promise<GeneratedFile[]> {
+    const service = request.service;
+    const integrationTemplate = await this.getIntegrationTemplate(service);
+    
+    const files: GeneratedFile[] = [];
+    
+    // Generate service wrapper
+    const serviceWrapper = await this.generateServiceWrapper(request);
+    files.push(serviceWrapper);
+    
+    // Generate configuration
+    const config = await this.generateConfiguration(request);
+    files.push(config);
+    
+    // Generate types/interfaces
+    const types = await this.generateTypes(request);
+    if (types) files.push(types);
+    
+    // Generate usage examples
+    const examples = await this.generateUsageExamples(request);
+    files.push(examples);
+    
+    return files;
+  }
+
+  private async generateServiceWrapper(request: IntegrationRequest): Promise<GeneratedFile> {
+    const prompt = `
+Generate a service wrapper for ${request.service} integration:
+
+Service: ${request.service}
+Configuration: ${JSON.stringify(request.configuration)}
+Tech Stack: ${JSON.stringify(request.techStack)}
+
+Create a comprehensive service wrapper that includes:
+1. Proper initialization with configuration
+2. All main service methods
+3. Error handling and retry logic
+4. Type safety (if applicable)
+5. Logging and monitoring hooks
+6. Rate limiting considerations
+
+Follow best practices for the target language/framework.
+`;
+
+    const response = await this.anthropic.createCompletion({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 3000,
+      messages: [{ role: 'user', content: prompt }],
+      system: this.getIntegrationSystemPrompt()
+    });
+
+    return {
+      path: `src/services/${request.service.toLowerCase()}Service.ts`,
+      content: this.extractCodeFromResponse(response.content[0].text),
+      type: 'source'
+    };
+  }
+
+  private getIntegrationSystemPrompt(): string {
+    return `
+You are an expert in third-party service integrations and API development.
+Generate production-ready integration code that includes:
+- Comprehensive error handling
+- Proper authentication handling
+- Rate limiting and retry logic
+- Type safety and validation
+- Clear documentation
+- Security best practices
+- Testable architecture
+
+Always create robust, maintainable integration code.
+`;
+  }
+}
+```
+
+### 4. Agent Communication Protocol
+
+```typescript
+// claude/AgentProtocol.ts
+export class AgentProtocol {
+  private messageQueue: Map<string, AgentMessage[]> = new Map();
+  private agents: Map<string, AIAgent> = new Map();
+  
+  async sendMessage(
+    fromAgent: string,
+    toAgent: string,
+    message: AgentMessage
+  ): Promise<AgentResponse> {
+    const targetAgent = this.agents.get(toAgent);
+    if (!targetAgent) {
+      throw new Error(`Agent ${toAgent} not found`);
+    }
+
+    // Add message to queue
+    if (!this.messageQueue.has(toAgent)) {
+      this.messageQueue.set(toAgent, []);
+    }
+    this.messageQueue.get(toAgent)!.push(message);
+
+    // Process message
+    const response = await targetAgent.processMessage(message);
+    
+    // Log interaction
+    await this.logAgentInteraction(fromAgent, toAgent, message, response);
+    
+    return response;
+  }
+
+  async broadcastMessage(
+    fromAgent: string,
+    message: AgentMessage,
+    targetAgents: string[]
+  ): Promise<Map<string, AgentResponse>> {
+    const responses = new Map<string, AgentResponse>();
+    
+    await Promise.all(
+      targetAgents.map(async (agentId) => {
+        try {
+          const response = await this.sendMessage(fromAgent, agentId, message);
+          responses.set(agentId, response);
+        } catch (error) {
+          console.error(`Failed to send message to ${agentId}:`, error);
+        }
+      })
+    );
+    
+    return responses;
+  }
+
+  private async logAgentInteraction(
+    from: string,
+    to: string,
+    message: AgentMessage,
+    response: AgentResponse
+  ): Promise<void> {
+    await db.exec`
+      INSERT INTO agent_interactions (
+        from_agent, to_agent, message_type, message_content,
+        response_content, created_at
+      ) VALUES (
+        ${from}, ${to}, ${message.type}, ${JSON.stringify(message)},
+        ${JSON.stringify(response)}, NOW()
+      )
+    `;
+  }
+}
+
+interface AgentMessage {
+  id: string;
+  type: 'request' | 'collaboration' | 'notification';
+  content: any;
+  context?: any;
+  priority: 'low' | 'medium' | 'high';
+  timestamp: Date;
+}
+
+interface AgentResponse {
+  success: boolean;
+  data?: any;
+  error?: string;
+  suggestions?: string[];
+}
+```
+
+This comprehensive Claude Code SDK integration provides the AI backbone for Vaporform's intelligent development capabilities, enabling sophisticated project generation, modification, and debugging through specialized AI agents.

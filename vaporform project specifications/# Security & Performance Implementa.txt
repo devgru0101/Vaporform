@@ -1,0 +1,699 @@
+# Security & Performance Implementation
+
+## Security Framework
+
+### 1. Authentication & Authorization System
+
+```typescript
+// auth/SecurityFramework.ts
+import { JWTManager } from './JWTManager';
+import { PermissionManager } from './PermissionManager';
+import { RateLimiter } from './RateLimiter';
+
+export class VaporformSecurityFramework {
+  private jwtManager: JWTManager;
+  private permissionManager: PermissionManager;
+  private rateLimiter: RateLimiter;
+  private auditLogger: AuditLogger;
+  
+  constructor() {
+    this.jwtManager = new JWTManager({
+      secret: process.env.JWT_SECRET!,
+      issuer: 'vaporform',
+      expirationTime: '24h',
+      refreshThreshold: '1h'
+    });
+    
+    this.permissionManager = new PermissionManager();
+    this.rateLimiter = new RateLimiter();
+    this.auditLogger = new AuditLogger();
+  }
+
+  async authenticateRequest(request: VaporformRequest): Promise<AuthenticationResult> {
+    try {
+      // Extract token from Authorization header
+      const token = this.extractToken(request.headers.authorization);
+      if (!token) {
+        throw new SecurityError('No authentication token provided');
+      }
+
+      // Validate JWT token
+      const tokenPayload = await this.jwtManager.validateToken(token);
+      
+      // Check if token needs refresh
+      if (this.jwtManager.needsRefresh(tokenPayload)) {
+        const refreshedToken = await this.jwtManager.refreshToken(token);
+        return {
+          success: true,
+          user: tokenPayload.user,
+          newToken: refreshedToken,
+          permissions: await this.permissionManager.getUserPermissions(tokenPayload.user.id)
+        };
+      }
+
+      return {
+        success: true,
+        user: tokenPayload.user,
+        permissions: await this.permissionManager.getUserPermissions(tokenPayload.user.id)
+      };
+
+    } catch (error) {
+      await this.auditLogger.logFailedAuthentication(request, error.message);
+      throw new SecurityError('Authentication failed');
+    }
+  }
+
+  async authorizeProjectAccess(
+    userId: string, 
+    projectId: string, 
+    requiredPermission: ProjectPermission
+  ): Promise<boolean> {
+    try {
+      const userPermissions = await this.permissionManager.getProjectPermissions(userId, projectId);
+      const hasPermission = this.permissionManager.hasPermission(userPermissions, requiredPermission);
+      
+      if (!hasPermission) {
+        await this.auditLogger.logUnauthorizedAccess(userId, projectId, requiredPermission);
+      }
+      
+      return hasPermission;
+    } catch (error) {
+      console.error('Authorization check failed:', error);
+      return false;
+    }
+  }
+
+  async applyRateLimit(request: VaporformRequest): Promise<RateLimitResult> {
+    const identifier = this.getRateLimitIdentifier(request);
+    const limit = this.getRateLimitConfig(request.endpoint, request.user?.id);
+    
+    return await this.rateLimiter.checkLimit(identifier, limit);
+  }
+}
+```
+
+### 2. API Security Middleware
+
+```typescript
+// auth/SecurityMiddleware.ts
+export class SecurityMiddleware {
+  private securityFramework: VaporformSecurityFramework;
+  private csrfProtection: CSRFProtection;
+  private inputValidator: InputValidator;
+  
+  constructor() {
+    this.securityFramework = new VaporformSecurityFramework();
+    this.csrfProtection = new CSRFProtection();
+    this.inputValidator = new InputValidator();
+  }
+
+  async validateRequest(request: VaporformRequest): Promise<SecureRequest> {
+    // 1. Rate limiting
+    const rateLimitResult = await this.securityFramework.applyRateLimit(request);
+    if (!rateLimitResult.allowed) {
+      throw new RateLimitError('Rate limit exceeded', rateLimitResult.resetTime);
+    }
+
+    // 2. Input validation and sanitization
+    const sanitizedRequest = await this.inputValidator.sanitizeRequest(request);
+    
+    // 3. CSRF protection for state-changing operations
+    if (this.isStateChangingOperation(request.method)) {
+      await this.csrfProtection.validateCSRFToken(request);
+    }
+
+    // 4. Authentication
+    const authResult = await this.securityFramework.authenticateRequest(sanitizedRequest);
+    if (!authResult.success) {
+      throw new AuthenticationError('Authentication failed');
+    }
+
+    // 5. Content Security Policy headers
+    const securityHeaders = this.generateSecurityHeaders();
+
+    return {
+      ...sanitizedRequest,
+      user: authResult.user,
+      permissions: authResult.permissions,
+      newToken: authResult.newToken,
+      securityHeaders: securityHeaders,
+      rateLimitInfo: {
+        remaining: rateLimitResult.remaining,
+        resetTime: rateLimitResult.resetTime
+      }
+    };
+  }
+
+  private generateSecurityHeaders(): SecurityHeaders {
+    return {
+      'Content-Security-Policy': this.buildCSPHeader(),
+      'X-Frame-Options': 'DENY',
+      'X-Content-Type-Options': 'nosniff',
+      'X-XSS-Protection': '1; mode=block',
+      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
+    };
+  }
+
+  private buildCSPHeader(): string {
+    const directives = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdnjs.cloudflare.com",
+      "style-src 'self' 'unsafe-inline' fonts.googleapis.com",
+      "font-src 'self' fonts.gstatic.com",
+      "img-src 'self' data: blob:",
+      "connect-src 'self' wss: ws:",
+      "frame-src 'none'",
+      "object-src 'none'",
+      "base-uri 'self'"
+    ];
+    
+    return directives.join('; ');
+  }
+}
+```
+
+### 3. Container Security
+
+```typescript
+// infrastructure/ContainerSecurity.ts
+export class ContainerSecurityManager {
+  private dockerClient: Docker;
+  private networkPolicies: NetworkPolicyManager;
+  private secretsManager: SecretsManager;
+  
+  constructor() {
+    this.dockerClient = new Docker();
+    this.networkPolicies = new NetworkPolicyManager();
+    this.secretsManager = new SecretsManager();
+  }
+
+  async createSecureContainer(config: SecureContainerConfig): Promise<Container> {
+    const securityOpts = this.buildSecurityOptions(config);
+    const networkConfig = this.buildNetworkConfig(config);
+    const resourceLimits = this.buildResourceLimits(config);
+    
+    const container = await this.dockerClient.createContainer({
+      Image: config.image,
+      
+      // Security configuration
+      SecurityOpt: securityOpts,
+      ReadonlyRootfs: false, // Allow writes to /app and /tmp only
+      User: 'vaporform:vaporform', // Non-root user
+      
+      // Network isolation
+      NetworkMode: networkConfig.mode,
+      PortBindings: networkConfig.portBindings,
+      
+      // Resource limits
+      HostConfig: {
+        Memory: resourceLimits.memory,
+        CpuShares: resourceLimits.cpu,
+        PidsLimit: 256,
+        
+        // Capabilities
+        CapDrop: ['ALL'],
+        CapAdd: this.getRequiredCapabilities(config.techStack),
+        
+        // Mount restrictions
+        Binds: this.getSecureMounts(config.projectId),
+        Tmpfs: {
+          '/tmp': 'rw,noexec,nosuid,size=100m',
+          '/var/tmp': 'rw,noexec,nosuid,size=50m'
+        },
+        
+        // Security options
+        SecurityOpt: [
+          'no-new-privileges:true',
+          'seccomp:unconfined', // May need custom seccomp profile
+          'apparmor:vaporform-container'
+        ]
+      },
+      
+      // Environment variables (secrets injected securely)
+      Env: await this.buildSecureEnvironment(config),
+      
+      // Working directory
+      WorkingDir: '/app',
+      
+      // Labels for identification and policies
+      Labels: {
+        'vaporform.project.id': config.projectId,
+        'vaporform.user.id': config.userId,
+        'vaporform.security.profile': 'standard',
+        'traefik.enable': 'true',
+        'traefik.http.routers.${config.projectId}.rule': `Host(\`${config.projectId}.vaporform.local\`)`,
+        'traefik.http.services.${config.projectId}.loadbalancer.server.port': config.port.toString()
+      }
+    });
+
+    // Apply network policies
+    await this.networkPolicies.applyContainerPolicies(container.id, config);
+    
+    return container;
+  }
+
+  private buildSecurityOptions(config: SecureContainerConfig): string[] {
+    return [
+      'no-new-privileges:true',
+      'seccomp=unconfined', // Consider custom seccomp profiles
+      'apparmor=vaporform-container'
+    ];
+  }
+
+  private getRequiredCapabilities(techStack: TechStack): string[] {
+    const baseCaps: string[] = [];
+    
+    // Add capabilities based on tech stack requirements
+    if (techStack.requiresNetworkBinding) {
+      baseCaps.push('NET_BIND_SERVICE');
+    }
+    
+    return baseCaps;
+  }
+
+  private getSecureMounts(projectId: string): string[] {
+    return [
+      `vaporform-project-${projectId}:/app:rw`,
+      '/etc/passwd:/etc/passwd:ro',
+      '/etc/group:/etc/group:ro'
+    ];
+  }
+
+  async buildSecureEnvironment(config: SecureContainerConfig): Promise<string[]> {
+    const baseEnv = [
+      'NODE_ENV=development',
+      `PROJECT_ID=${config.projectId}`,
+      `USER_ID=${config.userId}`,
+      'PATH=/usr/local/bin:/usr/bin:/bin'
+    ];
+
+    // Inject secrets securely
+    const secrets = await this.secretsManager.getProjectSecrets(config.projectId);
+    const secretEnvs = secrets.map(secret => 
+      `${secret.key}=${secret.value}`
+    );
+
+    return [...baseEnv, ...secretEnvs];
+  }
+}
+```
+
+## Performance Optimization Framework
+
+### 1. Caching Strategy
+
+```typescript
+// performance/CacheManager.ts
+export class VaporformCacheManager {
+  private redis: RedisClient;
+  private memoryCache: LRUCache<string, any>;
+  private compressionEnabled: boolean = true;
+  
+  constructor() {
+    this.redis = new RedisClient({
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+      password: process.env.REDIS_PASSWORD,
+      db: 0,
+      retryDelayOnFailover: 100,
+      enableOfflineQueue: false,
+      maxRetriesPerRequest: 3
+    });
+    
+    this.memoryCache = new LRUCache({
+      max: 1000, // Maximum 1000 items in memory
+      ttl: 1000 * 60 * 5, // 5 minutes TTL
+      allowStale: false,
+      updateAgeOnGet: true
+    });
+  }
+
+  async get<T>(key: string, options?: CacheOptions): Promise<T | null> {
+    const cacheKey = this.buildCacheKey(key, options?.namespace);
+    
+    try {
+      // Check memory cache first (fastest)
+      const memoryValue = this.memoryCache.get(cacheKey);
+      if (memoryValue !== undefined) {
+        this.recordCacheHit('memory', cacheKey);
+        return memoryValue;
+      }
+
+      // Check Redis cache
+      const redisValue = await this.redis.get(cacheKey);
+      if (redisValue) {
+        let parsedValue = redisValue;
+        
+        // Decompress if needed
+        if (this.compressionEnabled && options?.compress !== false) {
+          parsedValue = await this.decompress(redisValue);
+        }
+        
+        const value = JSON.parse(parsedValue);
+        
+        // Store in memory cache for next time
+        this.memoryCache.set(cacheKey, value);
+        
+        this.recordCacheHit('redis', cacheKey);
+        return value;
+      }
+
+      this.recordCacheMiss(cacheKey);
+      return null;
+
+    } catch (error) {
+      console.error(`Cache get error for key ${cacheKey}:`, error);
+      this.recordCacheError('get', cacheKey, error);
+      return null;
+    }
+  }
+
+  async set<T>(
+    key: string, 
+    value: T, 
+    options?: CacheSetOptions
+  ): Promise<void> {
+    const cacheKey = this.buildCacheKey(key, options?.namespace);
+    const ttl = options?.ttl || 3600; // Default 1 hour
+    
+    try {
+      // Store in memory cache
+      this.memoryCache.set(cacheKey, value, { ttl: ttl * 1000 });
+
+      // Serialize value
+      let serializedValue = JSON.stringify(value);
+      
+      // Compress large values
+      if (this.compressionEnabled && serializedValue.length > 1024) {
+        serializedValue = await this.compress(serializedValue);
+      }
+
+      // Store in Redis with TTL
+      await this.redis.setex(cacheKey, ttl, serializedValue);
+      
+      this.recordCacheSet(cacheKey, serializedValue.length);
+
+    } catch (error) {
+      console.error(`Cache set error for key ${cacheKey}:`, error);
+      this.recordCacheError('set', cacheKey, error);
+    }
+  }
+
+  async invalidate(pattern: string, namespace?: string): Promise<number> {
+    const searchPattern = this.buildCacheKey(pattern, namespace);
+    
+    try {
+      // Clear from memory cache
+      for (const key of this.memoryCache.keys()) {
+        if (key.includes(searchPattern)) {
+          this.memoryCache.delete(key);
+        }
+      }
+
+      // Clear from Redis
+      const keys = await this.redis.keys(searchPattern);
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+      }
+
+      return keys.length;
+
+    } catch (error) {
+      console.error(`Cache invalidation error for pattern ${searchPattern}:`, error);
+      return 0;
+    }
+  }
+
+  // Intelligent cache warming for frequently accessed data
+  async warmCache(): Promise<void> {
+    console.log('Starting cache warming...');
+    
+    const warmingStrategies = [
+      () => this.warmProjectCache(),
+      () => this.warmUserCache(),
+      () => this.warmTechStackCache(),
+      () => this.warmExtensionCache()
+    ];
+
+    await Promise.all(warmingStrategies.map(strategy => 
+      strategy().catch(error => 
+        console.error('Cache warming strategy failed:', error)
+      )
+    ));
+    
+    console.log('Cache warming completed');
+  }
+
+  private async warmProjectCache(): Promise<void> {
+    // Pre-load active projects
+    const activeProjects = await this.getActiveProjects();
+    
+    for (const project of activeProjects) {
+      await this.set(`project:${project.id}`, project, { ttl: 1800 });
+      await this.set(`project:files:${project.id}`, project.files, { ttl: 900 });
+    }
+  }
+}
+```
+
+### 2. Database Optimization
+
+```typescript
+// performance/DatabaseOptimizer.ts
+export class DatabaseOptimizer {
+  private db: PostgresDatabase;
+  private queryAnalyzer: QueryAnalyzer;
+  private connectionPool: ConnectionPool;
+  
+  constructor() {
+    this.connectionPool = new ConnectionPool({
+      host: process.env.DB_HOST,
+      port: parseInt(process.env.DB_PORT || '5432'),
+      database: process.env.DB_NAME,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      
+      // Connection pool settings
+      min: 5,  // Minimum connections
+      max: 50, // Maximum connections
+      acquireTimeoutMillis: 60000,
+      createTimeoutMillis: 30000,
+      destroyTimeoutMillis: 5000,
+      idleTimeoutMillis: 30000,
+      reapIntervalMillis: 1000,
+      createRetryIntervalMillis: 200,
+      
+      // Performance settings
+      ssl: false,
+      statement_timeout: 30000,
+      query_timeout: 30000,
+      
+      // Optimization flags
+      application_name: 'vaporform',
+      tcp_keepalives_idle: 600,
+      tcp_keepalives_interval: 30,
+      tcp_keepalives_count: 3
+    });
+    
+    this.queryAnalyzer = new QueryAnalyzer();
+  }
+
+  async optimizeQueries(): Promise<void> {
+    // Analyze slow queries
+    const slowQueries = await this.analyzeSlowQueries();
+    
+    for (const query of slowQueries) {
+      await this.optimizeQuery(query);
+    }
+    
+    // Update table statistics
+    await this.updateTableStatistics();
+    
+    // Optimize indexes
+    await this.optimizeIndexes();
+  }
+
+  private async analyzeSlowQueries(): Promise<SlowQuery[]> {
+    const query = `
+      SELECT 
+        query,
+        calls,
+        total_time,
+        mean_time,
+        max_time,
+        rows
+      FROM pg_stat_statements 
+      WHERE mean_time > 100 -- Queries taking more than 100ms on average
+      ORDER BY mean_time DESC 
+      LIMIT 20
+    `;
+    
+    const results = await this.db.query(query);
+    return results.rows;
+  }
+
+  private async optimizeIndexes(): Promise<void> {
+    // Find missing indexes
+    const missingIndexes = await this.findMissingIndexes();
+    
+    for (const index of missingIndexes) {
+      if (index.impact > 0.8) { // High impact indexes
+        await this.createIndex(index);
+      }
+    }
+    
+    // Find unused indexes
+    const unusedIndexes = await this.findUnusedIndexes();
+    
+    for (const index of unusedIndexes) {
+      if (index.size > 100 * 1024 * 1024) { // Indexes larger than 100MB
+        console.warn(`Consider dropping unused index: ${index.name}`);
+      }
+    }
+  }
+
+  async optimizeQuery(query: SlowQuery): Promise<QueryOptimization> {
+    const explanation = await this.explainQuery(query.query);
+    const suggestions = this.analyzeExplanation(explanation);
+    
+    return {
+      originalQuery: query.query,
+      executionPlan: explanation,
+      suggestions: suggestions,
+      estimatedImprovement: this.calculateImprovement(suggestions)
+    };
+  }
+}
+```
+
+### 3. Resource Management
+
+```typescript
+// performance/ResourceManager.ts
+export class ResourceManager {
+  private metricsCollector: MetricsCollector;
+  private resourcePools: Map<string, ResourcePool>;
+  private loadBalancer: LoadBalancer;
+  
+  constructor() {
+    this.metricsCollector = new MetricsCollector();
+    this.resourcePools = new Map();
+    this.loadBalancer = new LoadBalancer();
+    this.initializeResourcePools();
+  }
+
+  async allocateProjectResources(
+    projectId: string, 
+    requirements: ResourceRequirements
+  ): Promise<ResourceAllocation> {
+    const systemLoad = await this.getCurrentSystemLoad();
+    const userTier = await this.getUserTier(requirements.userId);
+    
+    // Calculate optimal resource allocation
+    const allocation = this.calculateOptimalAllocation(
+      requirements, 
+      systemLoad, 
+      userTier
+    );
+    
+    // Reserve resources
+    const reservation = await this.reserveResources(projectId, allocation);
+    
+    // Update metrics
+    this.metricsCollector.recordResourceAllocation(projectId, allocation);
+    
+    return {
+      projectId,
+      allocation,
+      reservation,
+      estimatedCost: this.calculateCost(allocation),
+      limits: this.calculateLimits(allocation, userTier)
+    };
+  }
+
+  private calculateOptimalAllocation(
+    requirements: ResourceRequirements,
+    systemLoad: SystemLoad,
+    userTier: UserTier
+  ): ResourceAllocation {
+    const baseAllocation = this.getBaseAllocation(requirements.techStack);
+    
+    // Adjust for system load
+    const loadMultiplier = systemLoad.cpu > 0.8 ? 0.8 : 1.0;
+    
+    // Apply user tier limits
+    const tierLimits = this.getTierLimits(userTier);
+    
+    return {
+      cpu: Math.min(
+        baseAllocation.cpu * loadMultiplier,
+        tierLimits.maxCpu
+      ),
+      memory: Math.min(
+        baseAllocation.memory,
+        tierLimits.maxMemory
+      ),
+      storage: Math.min(
+        baseAllocation.storage,
+        tierLimits.maxStorage
+      ),
+      network: {
+        bandwidth: tierLimits.maxBandwidth,
+        connections: tierLimits.maxConnections
+      }
+    };
+  }
+
+  async monitorResourceUsage(): Promise<void> {
+    const containers = await this.getAllActiveContainers();
+    
+    for (const container of containers) {
+      const usage = await this.getContainerResourceUsage(container.id);
+      
+      // Check for resource violations
+      if (usage.cpu > container.limits.cpu * 1.1) {
+        await this.handleCpuOveruse(container, usage);
+      }
+      
+      if (usage.memory > container.limits.memory * 0.95) {
+        await this.handleMemoryPressure(container, usage);
+      }
+      
+      // Update metrics
+      this.metricsCollector.recordResourceUsage(container.projectId, usage);
+    }
+  }
+
+  private async handleCpuOveruse(
+    container: Container, 
+    usage: ResourceUsage
+  ): Promise<void> {
+    console.warn(`CPU overuse detected for project ${container.projectId}`);
+    
+    // Implement CPU throttling
+    await this.applyCpuThrottling(container.id, container.limits.cpu);
+    
+    // Notify user
+    await this.notifyResourceViolation(container.projectId, 'cpu', usage);
+  }
+
+  private async handleMemoryPressure(
+    container: Container, 
+    usage: ResourceUsage
+  ): Promise<void> {
+    console.warn(`Memory pressure detected for project ${container.projectId}`);
+    
+    // Trigger graceful scaling or restart
+    if (usage.memory > container.limits.memory) {
+      await this.scheduleContainerRestart(container.id);
+    }
+    
+    // Notify user
+    await this.notifyResourceViolation(container.projectId, 'memory', usage);
+  }
+}
+```
+
+This security and performance framework ensures Vaporform operates safely and efficiently while providing a smooth user experience and protecting sensitive data and resources.

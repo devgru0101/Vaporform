@@ -1,0 +1,435 @@
+# System Architecture Overview & Component Integration
+
+## High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           Vaporform System Architecture                         │
+│                                                                                 │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                           Frontend Layer                                   │ │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │ │
+│  │  │ Modified VSCode │  │  Chat Panel     │  │  Project        │            │ │
+│  │  │      IDE        │  │                 │  │  Previewer      │            │ │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘            │ │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │ │
+│  │  │ Terminal Panel  │  │ Infrastructure  │  │ Project Wizard  │            │ │
+│  │  │                 │  │    Manager      │  │                 │            │ │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘            │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                     │ WebSocket/HTTP                              │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                      API Gateway & Load Balancer                           │ │
+│  │                           (Traefik Proxy)                                  │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                     │                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                          Encore.ts Backend Services                        │ │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │ │
+│  │  │      Auth       │  │    Projects     │  │     Claude      │            │ │
+│  │  │    Service      │  │    Service      │  │   Integration   │            │ │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘            │ │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │ │
+│  │  │   Containers    │  │  Infrastructure │  │     Files       │            │ │
+│  │  │    Service      │  │    Service      │  │    Service      │            │ │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘            │ │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │ │
+│  │  │   WebSocket     │  │   Monitoring    │  │    Secrets      │            │ │
+│  │  │    Service      │  │    Service      │  │   Management    │            │ │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘            │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                     │                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                        Infrastructure Layer                                │ │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │ │
+│  │  │   PostgreSQL    │  │     Redis       │  │     Docker      │            │ │
+│  │  │    Database     │  │     Cache       │  │    Engine       │            │ │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘            │ │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │ │
+│  │  │   Terraform     │  │   Monitoring    │  │  File Storage   │            │ │
+│  │  │  Provisioning   │  │   & Logging     │  │   (MinIO/S3)    │            │ │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘            │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+│                                     │                                             │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
+│  │                     User Project Containers                                │ │
+│  │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐            │ │
+│  │  │   Project A     │  │   Project B     │  │   Project C     │            │ │
+│  │  │  (Node.js/TS)   │  │  (Python/Django)│  │   (Go/Gin)      │            │ │
+│  │  │  Port: 3001     │  │  Port: 3002     │  │  Port: 3003     │            │ │
+│  │  └─────────────────┘  └─────────────────┘  └─────────────────┘            │ │
+│  └─────────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Component Integration Flow
+
+### 1. User Project Creation Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant P as Projects Service
+    participant C as Claude Service
+    participant I as Infrastructure Service
+    participant D as Docker Engine
+
+    U->>F: Create New Project
+    F->>P: POST /projects with config
+    P->>C: Generate project structure
+    C->>P: Return generated files
+    P->>I: Provision infrastructure
+    I->>D: Create container
+    D->>I: Container details
+    I->>P: Infrastructure ready
+    P->>F: Project created successfully
+    F->>U: Open project in IDE
+```
+
+### 2. Real-time Collaboration Flow
+
+```mermaid
+sequenceDiagram
+    participant U1 as User 1
+    participant U2 as User 2
+    participant WS as WebSocket Service
+    participant F as Files Service
+    participant C as Container
+
+    U1->>WS: Edit file content
+    WS->>F: Save file changes
+    F->>C: Update container files
+    WS->>U2: Broadcast file change
+    U2->>WS: Acknowledge change
+    C->>WS: Hot reload complete
+    WS->>U1: Update confirmed
+```
+
+### 3. Claude AI Integration Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant Chat as Chat Panel
+    participant Claude as Claude Service
+    participant Files as Files Service
+    participant Container as Project Container
+
+    U->>Chat: "Add authentication to my app"
+    Chat->>Claude: Process instruction
+    Claude->>Files: Analyze current files
+    Files->>Claude: Return file contents
+    Claude->>Claude: Generate code changes
+    Claude->>Files: Apply file changes
+    Files->>Container: Update project files
+    Container->>Container: Hot reload
+    Claude->>Chat: Send explanation
+    Chat->>U: Show changes and explanation
+```
+
+## Service Communication Patterns
+
+### 1. API Communication
+
+```typescript
+// Service-to-service communication via Encore.ts
+interface ServiceCommunication {
+  // Synchronous calls for immediate operations
+  createProject: (data: ProjectData) => Promise<Project>;
+  getProject: (id: string) => Promise<Project>;
+  
+  // Asynchronous calls for long-running operations
+  generateProjectStructure: (config: ProjectConfig) => Promise<void>;
+  deployProject: (projectId: string) => Promise<void>;
+}
+
+// Example implementation
+export const projectOperations = {
+  async createWithInfrastructure(projectData: ProjectData) {
+    // Create project record
+    const project = await projects.createProject(projectData);
+    
+    // Provision infrastructure asynchronously
+    await infrastructure.provisionInfrastructure({
+      projectId: project.id,
+      techStack: projectData.techStack
+    });
+    
+    // Generate initial code structure
+    await claude.generateProjectStructure({
+      projectId: project.id,
+      config: projectData.config
+    });
+    
+    return project;
+  }
+};
+```
+
+### 2. Event-Driven Architecture
+
+```typescript
+// Event bus for decoupled communication
+interface VaporformEvents {
+  'project.created': ProjectCreatedEvent;
+  'project.updated': ProjectUpdatedEvent;
+  'container.started': ContainerStartedEvent;
+  'container.stopped': ContainerStoppedEvent;
+  'file.changed': FileChangedEvent;
+  'claude.response': ClaudeResponseEvent;
+}
+
+export class EventBus {
+  private handlers: Map<string, Function[]> = new Map();
+  
+  emit<T extends keyof VaporformEvents>(
+    event: T, 
+    data: VaporformEvents[T]
+  ): void {
+    const eventHandlers = this.handlers.get(event) || [];
+    eventHandlers.forEach(handler => handler(data));
+  }
+  
+  on<T extends keyof VaporformEvents>(
+    event: T, 
+    handler: (data: VaporformEvents[T]) => void
+  ): void {
+    if (!this.handlers.has(event)) {
+      this.handlers.set(event, []);
+    }
+    this.handlers.get(event)!.push(handler);
+  }
+}
+```
+
+### 3. WebSocket Event Handling
+
+```typescript
+// Real-time communication for live collaboration
+export class VaporformWebSocketHandler {
+  private connections: Map<string, WebSocket[]> = new Map();
+  
+  broadcastToProject(projectId: string, event: any): void {
+    const projectConnections = this.connections.get(projectId) || [];
+    const message = JSON.stringify(event);
+    
+    projectConnections.forEach(ws => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(message);
+      }
+    });
+  }
+  
+  handleFileChange(projectId: string, change: FileChange): void {
+    // Apply change to file system
+    files.applyChange(projectId, change);
+    
+    // Broadcast to all connected users
+    this.broadcastToProject(projectId, {
+      type: 'file_changed',
+      data: change
+    });
+    
+    // Trigger hot reload if needed
+    if (change.triggerReload) {
+      containers.reloadContainer(projectId);
+    }
+  }
+}
+```
+
+## Security Architecture
+
+### 1. Authentication & Authorization Flow
+
+```typescript
+interface SecurityContext {
+  userId: string;
+  userRole: 'admin' | 'user';
+  projectPermissions: Map<string, ProjectPermission[]>;
+  sessionId: string;
+  expiresAt: Date;
+}
+
+type ProjectPermission = 'read' | 'write' | 'execute' | 'admin';
+
+export class SecurityManager {
+  async validateRequest(
+    token: string, 
+    projectId?: string, 
+    requiredPermission?: ProjectPermission
+  ): Promise<SecurityContext> {
+    const context = await this.validateToken(token);
+    
+    if (projectId && requiredPermission) {
+      await this.validateProjectPermission(
+        context, 
+        projectId, 
+        requiredPermission
+      );
+    }
+    
+    return context;
+  }
+  
+  async validateProjectPermission(
+    context: SecurityContext,
+    projectId: string,
+    permission: ProjectPermission
+  ): Promise<void> {
+    const userPermissions = context.projectPermissions.get(projectId) || [];
+    
+    if (!userPermissions.includes(permission) && !userPermissions.includes('admin')) {
+      throw new SecurityError('Insufficient permissions');
+    }
+  }
+}
+```
+
+### 2. Container Isolation
+
+```typescript
+// Container security configuration
+export const containerSecurityConfig = {
+  // Resource limits
+  memory: '1GB',
+  cpu: '0.5',
+  
+  // Network isolation
+  networkMode: 'vaporform-isolated',
+  
+  // File system restrictions
+  readOnlyRootFilesystem: false,
+  volumes: {
+    '/app': 'rw', // Project files
+    '/tmp': 'rw',  // Temporary files
+    '/home': 'ro'  // Read-only system files
+  },
+  
+  // Security options
+  securityOpt: [
+    'no-new-privileges:true',
+    'seccomp:default'
+  ],
+  
+  // User namespace
+  user: 'vaporform:vaporform',
+  
+  // Capabilities
+  capDrop: ['ALL'],
+  capAdd: ['NET_BIND_SERVICE'] // Only if needed for specific ports
+};
+```
+
+## Performance Optimization Strategy
+
+### 1. Caching Layers
+
+```typescript
+// Multi-level caching strategy
+export class VaporformCacheManager {
+  private redisCache: RedisClient;
+  private memoryCache: Map<string, any> = new Map();
+  
+  async get<T>(key: string, ttl?: number): Promise<T | null> {
+    // Check memory cache first (fastest)
+    if (this.memoryCache.has(key)) {
+      return this.memoryCache.get(key);
+    }
+    
+    // Check Redis cache (fast)
+    const redisValue = await this.redisCache.get(key);
+    if (redisValue) {
+      const parsed = JSON.parse(redisValue);
+      
+      // Store in memory for next time
+      this.memoryCache.set(key, parsed);
+      
+      return parsed;
+    }
+    
+    return null;
+  }
+  
+  async set<T>(key: string, value: T, ttl: number = 3600): Promise<void> {
+    // Store in both caches
+    this.memoryCache.set(key, value);
+    await this.redisCache.setex(key, ttl, JSON.stringify(value));
+  }
+}
+```
+
+### 2. Resource Management
+
+```typescript
+// Dynamic resource allocation for containers
+export class ResourceManager {
+  async allocateResources(projectId: string, techStack: TechStack): Promise<ResourceAllocation> {
+    const baseResources = this.getBaseResources(techStack);
+    const currentLoad = await this.getCurrentSystemLoad();
+    
+    // Adjust based on system load
+    const adjustedResources = this.adjustForLoad(baseResources, currentLoad);
+    
+    // Apply resource limits
+    await this.applyResourceLimits(projectId, adjustedResources);
+    
+    return adjustedResources;
+  }
+  
+  private getBaseResources(techStack: TechStack): ResourceAllocation {
+    const resourceMap = {
+      'node.js': { memory: '512MB', cpu: 0.5 },
+      'python': { memory: '768MB', cpu: 0.6 },
+      'java': { memory: '1GB', cpu: 0.8 },
+      'go': { memory: '256MB', cpu: 0.3 }
+    };
+    
+    return resourceMap[techStack.backend.language] || resourceMap['node.js'];
+  }
+}
+```
+
+## Monitoring & Observability
+
+### 1. Application Metrics
+
+```typescript
+export class MetricsCollector {
+  private prometheus: PrometheusRegistry;
+  
+  constructor() {
+    this.setupMetrics();
+  }
+  
+  private setupMetrics(): void {
+    // Project metrics
+    this.projectsCreated = new prometheus.Counter({
+      name: 'vaporform_projects_created_total',
+      help: 'Total number of projects created'
+    });
+    
+    this.activeProjects = new prometheus.Gauge({
+      name: 'vaporform_active_projects',
+      help: 'Number of currently active projects'
+    });
+    
+    // Container metrics
+    this.containerResourceUsage = new prometheus.Histogram({
+      name: 'vaporform_container_resource_usage',
+      help: 'Container resource usage distribution',
+      buckets: [0.1, 0.5, 1, 2, 5, 10]
+    });
+    
+    // Claude API metrics
+    this.claudeRequestDuration = new prometheus.Histogram({
+      name: 'vaporform_claude_request_duration_seconds',
+      help: 'Claude API request duration',
+      buckets: [0.1, 0.5, 1, 2, 5, 10, 30]
+    });
+  }
+}
+```
+
+This comprehensive system architecture provides a solid foundation for building Vaporform with clear separation of concerns, robust security, performance optimization, and comprehensive monitoring.

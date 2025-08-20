@@ -1,0 +1,1136 @@
+# Testing Strategy & Implementation
+
+## Overview
+
+Vaporform's testing strategy ensures reliability, performance, and security across all system components. It includes comprehensive unit testing, integration testing, end-to-end testing, performance testing, and AI-specific testing for Claude Code SDK integrations.
+
+## Testing Architecture
+
+### 1. Test Framework Setup
+
+```typescript
+// testing/TestFramework.ts
+import { TestSuite, TestRunner, TestReporter } from './core';
+import { DatabaseTestUtils } from './utils/DatabaseTestUtils';
+import { ContainerTestUtils } from './utils/ContainerTestUtils';
+import { APITestUtils } from './utils/APITestUtils';
+
+export class VaporformTestFramework {
+  private testRunner: TestRunner;
+  private testReporter: TestReporter;
+  private testEnvironment: TestEnvironment;
+  
+  constructor() {
+    this.testRunner = new TestRunner();
+    this.testReporter = new TestReporter();
+    this.testEnvironment = new TestEnvironment();
+  }
+
+  async setupTestEnvironment(): Promise<void> {
+    // Setup isolated test database
+    await this.testEnvironment.setupTestDatabase();
+    
+    // Setup test containers
+    await this.testEnvironment.setupTestContainers();
+    
+    // Setup mock services
+    await this.testEnvironment.setupMockServices();
+    
+    // Seed test data
+    await this.testEnvironment.seedTestData();
+  }
+
+  async runTestSuite(suiteName: string): Promise<TestResults> {
+    console.log(`Running test suite: ${suiteName}`);
+    
+    const suite = await this.loadTestSuite(suiteName);
+    const results = await this.testRunner.run(suite);
+    
+    await this.testReporter.generateReport(results);
+    
+    return results;
+  }
+
+  async runAllTests(): Promise<TestResults[]> {
+    const testSuites = [
+      'unit',
+      'integration', 
+      'api',
+      'frontend',
+      'claude-sdk',
+      'performance',
+      'security'
+    ];
+    
+    const allResults: TestResults[] = [];
+    
+    for (const suiteName of testSuites) {
+      const results = await this.runTestSuite(suiteName);
+      allResults.push(results);
+    }
+    
+    return allResults;
+  }
+
+  async cleanupTestEnvironment(): Promise<void> {
+    await this.testEnvironment.cleanup();
+  }
+}
+
+class TestEnvironment {
+  private testDbName: string;
+  private testContainers: Map<string, string> = new Map();
+  
+  constructor() {
+    this.testDbName = `vaporform_test_${Date.now()}`;
+  }
+
+  async setupTestDatabase(): Promise<void> {
+    // Create isolated test database
+    await DatabaseTestUtils.createTestDatabase(this.testDbName);
+    
+    // Run migrations
+    await DatabaseTestUtils.runMigrations(this.testDbName);
+    
+    // Set environment variable for tests
+    process.env.TEST_DATABASE_URL = `postgresql://localhost:5432/${this.testDbName}`;
+  }
+
+  async setupTestContainers(): Promise<void> {
+    // Start test Redis container
+    const redisContainer = await ContainerTestUtils.startRedisContainer();
+    this.testContainers.set('redis', redisContainer.id);
+    
+    // Start test MinIO container for file storage
+    const minioContainer = await ContainerTestUtils.startMinIOContainer();
+    this.testContainers.set('minio', minioContainer.id);
+    
+    // Update environment variables
+    process.env.TEST_REDIS_URL = redisContainer.connectionString;
+    process.env.TEST_STORAGE_URL = minioContainer.connectionString;
+  }
+
+  async setupMockServices(): Promise<void> {
+    // Mock Claude API
+    await this.setupClaudeMock();
+    
+    // Mock GitHub API
+    await this.setupGitHubMock();
+    
+    // Mock Docker registry
+    await this.setupDockerMock();
+  }
+
+  async seedTestData(): Promise<void> {
+    // Create test users
+    await DatabaseTestUtils.createTestUsers([
+      {
+        id: 'test-user-1',
+        email: 'test1@example.com',
+        name: 'Test User 1'
+      },
+      {
+        id: 'test-user-2', 
+        email: 'test2@example.com',
+        name: 'Test User 2'
+      }
+    ]);
+    
+    // Create test projects
+    await DatabaseTestUtils.createTestProjects([
+      {
+        id: 'test-project-1',
+        userId: 'test-user-1',
+        name: 'Test React App',
+        techStack: {
+          backend: { language: 'typescript', framework: 'node.js' },
+          frontend: { framework: 'react' }
+        }
+      }
+    ]);
+  }
+
+  async cleanup(): Promise<void> {
+    // Stop test containers
+    for (const [name, containerId] of this.testContainers) {
+      await ContainerTestUtils.stopContainer(containerId);
+    }
+    
+    // Drop test database
+    await DatabaseTestUtils.dropTestDatabase(this.testDbName);
+    
+    // Clear environment variables
+    delete process.env.TEST_DATABASE_URL;
+    delete process.env.TEST_REDIS_URL;
+    delete process.env.TEST_STORAGE_URL;
+  }
+
+  private async setupClaudeMock(): Promise<void> {
+    const claudeMock = {
+      createCompletion: jest.fn().mockResolvedValue({
+        content: [{ text: 'Generated code example' }]
+      }),
+      generateCode: jest.fn().mockResolvedValue('console.log("Hello World");'),
+      analyzeProject: jest.fn().mockResolvedValue({
+        complexity: 'medium',
+        recommendations: ['Add error handling', 'Improve test coverage']
+      })
+    };
+    
+    jest.doMock('@anthropic/claude-code-sdk', () => ({
+      ClaudeCodeSDK: jest.fn(() => claudeMock)
+    }));
+  }
+}
+```
+
+### 2. Unit Testing Implementation
+
+```typescript
+// testing/suites/unit/ProjectService.test.ts
+import { ProjectService } from '../../../src/services/ProjectService';
+import { DatabaseTestUtils } from '../../utils/DatabaseTestUtils';
+import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+
+describe('ProjectService', () => {
+  let projectService: ProjectService;
+  let testDb: any;
+
+  beforeEach(async () => {
+    testDb = await DatabaseTestUtils.getTestDatabase();
+    projectService = new ProjectService(testDb);
+  });
+
+  afterEach(async () => {
+    await DatabaseTestUtils.cleanupTestData();
+  });
+
+  describe('createProject', () => {
+    it('should create a new project successfully', async () => {
+      const projectData = {
+        name: 'Test Project',
+        description: 'A test project',
+        userId: 'test-user-1',
+        techStack: {
+          backend: { language: 'typescript', framework: 'node.js' },
+          frontend: { framework: 'react' }
+        }
+      };
+
+      const result = await projectService.createProject(projectData);
+
+      expect(result.success).toBe(true);
+      expect(result.project).toBeDefined();
+      expect(result.project.name).toBe(projectData.name);
+      expect(result.project.userId).toBe(projectData.userId);
+    });
+
+    it('should reject project with invalid name', async () => {
+      const projectData = {
+        name: '', // Invalid empty name
+        description: 'A test project',
+        userId: 'test-user-1',
+        techStack: {}
+      };
+
+      await expect(projectService.createProject(projectData))
+        .rejects
+        .toThrow('Project name cannot be empty');
+    });
+
+    it('should reject duplicate project names for same user', async () => {
+      const projectData = {
+        name: 'Duplicate Project',
+        description: 'A test project',
+        userId: 'test-user-1',
+        techStack: {}
+      };
+
+      // Create first project
+      await projectService.createProject(projectData);
+
+      // Attempt to create duplicate
+      await expect(projectService.createProject(projectData))
+        .rejects
+        .toThrow('Project name already exists');
+    });
+  });
+
+  describe('getProject', () => {
+    it('should retrieve existing project', async () => {
+      // Create test project
+      const createdProject = await DatabaseTestUtils.createTestProject({
+        id: 'test-project-123',
+        name: 'Existing Project',
+        userId: 'test-user-1'
+      });
+
+      const result = await projectService.getProject('test-project-123');
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe('test-project-123');
+      expect(result.name).toBe('Existing Project');
+    });
+
+    it('should return null for non-existent project', async () => {
+      const result = await projectService.getProject('non-existent-id');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('updateProject', () => {
+    it('should update project successfully', async () => {
+      const project = await DatabaseTestUtils.createTestProject({
+        id: 'test-project-update',
+        name: 'Original Name',
+        userId: 'test-user-1'
+      });
+
+      const updateData = {
+        name: 'Updated Name',
+        description: 'Updated description'
+      };
+
+      const result = await projectService.updateProject('test-project-update', updateData);
+
+      expect(result.success).toBe(true);
+      expect(result.project.name).toBe('Updated Name');
+      expect(result.project.description).toBe('Updated description');
+    });
+  });
+
+  describe('deleteProject', () => {
+    it('should delete project and cleanup resources', async () => {
+      const project = await DatabaseTestUtils.createTestProject({
+        id: 'test-project-delete',
+        name: 'Project to Delete',
+        userId: 'test-user-1'
+      });
+
+      const result = await projectService.deleteProject('test-project-delete');
+
+      expect(result.success).toBe(true);
+
+      // Verify project is deleted
+      const deletedProject = await projectService.getProject('test-project-delete');
+      expect(deletedProject).toBeNull();
+    });
+  });
+});
+```
+
+### 3. Integration Testing
+
+```typescript
+// testing/suites/integration/ClaudeIntegration.test.ts
+import { VaporformClaudeSDK } from '../../../src/claude/VaporformClaudeSDK';
+import { ProjectService } from '../../../src/services/ProjectService';
+import { FileSystemService } from '../../../src/filesystem/VirtualFileSystemManager';
+import { TestFramework } from '../../TestFramework';
+
+describe('Claude Integration Tests', () => {
+  let claudeSDK: VaporformClaudeSDK;
+  let projectService: ProjectService;
+  let fileSystemService: FileSystemService;
+  let testFramework: TestFramework;
+
+  beforeAll(async () => {
+    testFramework = new TestFramework();
+    await testFramework.setupTestEnvironment();
+    
+    claudeSDK = new VaporformClaudeSDK();
+    projectService = new ProjectService();
+    fileSystemService = new FileSystemService();
+  });
+
+  afterAll(async () => {
+    await testFramework.cleanupTestEnvironment();
+  });
+
+  describe('Project Creation Flow', () => {
+    it('should create project with Claude assistance end-to-end', async () => {
+      const projectRequest = {
+        name: 'AI Generated Project',
+        description: 'A React todo application with TypeScript',
+        techStack: {
+          backend: { language: 'typescript', framework: 'node.js' },
+          frontend: { framework: 'react' }
+        },
+        userId: 'test-user-1'
+      };
+
+      // Step 1: Create project
+      const projectResult = await projectService.createProject(projectRequest);
+      expect(projectResult.success).toBe(true);
+      
+      const projectId = projectResult.project.id;
+
+      // Step 2: Generate project structure with Claude
+      const generationResult = await claudeSDK.createProject({
+        projectId,
+        ...projectRequest
+      });
+
+      expect(generationResult.success).toBe(true);
+      expect(generationResult.files).toBeDefined();
+      expect(generationResult.files.length).toBeGreaterThan(0);
+
+      // Step 3: Verify files were created
+      const projectFiles = await fileSystemService.listFiles({
+        projectId,
+        userId: 'test-user-1',
+        directoryPath: '/'
+      });
+
+      expect(projectFiles.success).toBe(true);
+      expect(projectFiles.files).toBeDefined();
+      expect(projectFiles.files.length).toBeGreaterThan(0);
+
+      // Step 4: Verify essential files exist
+      const fileNames = projectFiles.files.map(f => f.name);
+      expect(fileNames).toContain('package.json');
+      expect(fileNames).toContain('tsconfig.json');
+      expect(fileNames).toContain('src');
+    });
+
+    it('should handle project modification requests', async () => {
+      // Create a test project first
+      const project = await this.createTestProject();
+
+      // Request modification through Claude
+      const modificationResult = await claudeSDK.modifyProject({
+        projectId: project.id,
+        instruction: 'Add a login component with email and password fields',
+        scope: 'feature'
+      });
+
+      expect(modificationResult.success).toBe(true);
+      expect(modificationResult.changes).toBeDefined();
+      expect(modificationResult.changes.length).toBeGreaterThan(0);
+
+      // Verify changes were applied
+      const hasLoginComponent = modificationResult.changes.some(change => 
+        change.filePath.includes('Login') && change.operation === 'create'
+      );
+      expect(hasLoginComponent).toBe(true);
+    });
+  });
+
+  describe('Real-time Code Assistance', () => {
+    it('should provide code suggestions in real-time', async () => {
+      const project = await this.createTestProject();
+      
+      // Simulate user typing in editor
+      const codeContext = {
+        filePath: 'src/components/TodoList.tsx',
+        currentCode: 'import React from "react";\n\nconst TodoList = () => {\n  // TODO: implement todo list logic\n',
+        cursorPosition: { line: 4, column: 0 }
+      };
+
+      const suggestion = await claudeSDK.getCodeSuggestion({
+        projectId: project.id,
+        ...codeContext
+      });
+
+      expect(suggestion.success).toBe(true);
+      expect(suggestion.suggestions).toBeDefined();
+      expect(suggestion.suggestions.length).toBeGreaterThan(0);
+    });
+  });
+
+  private async createTestProject() {
+    const projectData = {
+      name: `Test Project ${Date.now()}`,
+      description: 'Test project for integration tests',
+      userId: 'test-user-1',
+      techStack: {
+        backend: { language: 'typescript', framework: 'node.js' },
+        frontend: { framework: 'react' }
+      }
+    };
+
+    const result = await projectService.createProject(projectData);
+    return result.project;
+  }
+});
+```
+
+### 4. API Testing Suite
+
+```typescript
+// testing/suites/api/ProjectAPI.test.ts
+import request from 'supertest';
+import { App } from '../../../src/App';
+import { TestFramework } from '../../TestFramework';
+
+describe('Project API Tests', () => {
+  let app: App;
+  let testFramework: TestFramework;
+  let authToken: string;
+
+  beforeAll(async () => {
+    testFramework = new TestFramework();
+    await testFramework.setupTestEnvironment();
+    
+    app = new App();
+    await app.initialize();
+    
+    // Get auth token for test user
+    authToken = await this.getTestAuthToken();
+  });
+
+  afterAll(async () => {
+    await app.cleanup();
+    await testFramework.cleanupTestEnvironment();
+  });
+
+  describe('POST /api/projects', () => {
+    it('should create project with valid data', async () => {
+      const projectData = {
+        name: 'API Test Project',
+        description: 'Test project created via API',
+        techStack: {
+          backend: { language: 'typescript', framework: 'node.js' },
+          frontend: { framework: 'react' }
+        }
+      };
+
+      const response = await request(app.getServer())
+        .post('/api/projects')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(projectData)
+        .expect(201);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.project).toBeDefined();
+      expect(response.body.project.name).toBe(projectData.name);
+      expect(response.body.project.id).toBeDefined();
+    });
+
+    it('should reject invalid project data', async () => {
+      const invalidData = {
+        name: '', // Invalid empty name
+        description: 'Test'
+      };
+
+      const response = await request(app.getServer())
+        .post('/api/projects')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send(invalidData)
+        .expect(400);
+
+      expect(response.body.success).toBe(false);
+      expect(response.body.error).toContain('name');
+    });
+
+    it('should require authentication', async () => {
+      const projectData = {
+        name: 'Unauthorized Project',
+        description: 'This should fail'
+      };
+
+      await request(app.getServer())
+        .post('/api/projects')
+        .send(projectData)
+        .expect(401);
+    });
+  });
+
+  describe('GET /api/projects/:id', () => {
+    let testProjectId: string;
+
+    beforeEach(async () => {
+      // Create test project
+      const createResponse = await request(app.getServer())
+        .post('/api/projects')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          name: 'Get Test Project',
+          description: 'Project for GET tests'
+        });
+      
+      testProjectId = createResponse.body.project.id;
+    });
+
+    it('should return project details', async () => {
+      const response = await request(app.getServer())
+        .get(`/api/projects/${testProjectId}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(200);
+
+      expect(response.body.success).toBe(true);
+      expect(response.body.project).toBeDefined();
+      expect(response.body.project.id).toBe(testProjectId);
+    });
+
+    it('should return 404 for non-existent project', async () => {
+      await request(app.getServer())
+        .get('/api/projects/non-existent-id')
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(404);
+    });
+  });
+
+  describe('WebSocket API', () => {
+    it('should handle real-time project updates', (done) => {
+      const io = require('socket.io-client');
+      const client = io('http://localhost:3000', {
+        auth: { token: authToken }
+      });
+
+      client.on('connect', () => {
+        // Join project room
+        client.emit('join_project', { projectId: 'test-project-1' });
+      });
+
+      client.on('project_update', (data) => {
+        expect(data.projectId).toBe('test-project-1');
+        expect(data.type).toBeDefined();
+        client.disconnect();
+        done();
+      });
+
+      // Simulate project update after connection
+      setTimeout(() => {
+        this.triggerProjectUpdate('test-project-1');
+      }, 100);
+    });
+  });
+
+  private async getTestAuthToken(): Promise<string> {
+    const response = await request(app.getServer())
+      .post('/api/auth/login')
+      .send({
+        email: 'test1@example.com',
+        password: 'testpassword'
+      });
+
+    return response.body.token;
+  }
+
+  private triggerProjectUpdate(projectId: string): void {
+    // Trigger a project update event for WebSocket testing
+    app.getWebSocketService().notifyProjectUpdate(projectId, {
+      type: 'file_changed',
+      data: { filePath: 'test.js' }
+    });
+  }
+});
+```
+
+### 5. Performance Testing
+
+```typescript
+// testing/suites/performance/LoadTesting.test.ts
+import { performance } from 'perf_hooks';
+import { VaporformClaudeSDK } from '../../../src/claude/VaporformClaudeSDK';
+import { ProjectService } from '../../../src/services/ProjectService';
+
+describe('Performance Tests', () => {
+  let claudeSDK: VaporformClaudeSDK;
+  let projectService: ProjectService;
+
+  beforeAll(async () => {
+    claudeSDK = new VaporformClaudeSDK();
+    projectService = new ProjectService();
+  });
+
+  describe('Project Creation Performance', () => {
+    it('should create project within acceptable time', async () => {
+      const startTime = performance.now();
+
+      const result = await projectService.createProject({
+        name: 'Performance Test Project',
+        description: 'Testing creation performance',
+        userId: 'test-user-1',
+        techStack: {
+          backend: { language: 'typescript', framework: 'node.js' },
+          frontend: { framework: 'react' }
+        }
+      });
+
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+
+      expect(result.success).toBe(true);
+      expect(duration).toBeLessThan(5000); // Should complete within 5 seconds
+    });
+
+    it('should handle concurrent project creation', async () => {
+      const concurrentRequests = 10;
+      const projectPromises = [];
+
+      const startTime = performance.now();
+
+      for (let i = 0; i < concurrentRequests; i++) {
+        const promise = projectService.createProject({
+          name: `Concurrent Project ${i}`,
+          description: `Test project ${i}`,
+          userId: 'test-user-1',
+          techStack: {}
+        });
+        projectPromises.push(promise);
+      }
+
+      const results = await Promise.all(projectPromises);
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+
+      // All requests should succeed
+      results.forEach(result => {
+        expect(result.success).toBe(true);
+      });
+
+      // Should handle concurrent requests efficiently
+      expect(duration).toBeLessThan(15000); // Within 15 seconds for 10 concurrent requests
+    });
+  });
+
+  describe('Claude API Performance', () => {
+    it('should generate code within acceptable time', async () => {
+      const startTime = performance.now();
+
+      const result = await claudeSDK.generateCode(
+        'Create a React component for displaying a list of todos',
+        { language: 'typescript', framework: 'react' }
+      );
+
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+
+      expect(result).toBeDefined();
+      expect(duration).toBeLessThan(10000); // Should complete within 10 seconds
+    });
+
+    it('should handle multiple simultaneous Claude requests', async () => {
+      const requests = [
+        'Create a login form',
+        'Generate a dashboard component', 
+        'Build a navigation menu',
+        'Create an API service class',
+        'Generate unit tests'
+      ];
+
+      const startTime = performance.now();
+
+      const promises = requests.map(prompt => 
+        claudeSDK.generateCode(prompt, { language: 'typescript' })
+      );
+
+      const results = await Promise.all(promises);
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+
+      // All requests should succeed
+      results.forEach(result => {
+        expect(result).toBeDefined();
+        expect(typeof result).toBe('string');
+      });
+
+      // Should handle concurrent Claude requests efficiently
+      expect(duration).toBeLessThan(30000); // Within 30 seconds for 5 requests
+    });
+  });
+
+  describe('Memory Usage Tests', () => {
+    it('should not have memory leaks during project operations', async () => {
+      const initialMemory = process.memoryUsage().heapUsed;
+      
+      // Perform many project operations
+      for (let i = 0; i < 100; i++) {
+        await projectService.createProject({
+          name: `Memory Test Project ${i}`,
+          description: 'Testing memory usage',
+          userId: 'test-user-1',
+          techStack: {}
+        });
+      }
+
+      // Force garbage collection
+      if (global.gc) {
+        global.gc();
+      }
+
+      const finalMemory = process.memoryUsage().heapUsed;
+      const memoryIncrease = finalMemory - initialMemory;
+      const memoryIncreaseM = memoryIncrease / 1024 / 1024;
+
+      console.log(`Memory increase: ${memoryIncreaseM.toFixed(2)} MB`);
+      
+      // Memory increase should be reasonable (less than 100MB for 100 projects)
+      expect(memoryIncreaseM).toBeLessThan(100);
+    });
+  });
+
+  describe('Database Performance', () => {
+    it('should handle large project queries efficiently', async () => {
+      // Create many test projects
+      const projectCount = 1000;
+      const createPromises = [];
+
+      for (let i = 0; i < projectCount; i++) {
+        createPromises.push(
+          DatabaseTestUtils.createTestProject({
+            id: `perf-test-${i}`,
+            name: `Performance Project ${i}`,
+            userId: 'test-user-1'
+          })
+        );
+      }
+
+      await Promise.all(createPromises);
+
+      // Test query performance
+      const startTime = performance.now();
+      
+      const projects = await projectService.getUserProjects('test-user-1', {
+        limit: 50,
+        offset: 0,
+        sortBy: 'created_at',
+        sortOrder: 'desc'
+      });
+
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+
+      expect(projects.length).toBe(50);
+      expect(duration).toBeLessThan(1000); // Should complete within 1 second
+    });
+  });
+});
+```
+
+### 6. Security Testing
+
+```typescript
+// testing/suites/security/SecurityTests.test.ts
+import request from 'supertest';
+import { App } from '../../../src/App';
+import { SecurityTestUtils } from '../../utils/SecurityTestUtils';
+
+describe('Security Tests', () => {
+  let app: App;
+
+  beforeAll(async () => {
+    app = new App();
+    await app.initialize();
+  });
+
+  afterAll(async () => {
+    await app.cleanup();
+  });
+
+  describe('Authentication Security', () => {
+    it('should reject requests without valid JWT token', async () => {
+      await request(app.getServer())
+        .get('/api/projects')
+        .expect(401);
+    });
+
+    it('should reject requests with malformed JWT token', async () => {
+      await request(app.getServer())
+        .get('/api/projects')
+        .set('Authorization', 'Bearer invalid.token.here')
+        .expect(401);
+    });
+
+    it('should reject expired JWT tokens', async () => {
+      const expiredToken = SecurityTestUtils.generateExpiredToken();
+      
+      await request(app.getServer())
+        .get('/api/projects')
+        .set('Authorization', `Bearer ${expiredToken}`)
+        .expect(401);
+    });
+  });
+
+  describe('Input Validation', () => {
+    it('should prevent SQL injection in project queries', async () => {
+      const authToken = await SecurityTestUtils.getValidAuthToken();
+      
+      const maliciousInput = "'; DROP TABLE projects; --";
+      
+      const response = await request(app.getServer())
+        .get(`/api/projects/search?q=${encodeURIComponent(maliciousInput)}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(400);
+
+      expect(response.body.error).toContain('Invalid search query');
+    });
+
+    it('should sanitize XSS attempts in project descriptions', async () => {
+      const authToken = await SecurityTestUtils.getValidAuthToken();
+      
+      const xssPayload = '<script>alert("xss")</script>';
+      
+      const response = await request(app.getServer())
+        .post('/api/projects')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          name: 'XSS Test Project',
+          description: xssPayload
+        })
+        .expect(201);
+
+      expect(response.body.project.description).not.toContain('<script>');
+      expect(response.body.project.description).toContain('&lt;script&gt;');
+    });
+  });
+
+  describe('File System Security', () => {
+    it('should prevent directory traversal attacks', async () => {
+      const authToken = await SecurityTestUtils.getValidAuthToken();
+      
+      const traversalPath = '../../../etc/passwd';
+      
+      await request(app.getServer())
+        .get(`/api/projects/test-project/files/${encodeURIComponent(traversalPath)}`)
+        .set('Authorization', `Bearer ${authToken}`)
+        .expect(400);
+    });
+
+    it('should enforce file size limits', async () => {
+      const authToken = await SecurityTestUtils.getValidAuthToken();
+      
+      const largeContent = 'x'.repeat(10 * 1024 * 1024); // 10MB
+      
+      await request(app.getServer())
+        .put('/api/projects/test-project/files/large-file.txt')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ content: largeContent })
+        .expect(413); // Payload too large
+    });
+  });
+
+  describe('Rate Limiting', () => {
+    it('should enforce rate limits on API endpoints', async () => {
+      const authToken = await SecurityTestUtils.getValidAuthToken();
+      
+      // Make many rapid requests
+      const requests = [];
+      for (let i = 0; i < 100; i++) {
+        requests.push(
+          request(app.getServer())
+            .get('/api/projects')
+            .set('Authorization', `Bearer ${authToken}`)
+        );
+      }
+
+      const responses = await Promise.all(requests);
+      
+      // Some requests should be rate limited
+      const rateLimitedResponses = responses.filter(r => r.status === 429);
+      expect(rateLimitedResponses.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Container Security', () => {
+    it('should prevent privileged container escalation', async () => {
+      const authToken = await SecurityTestUtils.getValidAuthToken();
+      
+      // Attempt to run privileged command
+      const response = await request(app.getServer())
+        .post('/api/projects/test-project/terminal/execute')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({ command: 'sudo cat /etc/shadow' })
+        .expect(403);
+
+      expect(response.body.error).toContain('Command not allowed');
+    });
+
+    it('should enforce resource limits on containers', async () => {
+      const containerInfo = await SecurityTestUtils.getTestContainerInfo();
+      
+      expect(containerInfo.HostConfig.Memory).toBeLessThanOrEqual(2 * 1024 * 1024 * 1024); // 2GB max
+      expect(containerInfo.HostConfig.CpuShares).toBeLessThanOrEqual(2048); // 2 CPU max
+    });
+  });
+});
+```
+
+### 7. AI Testing Suite
+
+```typescript
+// testing/suites/ai/ClaudeSDKTests.test.ts
+import { VaporformClaudeSDK } from '../../../src/claude/VaporformClaudeSDK';
+import { AITestUtils } from '../../utils/AITestUtils';
+
+describe('Claude SDK AI Tests', () => {
+  let claudeSDK: VaporformClaudeSDK;
+
+  beforeAll(async () => {
+    claudeSDK = new VaporformClaudeSDK();
+  });
+
+  describe('Code Generation Quality', () => {
+    it('should generate syntactically correct TypeScript code', async () => {
+      const prompt = 'Create a TypeScript interface for a user with id, name, and email';
+      
+      const generatedCode = await claudeSDK.generateCode(prompt, {
+        language: 'typescript'
+      });
+
+      // Parse and validate TypeScript syntax
+      const syntaxValid = await AITestUtils.validateTypeScriptSyntax(generatedCode);
+      expect(syntaxValid).toBe(true);
+
+      // Check for expected interface structure
+      expect(generatedCode).toContain('interface');
+      expect(generatedCode).toContain('id');
+      expect(generatedCode).toContain('name');
+      expect(generatedCode).toContain('email');
+    });
+
+    it('should generate working React components', async () => {
+      const prompt = 'Create a React functional component that displays a counter with increment and decrement buttons';
+      
+      const generatedCode = await claudeSDK.generateCode(prompt, {
+        language: 'typescript',
+        framework: 'react'
+      });
+
+      // Validate React component structure
+      const isValidReact = await AITestUtils.validateReactComponent(generatedCode);
+      expect(isValidReact).toBe(true);
+
+      // Check for expected React patterns
+      expect(generatedCode).toContain('useState');
+      expect(generatedCode).toContain('onClick');
+      expect(generatedCode).toMatch(/function|const.*=.*=>/); // Function declaration
+    });
+
+    it('should generate appropriate test cases', async () => {
+      const sourceCode = `
+        function calculateTotal(items: { price: number; quantity: number }[]): number {
+          return items.reduce((total, item) => total + (item.price * item.quantity), 0);
+        }
+      `;
+
+      const testCode = await claudeSDK.generateTests(sourceCode);
+
+      // Validate test structure
+      expect(testCode).toContain('describe');
+      expect(testCode).toContain('it');
+      expect(testCode).toContain('expect');
+      expect(testCode).toContain('calculateTotal');
+
+      // Check for edge case testing
+      expect(testCode).toMatch(/empty.*array|zero.*items/i);
+    });
+  });
+
+  describe('Code Analysis Quality', () => {
+    it('should identify code quality issues', async () => {
+      const problematicCode = `
+        function badFunction(x) {
+          var result;
+          if (x) {
+            result = x + 1;
+          }
+          return result;
+        }
+      `;
+
+      const analysis = await claudeSDK.analyzeCode(problematicCode);
+
+      expect(analysis.issues).toBeDefined();
+      expect(analysis.issues.length).toBeGreaterThan(0);
+
+      // Should identify specific issues
+      const issueTypes = analysis.issues.map(i => i.type);
+      expect(issueTypes).toContain('undefined_return');
+      expect(issueTypes).toContain('var_usage');
+    });
+
+    it('should provide meaningful code suggestions', async () => {
+      const code = 'const users = []; // TODO: fetch users from API';
+      
+      const suggestions = await claudeSDK.getCodeSuggestions({
+        code,
+        language: 'typescript',
+        context: 'user management'
+      });
+
+      expect(suggestions).toBeDefined();
+      expect(suggestions.length).toBeGreaterThan(0);
+      
+      // Should suggest API-related code
+      const suggestionText = suggestions.map(s => s.text).join(' ');
+      expect(suggestionText).toMatch(/fetch|api|async|await/i);
+    });
+  });
+
+  describe('Context Understanding', () => {
+    it('should understand project context for better suggestions', async () => {
+      const projectContext = {
+        techStack: {
+          backend: { language: 'typescript', framework: 'express' },
+          frontend: { framework: 'react' },
+          database: 'postgresql'
+        },
+        existingFiles: [
+          'src/models/User.ts',
+          'src/services/UserService.ts',
+          'src/routes/userRoutes.ts'
+        ]
+      };
+
+      const suggestion = await claudeSDK.generateCode(
+        'Create an endpoint to get user profile',
+        projectContext
+      );
+
+      // Should use project-appropriate patterns
+      expect(suggestion).toContain('express');
+      expect(suggestion).toMatch(/app\.get|router\.get/);
+      expect(suggestion).toContain('UserService'); // Should reference existing service
+    });
+
+    it('should maintain consistency with existing code style', async () => {
+      const existingCode = `
+        export interface User {
+          readonly id: string;
+          readonly email: string;
+          readonly name: string;
+        }
+      `;
+
+      const newCode = await claudeSDK.generateCode(
+        'Create a Product interface similar to User',
+        { 
+          existingCodeStyle: existingCode,
+          language: 'typescript'
+        }
+      );
+
+      // Should follow similar patterns
+      expect(newCode).toContain('export interface Product');
+      expect(newCode).toContain('readonly id');
+      expect(newCode).toMatch(/readonly \w+: string/);
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle invalid prompts gracefully', async () => {
+      const invalidPrompt = ''; // Empty prompt
+      
+      await expect(claudeSDK.generateCode(invalidPrompt))
+        .rejects
+        .toThrow('Prompt cannot be empty');
+    });
+
+    it('should handle API failures gracefully', async () => {
+      // Mock API failure
+      jest.spyOn(claudeSDK, 'callAnthropicAPI').mockRejectedValueOnce(
+        new Error('API temporarily unavailable')
+      );
+
+      await expect(claudeSDK.generateCode('test prompt'))
+        .rejects
+        .toThrow('Claude API temporarily unavailable');
+    });
+  });
+});
+```
+
+This comprehensive testing strategy ensures Vaporform maintains high quality, reliability, and security across all components while providing extensive coverage for AI-specific functionality.

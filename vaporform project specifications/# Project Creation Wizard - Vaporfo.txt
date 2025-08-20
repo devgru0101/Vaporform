@@ -1,0 +1,738 @@
+# Project Creation Wizard - Vaporform Adaptation
+
+## Overview
+
+The Vaporform Project Creation Wizard is adapted from the original specifications to integrate seamlessly with our Claude Code SDK, Encore.ts backend, and containerized infrastructure. It guides users through creating sophisticated applications using natural language descriptions and AI-powered code generation.
+
+## Wizard Flow Adaptation
+
+### Step 1: Project Vision & Description
+
+**Enhanced AI-First Approach**
+
+```typescript
+// Frontend Component: ProjectVisionStep.tsx
+interface ProjectVisionStep {
+  projectName: string;
+  projectDescription: string;
+  desiredFunctionality: string;
+  targetAudience: string;
+  inspirationApps: string[]; // Apps the user wants to emulate
+  projectGoals: string[];
+}
+
+const ProjectVisionStep: React.FC = () => {
+  const [formData, setFormData] = useState<ProjectVisionStep>({
+    projectName: '',
+    projectDescription: '',
+    desiredFunctionality: '',
+    targetAudience: '',
+    inspirationApps: [],
+    projectGoals: []
+  });
+
+  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestions | null>(null);
+
+  // Real-time AI assistance as user types
+  const debouncedAnalyzeDescription = useCallback(
+    debounce(async (description: string) => {
+      if (description.length > 50) {
+        const suggestions = await vaporformApi.getAiSuggestions({
+          description,
+          type: 'project_analysis'
+        });
+        setAiSuggestions(suggestions);
+      }
+    }, 1000),
+    []
+  );
+
+  return (
+    <VaporformStep
+      title="Describe Your Project Vision"
+      subtitle="Tell Claude what you want to build - be as detailed as you like"
+    >
+      <div className="wizard-step-content">
+        
+        {/* Project Name */}
+        <VaporformInput
+          label="Project Name"
+          placeholder="e.g., TaskFlow Pro, EcoMarket, GameHub"
+          value={formData.projectName}
+          onChange={(value) => setFormData(prev => ({ ...prev, projectName: value }))}
+          validation={{
+            required: true,
+            pattern: /^[a-zA-Z0-9\s\-_]+$/,
+            maxLength: 50
+          }}
+        />
+
+        {/* Enhanced Description Field */}
+        <VaporformTextArea
+          label="Project Description"
+          placeholder="Describe your project in detail. What problem does it solve? Who is it for? What makes it unique?"
+          value={formData.projectDescription}
+          onChange={(value) => {
+            setFormData(prev => ({ ...prev, projectDescription: value }));
+            debouncedAnalyzeDescription(value);
+          }}
+          minLength={100}
+          maxLength={1000}
+          showWordCount
+          aiAssisted
+        />
+
+        {/* AI Suggestions Panel */}
+        {aiSuggestions && (
+          <AiSuggestionsPanel>
+            <h4>Claude's Analysis</h4>
+            <div className="ai-suggestions">
+              {aiSuggestions.suggestedTechStack && (
+                <SuggestionCard
+                  title="Recommended Tech Stack"
+                  items={aiSuggestions.suggestedTechStack}
+                  onApply={() => applySuggestion('techStack', aiSuggestions.suggestedTechStack)}
+                />
+              )}
+              {aiSuggestions.suggestedFeatures && (
+                <SuggestionCard
+                  title="Key Features to Consider"
+                  items={aiSuggestions.suggestedFeatures}
+                />
+              )}
+              {aiSuggestions.architectureRecommendation && (
+                <SuggestionCard
+                  title="Architecture Recommendation"
+                  content={aiSuggestions.architectureRecommendation}
+                />
+              )}
+            </div>
+          </AiSuggestionsPanel>
+        )}
+
+        {/* Functionality Details */}
+        <VaporformTextArea
+          label="Core Functionality"
+          placeholder="What specific features and capabilities should your app have? List the main user flows and interactions."
+          value={formData.desiredFunctionality}
+          onChange={(value) => setFormData(prev => ({ ...prev, desiredFunctionality: value }))}
+          minLength={50}
+          maxLength={2000}
+        />
+
+        {/* Target Audience */}
+        <VaporformInput
+          label="Target Audience"
+          placeholder="e.g., Small business owners, Students, Developers, General consumers"
+          value={formData.targetAudience}
+          onChange={(value) => setFormData(prev => ({ ...prev, targetAudience: value }))}
+        />
+
+        {/* Inspiration Apps */}
+        <VaporformTagInput
+          label="Inspiration Apps (Optional)"
+          placeholder="Apps or websites that inspire your vision"
+          tags={formData.inspirationApps}
+          onTagsChange={(tags) => setFormData(prev => ({ ...prev, inspirationApps: tags }))}
+          suggestions={['Notion', 'Slack', 'Figma', 'Stripe', 'Discord', 'Airbnb', 'Netflix']}
+        />
+      </div>
+    </VaporformStep>
+  );
+};
+```
+
+### Step 2: AI-Powered Tech Stack Recommendation
+
+**Claude-Driven Stack Selection**
+
+```typescript
+// TechStackRecommendationStep.tsx
+const TechStackRecommendationStep: React.FC = () => {
+  const [isAnalyzing, setIsAnalyzing] = useState(true);
+  const [recommendations, setRecommendations] = useState<TechStackRecommendations | null>(null);
+  const [selectedStack, setSelectedStack] = useState<TechStack | null>(null);
+  const [customizations, setCustomizations] = useState<StackCustomizations>({});
+
+  useEffect(() => {
+    analyzeProjectAndRecommendStack();
+  }, []);
+
+  const analyzeProjectAndRecommendStack = async () => {
+    setIsAnalyzing(true);
+    
+    try {
+      const projectContext = wizardContext.getProjectVision();
+      
+      const analysis = await vaporformApi.analyzeProject({
+        description: projectContext.projectDescription,
+        functionality: projectContext.desiredFunctionality,
+        targetAudience: projectContext.targetAudience,
+        inspirationApps: projectContext.inspirationApps
+      });
+
+      setRecommendations(analysis.recommendations);
+    } catch (error) {
+      console.error('Failed to analyze project:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  return (
+    <VaporformStep
+      title="AI-Recommended Tech Stack"
+      subtitle="Claude analyzed your project and suggests these technologies"
+    >
+      {isAnalyzing ? (
+        <ClaudeAnalyzingLoader />
+      ) : (
+        <div className="tech-stack-recommendations">
+          
+          {/* Primary Recommendation */}
+          <div className="primary-recommendation">
+            <h3>Recommended Stack</h3>
+            <div className="claude-explanation">
+              <ClaudeIcon />
+              <div className="explanation-text">
+                {recommendations?.reasoning}
+              </div>
+            </div>
+            
+            <TechStackCard
+              stack={recommendations?.primary}
+              isSelected={selectedStack?.id === recommendations?.primary.id}
+              onSelect={() => setSelectedStack(recommendations?.primary)}
+              confidence={recommendations?.confidence}
+            />
+          </div>
+
+          {/* Alternative Options */}
+          {recommendations?.alternatives && (
+            <div className="alternative-stacks">
+              <h4>Alternative Options</h4>
+              <div className="stack-grid">
+                {recommendations.alternatives.map((stack) => (
+                  <TechStackCard
+                    key={stack.id}
+                    stack={stack}
+                    isSelected={selectedStack?.id === stack.id}
+                    onSelect={() => setSelectedStack(stack)}
+                    isAlternative
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Stack Customization */}
+          {selectedStack && (
+            <StackCustomizationPanel
+              stack={selectedStack}
+              customizations={customizations}
+              onCustomizationsChange={setCustomizations}
+            />
+          )}
+
+          {/* Why This Stack? */}
+          {selectedStack && (
+            <WhyThisStackPanel stack={selectedStack} projectContext={wizardContext.getProjectVision()} />
+          )}
+        </div>
+      )}
+    </VaporformStep>
+  );
+};
+
+interface TechStack {
+  id: string;
+  name: string;
+  description: string;
+  architecture: 'monolithic' | 'microservices' | 'pwa';
+  backend: {
+    language: string;
+    framework: string;
+    runtime: string;
+  };
+  frontend: {
+    framework: string;
+    styling: string[];
+    buildTool: string;
+  };
+  database: {
+    primary: string;
+    caching?: string;
+  };
+  deployment: {
+    containerized: boolean;
+    scalability: 'low' | 'medium' | 'high';
+  };
+  complexity: 'beginner' | 'intermediate' | 'advanced';
+  estimatedDevTime: string;
+  pros: string[];
+  cons: string[];
+}
+```
+
+### Step 3: Integration & Feature Selection
+
+**Context-Aware Integration Recommendations**
+
+```typescript
+// IntegrationSelectionStep.tsx
+const IntegrationSelectionStep: React.FC = () => {
+  const [recommendedIntegrations, setRecommendedIntegrations] = useState<Integration[]>([]);
+  const [selectedIntegrations, setSelectedIntegrations] = useState<Integration[]>([]);
+  const [integrationCategories] = useState<IntegrationCategory[]>([
+    'Authentication', 'Payments', 'AI/ML', 'Communication', 'Analytics', 'Storage', 'Deployment'
+  ]);
+
+  useEffect(() => {
+    loadContextualIntegrations();
+  }, []);
+
+  const loadContextualIntegrations = async () => {
+    const projectContext = wizardContext.getFullContext();
+    
+    const recommendations = await vaporformApi.getIntegrationRecommendations({
+      projectDescription: projectContext.projectDescription,
+      techStack: projectContext.selectedTechStack,
+      projectGoals: projectContext.projectGoals
+    });
+
+    setRecommendedIntegrations(recommendations.integrations);
+  };
+
+  return (
+    <VaporformStep
+      title="Integrations & Services"
+      subtitle="Add powerful third-party services to enhance your app"
+    >
+      <div className="integration-selection">
+        
+        {/* Claude's Recommendations */}
+        <div className="recommended-integrations">
+          <h3>Recommended for Your Project</h3>
+          <div className="claude-explanation">
+            <ClaudeIcon />
+            <p>Based on your project description, these integrations would be valuable:</p>
+          </div>
+          
+          <div className="integration-grid">
+            {recommendedIntegrations.map((integration) => (
+              <IntegrationCard
+                key={integration.id}
+                integration={integration}
+                isSelected={selectedIntegrations.some(i => i.id === integration.id)}
+                onToggle={(integration) => toggleIntegration(integration)}
+                isRecommended
+                reason={integration.recommendationReason}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Browse All Integrations */}
+        <div className="all-integrations">
+          <h3>Browse All Integrations</h3>
+          
+          <div className="integration-categories">
+            {integrationCategories.map((category) => (
+              <IntegrationCategorySection
+                key={category}
+                category={category}
+                integrations={getIntegrationsByCategory(category)}
+                selectedIntegrations={selectedIntegrations}
+                onIntegrationToggle={toggleIntegration}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Integration Configuration Preview */}
+        {selectedIntegrations.length > 0 && (
+          <IntegrationConfigPreview
+            integrations={selectedIntegrations}
+            techStack={wizardContext.getSelectedTechStack()}
+          />
+        )}
+      </div>
+    </VaporformStep>
+  );
+};
+
+const IntegrationCard: React.FC<{
+  integration: Integration;
+  isSelected: boolean;
+  onToggle: (integration: Integration) => void;
+  isRecommended?: boolean;
+  reason?: string;
+}> = ({ integration, isSelected, onToggle, isRecommended, reason }) => {
+  return (
+    <div className={`integration-card ${isSelected ? 'selected' : ''} ${isRecommended ? 'recommended' : ''}`}>
+      <div className="integration-header">
+        <img src={integration.logoUrl} alt={integration.name} className="integration-logo" />
+        <div className="integration-info">
+          <h4>{integration.name}</h4>
+          <p className="integration-description">{integration.description}</p>
+        </div>
+        <div className="integration-controls">
+          <VaporformToggle
+            checked={isSelected}
+            onChange={() => onToggle(integration)}
+          />
+        </div>
+      </div>
+      
+      {isRecommended && reason && (
+        <div className="recommendation-reason">
+          <ClaudeIcon size="small" />
+          <span>{reason}</span>
+        </div>
+      )}
+      
+      <div className="integration-details">
+        <div className="pricing-tier">
+          {integration.hasFreeTier ? (
+            <span className="free-tier">Free tier available</span>
+          ) : (
+            <span className="paid-only">Paid only</span>
+          )}
+        </div>
+        
+        <div className="integration-features">
+          {integration.keyFeatures.slice(0, 3).map((feature, index) => (
+            <span key={index} className="feature-tag">{feature}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+```
+
+### Step 4: Project Configuration & Environment
+
+**Environment-Aware Setup**
+
+```typescript
+// ProjectConfigurationStep.tsx
+const ProjectConfigurationStep: React.FC = () => {
+  const [environmentConfig, setEnvironmentConfig] = useState<EnvironmentConfig>({
+    development: {},
+    staging: {},
+    production: {}
+  });
+  
+  const [deploymentPreferences, setDeploymentPreferences] = useState<DeploymentPreferences>({
+    autoDeployment: true,
+    containerRegistry: 'vaporform',
+    scaling: 'manual',
+    monitoring: true
+  });
+
+  return (
+    <VaporformStep
+      title="Project Configuration"
+      subtitle="Configure environments and deployment settings"
+    >
+      <div className="project-configuration">
+        
+        {/* Environment Variables */}
+        <div className="environment-section">
+          <h3>Environment Configuration</h3>
+          <p>Claude will automatically configure common environment variables based on your selected integrations.</p>
+          
+          <EnvironmentTabs>
+            <EnvironmentTab label="Development" environment="development">
+              <EnvironmentVariableEditor
+                variables={environmentConfig.development}
+                onChange={(vars) => updateEnvironmentConfig('development', vars)}
+                suggestions={getEnvironmentSuggestions('development')}
+              />
+            </EnvironmentTab>
+            
+            <EnvironmentTab label="Production" environment="production">
+              <EnvironmentVariableEditor
+                variables={environmentConfig.production}
+                onChange={(vars) => updateEnvironmentConfig('production', vars)}
+                suggestions={getEnvironmentSuggestions('production')}
+                isProduction
+              />
+            </EnvironmentTab>
+          </EnvironmentTabs>
+        </div>
+
+        {/* Container Configuration */}
+        <div className="container-section">
+          <h3>Container Configuration</h3>
+          
+          <div className="resource-allocation">
+            <ResourceSlider
+              label="Memory Limit"
+              value={containerConfig.memoryMB}
+              min={256}
+              max={4096}
+              step={256}
+              unit="MB"
+              onChange={(value) => updateContainerConfig('memoryMB', value)}
+              recommendation={getRecommendedMemory()}
+            />
+            
+            <ResourceSlider
+              label="CPU Allocation"
+              value={containerConfig.cpuPercent}
+              min={25}
+              max={200}
+              step={25}
+              unit="%"
+              onChange={(value) => updateContainerConfig('cpuPercent', value)}
+              recommendation={getRecommendedCPU()}
+            />
+          </div>
+        </div>
+
+        {/* Deployment Preferences */}
+        <div className="deployment-section">
+          <h3>Deployment & Scaling</h3>
+          
+          <VaporformCheckbox
+            label="Auto-deploy on code changes"
+            checked={deploymentPreferences.autoDeployment}
+            onChange={(checked) => updateDeploymentPrefs('autoDeployment', checked)}
+            description="Automatically deploy your app when Claude makes changes"
+          />
+          
+          <VaporformSelect
+            label="Scaling Strategy"
+            value={deploymentPreferences.scaling}
+            onChange={(value) => updateDeploymentPrefs('scaling', value)}
+            options={[
+              { value: 'manual', label: 'Manual scaling' },
+              { value: 'auto', label: 'Auto-scaling (coming soon)' },
+              { value: 'fixed', label: 'Fixed capacity' }
+            ]}
+          />
+        </div>
+      </div>
+    </VaporformStep>
+  );
+};
+```
+
+### Step 5: AI Generation Preview & Confirmation
+
+**Real-Time Generation Preview**
+
+```typescript
+// GenerationPreviewStep.tsx
+const GenerationPreviewStep: React.FC = () => {
+  const [generationPlan, setGenerationPlan] = useState<GenerationPlan | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgress>({
+    currentStep: '',
+    progress: 0,
+    estimatedTimeRemaining: 0
+  });
+
+  useEffect(() => {
+    generateProjectPlan();
+  }, []);
+
+  const generateProjectPlan = async () => {
+    const fullContext = wizardContext.getFullContext();
+    
+    const plan = await vaporformApi.generateProjectPlan(fullContext);
+    setGenerationPlan(plan);
+  };
+
+  const startGeneration = async () => {
+    setIsGenerating(true);
+    
+    try {
+      const result = await vaporformApi.createProject({
+        ...wizardContext.getFullContext(),
+        generationPlan
+      });
+      
+      // Redirect to the new project
+      navigate(`/projects/${result.projectId}`);
+      
+    } catch (error) {
+      console.error('Project generation failed:', error);
+      setIsGenerating(false);
+    }
+  };
+
+  return (
+    <VaporformStep
+      title="Review & Generate"
+      subtitle="Claude will create your project with these specifications"
+    >
+      {isGenerating ? (
+        <GenerationProgressView progress={generationProgress} />
+      ) : (
+        <div className="generation-preview">
+          
+          {/* Project Summary */}
+          <ProjectSummaryCard context={wizardContext.getFullContext()} />
+          
+          {/* Generation Plan */}
+          {generationPlan && (
+            <div className="generation-plan">
+              <h3>Generation Plan</h3>
+              <div className="claude-explanation">
+                <ClaudeIcon />
+                <p>Here's what Claude will create for you:</p>
+              </div>
+              
+              <div className="plan-steps">
+                {generationPlan.steps.map((step, index) => (
+                  <GenerationStepCard
+                    key={index}
+                    step={step}
+                    index={index}
+                    totalSteps={generationPlan.steps.length}
+                  />
+                ))}
+              </div>
+              
+              <div className="generation-timeline">
+                <div className="timeline-item">
+                  <Clock size={16} />
+                  <span>Estimated generation time: {generationPlan.estimatedDuration}</span>
+                </div>
+                <div className="timeline-item">
+                  <Files size={16} />
+                  <span>Will create ~{generationPlan.estimatedFileCount} files</span>
+                </div>
+                <div className="timeline-item">
+                  <Container size={16} />
+                  <span>Container will be ready at: {generationPlan.serviceUrl}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Final Actions */}
+          <div className="final-actions">
+            <VaporformButton
+              variant="outline"
+              onClick={() => wizardContext.goToPreviousStep()}
+            >
+              Back to Edit
+            </VaporformButton>
+            
+            <VaporformButton
+              variant="primary"
+              size="large"
+              onClick={startGeneration}
+              disabled={!generationPlan}
+            >
+              <Sparkles size={20} />
+              Generate My Project
+            </VaporformButton>
+          </div>
+        </div>
+      )}
+    </VaporformStep>
+  );
+};
+
+const GenerationProgressView: React.FC<{ progress: GenerationProgress }> = ({ progress }) => {
+  return (
+    <div className="generation-progress">
+      <div className="progress-header">
+        <Sparkles className="spinning" size={24} />
+        <h3>Claude is building your project...</h3>
+      </div>
+      
+      <div className="progress-content">
+        <ProgressBar value={progress.progress} max={100} />
+        
+        <div className="current-step">
+          <p>{progress.currentStep}</p>
+          <span className="time-remaining">
+            {progress.estimatedTimeRemaining > 0 && 
+              `~${Math.ceil(progress.estimatedTimeRemaining / 60)} minutes remaining`
+            }
+          </span>
+        </div>
+        
+        <div className="progress-details">
+          <div className="detail-item">
+            <CheckCircle size={16} className="completed" />
+            <span>Project structure created</span>
+          </div>
+          <div className="detail-item">
+            <CheckCircle size={16} className="completed" />
+            <span>Dependencies installed</span>
+          </div>
+          <div className="detail-item loading">
+            <Loader size={16} className="spinning" />
+            <span>Generating application code...</span>
+          </div>
+          <div className="detail-item pending">
+            <Circle size={16} />
+            <span>Configuring integrations</span>
+          </div>
+          <div className="detail-item pending">
+            <Circle size={16} />
+            <span>Starting development server</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+```
+
+## Backend Integration Points
+
+### Wizard Data Processing
+
+```typescript
+// Backend service for processing wizard data
+export const processProjectWizard = api(
+  { expose: true, method: "POST", path: "/projects/wizard/process", auth: true },
+  async (wizardData: ProjectWizardData): Promise<{ projectId: string; generationPlan: GenerationPlan }> => {
+    
+    // Validate wizard data
+    await validateWizardData(wizardData);
+    
+    // Create project record
+    const project = await db.exec`
+      INSERT INTO projects (
+        id, user_id, name, description, functionality,
+        architecture_type, tech_stack, integrations, environment_vars, status
+      ) VALUES (
+        ${generateId()}, ${auth.userID}, ${wizardData.projectName}, 
+        ${wizardData.projectDescription}, ${wizardData.desiredFunctionality},
+        ${wizardData.selectedTechStack.architecture}, 
+        ${JSON.stringify(wizardData.selectedTechStack)},
+        ${JSON.stringify(wizardData.selectedIntegrations)},
+        ${JSON.stringify(wizardData.environmentConfig)}, 'creating'
+      ) RETURNING *
+    `;
+    
+    // Generate Claude Code SDK instructions
+    const generationPlan = await claude.generateProjectPlan({
+      projectId: project.id,
+      wizardData: wizardData
+    });
+    
+    // Queue project generation
+    await claude.queueProjectGeneration({
+      projectId: project.id,
+      generationPlan: generationPlan
+    });
+    
+    return {
+      projectId: project.id,
+      generationPlan: generationPlan
+    };
+  }
+);
+```
+
+This adapted wizard provides a more intelligent, AI-driven approach to project creation that leverages Claude's capabilities while maintaining the comprehensive coverage of the original specification.

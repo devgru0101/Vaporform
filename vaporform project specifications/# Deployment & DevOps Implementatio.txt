@@ -1,0 +1,1148 @@
+# Deployment & DevOps Implementation
+
+## Overview
+
+Vaporform's deployment and DevOps system provides automated project deployment, container orchestration, CI/CD pipelines, and production monitoring. It seamlessly integrates with the development environment to enable one-click deployments and automatic scaling.
+
+## Container Orchestration
+
+### 1. Project Container Manager
+
+```typescript
+// devops/ContainerManager.ts
+import Docker from 'dockerode';
+import { ProjectConfig } from '../types/ProjectConfig';
+import { DeploymentConfig } from '../types/DeploymentConfig';
+
+export class ProjectContainerManager {
+  private docker: Docker;
+  private deployments: Map<string, DeploymentInfo> = new Map();
+  
+  constructor() {
+    this.docker = new Docker();
+  }
+
+  async deployProject(config: ProjectDeploymentConfig): Promise<DeploymentResult> {
+    try {
+      const deploymentId = this.generateDeploymentId();
+      
+      // Create deployment configuration
+      const deployment = await this.createDeployment(deploymentId, config);
+      
+      // Build container image
+      const imageTag = await this.buildProjectImage(config);
+      
+      // Deploy container
+      const container = await this.deployContainer(deployment, imageTag);
+      
+      // Configure networking and load balancing
+      await this.configureNetworking(deployment, container);
+      
+      // Set up monitoring
+      await this.setupMonitoring(deployment, container);
+      
+      // Update deployment status
+      deployment.status = 'running';
+      deployment.serviceUrl = `https://${config.projectId}.vaporform.app`;
+      
+      this.deployments.set(deploymentId, deployment);
+      
+      return {
+        success: true,
+        deploymentId,
+        serviceUrl: deployment.serviceUrl,
+        containerInfo: {
+          id: container.id,
+          status: 'running',
+          ports: deployment.ports
+        }
+      };
+
+    } catch (error) {
+      console.error('Deployment failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async scaleDeployment(deploymentId: string, replicas: number): Promise<ScaleResult> {
+    const deployment = this.deployments.get(deploymentId);
+    if (!deployment) {
+      throw new Error('Deployment not found');
+    }
+
+    try {
+      if (replicas > deployment.replicas) {
+        // Scale up
+        await this.scaleUp(deployment, replicas);
+      } else {
+        // Scale down
+        await this.scaleDown(deployment, replicas);
+      }
+
+      deployment.replicas = replicas;
+      
+      return {
+        success: true,
+        currentReplicas: replicas,
+        targets: deployment.containers.map(c => c.id)
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async updateDeployment(deploymentId: string, newConfig: ProjectConfig): Promise<DeploymentResult> {
+    const deployment = this.deployments.get(deploymentId);
+    if (!deployment) {
+      throw new Error('Deployment not found');
+    }
+
+    try {
+      // Build new image
+      const newImageTag = await this.buildProjectImage({
+        ...deployment.config,
+        ...newConfig,
+        version: this.generateVersion()
+      });
+
+      // Rolling update strategy
+      await this.performRollingUpdate(deployment, newImageTag);
+
+      return {
+        success: true,
+        deploymentId,
+        serviceUrl: deployment.serviceUrl
+      };
+
+    } catch (error) {
+      console.error('Update failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  async rollbackDeployment(deploymentId: string, targetVersion?: string): Promise<DeploymentResult> {
+    const deployment = this.deployments.get(deploymentId);
+    if (!deployment) {
+      throw new Error('Deployment not found');
+    }
+
+    try {
+      const rollbackVersion = targetVersion || deployment.previousVersion;
+      if (!rollbackVersion) {
+        throw new Error('No previous version available for rollback');
+      }
+
+      const rollbackImageTag = `${deployment.config.projectId}:${rollbackVersion}`;
+      
+      // Perform rollback
+      await this.performRollingUpdate(deployment, rollbackImageTag);
+      
+      deployment.currentVersion = rollbackVersion;
+
+      return {
+        success: true,
+        deploymentId,
+        serviceUrl: deployment.serviceUrl,
+        message: `Rolled back to version ${rollbackVersion}`
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  private async buildProjectImage(config: ProjectDeploymentConfig): Promise<string> {
+    const buildContext = await this.prepareBuildContext(config);
+    const dockerfile = await this.generateDockerfile(config);
+    
+    const imageTag = `${config.projectId}:${config.version}`;
+    
+    const buildStream = await this.docker.buildImage(buildContext, {
+      t: imageTag,
+      dockerfile: 'Dockerfile',
+      buildargs: {
+        NODE_ENV: config.environment || 'production',
+        PROJECT_ID: config.projectId
+      }
+    });
+
+    // Monitor build progress
+    await this.monitorBuildProgress(buildStream, config.projectId);
+    
+    return imageTag;
+  }
+
+  private async deployContainer(deployment: DeploymentInfo, imageTag: string): Promise<Docker.Container> {
+    const containerConfig = {
+      name: `${deployment.config.projectId}-${deployment.id}`,
+      Image: imageTag,
+      Env: this.buildEnvironmentVariables(deployment.config),
+      ExposedPorts: this.buildExposedPorts(deployment.ports),
+      HostConfig: {
+        PortBindings: this.buildPortBindings(deployment.ports),
+        Memory: deployment.config.resources?.memory || 512 * 1024 * 1024, // 512MB default
+        CpuShares: deployment.config.resources?.cpu || 1024,
+        RestartPolicy: { Name: 'unless-stopped' },
+        NetworkMode: 'vaporform-production'
+      },
+      Labels: {
+        'vaporform.deployment': deployment.id,
+        'vaporform.project': deployment.config.projectId,
+        'vaporform.version': deployment.currentVersion,
+        'traefik.enable': 'true',
+        'traefik.http.routers.${deployment.config.projectId}.rule': `Host(\`${deployment.config.projectId}.vaporform.app\`)`,
+        'traefik.http.services.${deployment.config.projectId}.loadbalancer.server.port': '3000'
+      },
+      Healthcheck: {
+        Test: ['CMD', 'curl', '-f', 'http://localhost:3000/health'],
+        Interval: 30000000000, // 30 seconds in nanoseconds
+        Timeout: 10000000000,   // 10 seconds
+        Retries: 3,
+        StartPeriod: 60000000000 // 60 seconds
+      }
+    };
+
+    const container = await this.docker.createContainer(containerConfig);
+    await container.start();
+    
+    // Wait for health check
+    await this.waitForHealthy(container, 120000); // 2 minutes timeout
+    
+    deployment.containers.push({
+      id: container.id,
+      status: 'running',
+      createdAt: new Date()
+    });
+
+    return container;
+  }
+
+  private async performRollingUpdate(deployment: DeploymentInfo, newImageTag: string): Promise<void> {
+    const updateStrategy = {
+      maxUnavailable: Math.floor(deployment.replicas * 0.25), // 25% max unavailable
+      maxSurge: Math.ceil(deployment.replicas * 0.25)         // 25% max surge
+    };
+
+    // Create new containers
+    const newContainers: Docker.Container[] = [];
+    
+    for (let i = 0; i < deployment.replicas; i++) {
+      const tempDeployment = { ...deployment, id: `${deployment.id}-update-${i}` };
+      const newContainer = await this.deployContainer(tempDeployment, newImageTag);
+      newContainers.push(newContainer);
+      
+      // Wait for new container to be healthy before proceeding
+      await this.waitForHealthy(newContainer, 120000);
+      
+      // Remove old container
+      if (deployment.containers[i]) {
+        const oldContainer = this.docker.getContainer(deployment.containers[i].id);
+        await oldContainer.stop();
+        await oldContainer.remove();
+      }
+      
+      // Add some delay between updates
+      if (i < deployment.replicas - 1) {
+        await new Promise(resolve => setTimeout(resolve, 10000)); // 10 second delay
+      }
+    }
+
+    // Update deployment info
+    deployment.containers = newContainers.map(container => ({
+      id: container.id,
+      status: 'running',
+      createdAt: new Date()
+    }));
+    
+    deployment.previousVersion = deployment.currentVersion;
+    deployment.currentVersion = newImageTag.split(':')[1];
+  }
+
+  private generateDockerfile(config: ProjectDeploymentConfig): string {
+    const { techStack } = config;
+    
+    // Base Dockerfile template based on tech stack
+    let dockerfile = '';
+
+    switch (techStack.backend.language.toLowerCase()) {
+      case 'javascript':
+      case 'typescript':
+        dockerfile = this.generateNodeDockerfile(config);
+        break;
+      case 'python':
+        dockerfile = this.generatePythonDockerfile(config);
+        break;
+      case 'go':
+        dockerfile = this.generateGoDockerfile(config);
+        break;
+      default:
+        dockerfile = this.generateNodeDockerfile(config); // Default fallback
+    }
+
+    return dockerfile;
+  }
+
+  private generateNodeDockerfile(config: ProjectDeploymentConfig): string {
+    return `
+# Multi-stage build for Node.js application
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copy source code
+COPY . .
+
+# Build application if needed
+RUN npm run build || echo "No build script found"
+
+# Production stage
+FROM node:18-alpine AS production
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create app directory and user
+RUN addgroup -g 1001 -S appgroup && adduser -S appuser -u 1001 -G appgroup
+WORKDIR /app
+RUN chown -R appuser:appgroup /app
+
+# Copy built application
+COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules
+COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
+COPY --from=builder --chown=appuser:appgroup /app/package*.json ./
+
+# Switch to non-root user
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \\
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Expose port
+EXPOSE 3000
+
+# Start application
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["node", "dist/index.js"]
+`;
+  }
+
+  private generatePythonDockerfile(config: ProjectDeploymentConfig): string {
+    return `
+# Multi-stage build for Python application
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \\
+    build-essential \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY requirements.txt .
+RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Production stage
+FROM python:3.11-slim AS production
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \\
+    curl \\
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user
+RUN useradd --create-home --shell /bin/bash appuser
+
+# Copy installed packages
+COPY --from=builder /root/.local /home/appuser/.local
+
+# Set up application
+WORKDIR /app
+COPY --chown=appuser:appuser . .
+
+# Switch to app user
+USER appuser
+
+# Add user packages to PATH
+ENV PATH=/home/appuser/.local/bin:$PATH
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \\
+  CMD curl -f http://localhost:8000/health || exit 1
+
+# Expose port
+EXPOSE 8000
+
+# Start application
+CMD ["python", "main.py"]
+`;
+  }
+
+  async getDeploymentInfo(deploymentId: string): Promise<DeploymentInfo | null> {
+    return this.deployments.get(deploymentId) || null;
+  }
+
+  async getProjectDeployments(projectId: string): Promise<DeploymentInfo[]> {
+    return Array.from(this.deployments.values())
+      .filter(deployment => deployment.config.projectId === projectId);
+  }
+
+  async deleteDeployment(deploymentId: string): Promise<void> {
+    const deployment = this.deployments.get(deploymentId);
+    if (!deployment) {
+      throw new Error('Deployment not found');
+    }
+
+    // Stop and remove all containers
+    for (const containerInfo of deployment.containers) {
+      try {
+        const container = this.docker.getContainer(containerInfo.id);
+        await container.stop();
+        await container.remove();
+      } catch (error) {
+        console.error(`Failed to remove container ${containerInfo.id}:`, error);
+      }
+    }
+
+    // Clean up deployment
+    this.deployments.delete(deploymentId);
+  }
+
+  private generateDeploymentId(): string {
+    return `deploy_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private generateVersion(): string {
+    return `v${Date.now()}`;
+  }
+}
+
+interface ProjectDeploymentConfig {
+  projectId: string;
+  version: string;
+  environment: 'development' | 'staging' | 'production';
+  techStack: TechStack;
+  resources?: {
+    memory: number;
+    cpu: number;
+  };
+  environmentVariables: Record<string, string>;
+  buildConfiguration?: any;
+}
+
+interface DeploymentInfo {
+  id: string;
+  config: ProjectDeploymentConfig;
+  status: 'pending' | 'building' | 'deploying' | 'running' | 'failed' | 'stopped';
+  replicas: number;
+  currentVersion: string;
+  previousVersion?: string;
+  serviceUrl: string;
+  ports: { internal: number; external: number }[];
+  containers: ContainerInfo[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface ContainerInfo {
+  id: string;
+  status: string;
+  createdAt: Date;
+}
+
+interface DeploymentResult {
+  success: boolean;
+  deploymentId?: string;
+  serviceUrl?: string;
+  containerInfo?: any;
+  error?: string;
+  message?: string;
+}
+
+interface ScaleResult {
+  success: boolean;
+  currentReplicas?: number;
+  targets?: string[];
+  error?: string;
+}
+```
+
+### 2. CI/CD Pipeline Manager
+
+```typescript
+// devops/CICDManager.ts
+export class CICDManager {
+  private pipelines: Map<string, Pipeline> = new Map();
+  private containerManager: ProjectContainerManager;
+  
+  constructor(containerManager: ProjectContainerManager) {
+    this.containerManager = containerManager;
+  }
+
+  async createPipeline(config: PipelineConfig): Promise<Pipeline> {
+    const pipelineId = this.generatePipelineId();
+    
+    const pipeline: Pipeline = {
+      id: pipelineId,
+      projectId: config.projectId,
+      name: config.name,
+      triggers: config.triggers,
+      stages: config.stages,
+      status: 'inactive',
+      executions: [],
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    this.pipelines.set(pipelineId, pipeline);
+    
+    // Set up triggers
+    await this.setupPipelineTriggers(pipeline);
+    
+    return pipeline;
+  }
+
+  async executePipeline(pipelineId: string, trigger: ExecutionTrigger): Promise<PipelineExecution> {
+    const pipeline = this.pipelines.get(pipelineId);
+    if (!pipeline) {
+      throw new Error('Pipeline not found');
+    }
+
+    const executionId = this.generateExecutionId();
+    const execution: PipelineExecution = {
+      id: executionId,
+      pipelineId: pipelineId,
+      trigger: trigger,
+      status: 'running',
+      stages: [],
+      startedAt: new Date(),
+      logs: []
+    };
+
+    pipeline.executions.push(execution);
+    
+    try {
+      // Execute pipeline stages sequentially
+      for (const stageConfig of pipeline.stages) {
+        const stageExecution = await this.executeStage(execution, stageConfig);
+        execution.stages.push(stageExecution);
+        
+        if (stageExecution.status === 'failed') {
+          execution.status = 'failed';
+          execution.completedAt = new Date();
+          break;
+        }
+      }
+
+      if (execution.status === 'running') {
+        execution.status = 'success';
+        execution.completedAt = new Date();
+      }
+
+    } catch (error) {
+      execution.status = 'failed';
+      execution.error = error.message;
+      execution.completedAt = new Date();
+    }
+
+    return execution;
+  }
+
+  private async executeStage(execution: PipelineExecution, stageConfig: StageConfig): Promise<StageExecution> {
+    const stageExecution: StageExecution = {
+      name: stageConfig.name,
+      status: 'running',
+      startedAt: new Date(),
+      steps: []
+    };
+
+    this.addExecutionLog(execution, `Starting stage: ${stageConfig.name}`);
+
+    try {
+      // Execute stage steps
+      for (const stepConfig of stageConfig.steps) {
+        const stepExecution = await this.executeStep(execution, stepConfig);
+        stageExecution.steps.push(stepExecution);
+        
+        if (stepExecution.status === 'failed') {
+          stageExecution.status = 'failed';
+          break;
+        }
+      }
+
+      if (stageExecution.status === 'running') {
+        stageExecution.status = 'success';
+      }
+
+    } catch (error) {
+      stageExecution.status = 'failed';
+      stageExecution.error = error.message;
+      this.addExecutionLog(execution, `Stage failed: ${error.message}`);
+    }
+
+    stageExecution.completedAt = new Date();
+    this.addExecutionLog(execution, `Stage ${stageConfig.name} completed with status: ${stageExecution.status}`);
+    
+    return stageExecution;
+  }
+
+  private async executeStep(execution: PipelineExecution, stepConfig: StepConfig): Promise<StepExecution> {
+    const stepExecution: StepExecution = {
+      name: stepConfig.name,
+      type: stepConfig.type,
+      status: 'running',
+      startedAt: new Date()
+    };
+
+    this.addExecutionLog(execution, `Executing step: ${stepConfig.name}`);
+
+    try {
+      switch (stepConfig.type) {
+        case 'build':
+          await this.executeBuildStep(execution, stepConfig);
+          break;
+        case 'test':
+          await this.executeTestStep(execution, stepConfig);
+          break;
+        case 'deploy':
+          await this.executeDeployStep(execution, stepConfig);
+          break;
+        case 'script':
+          await this.executeScriptStep(execution, stepConfig);
+          break;
+        default:
+          throw new Error(`Unknown step type: ${stepConfig.type}`);
+      }
+
+      stepExecution.status = 'success';
+
+    } catch (error) {
+      stepExecution.status = 'failed';
+      stepExecution.error = error.message;
+      this.addExecutionLog(execution, `Step failed: ${error.message}`);
+    }
+
+    stepExecution.completedAt = new Date();
+    return stepExecution;
+  }
+
+  private async executeBuildStep(execution: PipelineExecution, stepConfig: StepConfig): Promise<void> {
+    this.addExecutionLog(execution, 'Building project...');
+    
+    const pipeline = this.pipelines.get(execution.pipelineId)!;
+    const project = await this.getProject(pipeline.projectId);
+    
+    // Trigger build process
+    const buildResult = await this.containerManager.buildProjectImage({
+      projectId: pipeline.projectId,
+      version: this.generateBuildVersion(),
+      environment: stepConfig.environment || 'production',
+      techStack: project.techStack,
+      environmentVariables: stepConfig.environmentVariables || {}
+    });
+
+    this.addExecutionLog(execution, `Build completed successfully`);
+  }
+
+  private async executeDeployStep(execution: PipelineExecution, stepConfig: StepConfig): Promise<void> {
+    this.addExecutionLog(execution, 'Deploying to environment...');
+    
+    const pipeline = this.pipelines.get(execution.pipelineId)!;
+    const project = await this.getProject(pipeline.projectId);
+    
+    const deployResult = await this.containerManager.deployProject({
+      projectId: pipeline.projectId,
+      version: this.generateBuildVersion(),
+      environment: stepConfig.environment || 'production',
+      techStack: project.techStack,
+      environmentVariables: stepConfig.environmentVariables || {},
+      resources: stepConfig.resources
+    });
+
+    if (!deployResult.success) {
+      throw new Error(deployResult.error || 'Deployment failed');
+    }
+
+    this.addExecutionLog(execution, `Deployed successfully to ${deployResult.serviceUrl}`);
+  }
+
+  private async executeTestStep(execution: PipelineExecution, stepConfig: StepConfig): Promise<void> {
+    this.addExecutionLog(execution, 'Running tests...');
+    
+    // Execute test commands
+    const testCommands = stepConfig.commands || ['npm test'];
+    
+    for (const command of testCommands) {
+      this.addExecutionLog(execution, `Running: ${command}`);
+      
+      // Execute command in test environment
+      const result = await this.executeCommand(command, stepConfig.workingDirectory);
+      
+      if (result.exitCode !== 0) {
+        throw new Error(`Test command failed: ${result.stderr}`);
+      }
+      
+      this.addExecutionLog(execution, result.stdout);
+    }
+
+    this.addExecutionLog(execution, 'All tests passed');
+  }
+
+  private async setupPipelineTriggers(pipeline: Pipeline): Promise<void> {
+    for (const trigger of pipeline.triggers) {
+      switch (trigger.type) {
+        case 'git_push':
+          await this.setupGitTrigger(pipeline, trigger);
+          break;
+        case 'schedule':
+          await this.setupScheduleTrigger(pipeline, trigger);
+          break;
+        case 'manual':
+          // No setup needed for manual triggers
+          break;
+      }
+    }
+  }
+
+  private async setupGitTrigger(pipeline: Pipeline, trigger: Trigger): Promise<void> {
+    // Set up webhook for Git repository
+    // This would integrate with the user's Git provider (GitHub, GitLab, etc.)
+    
+    this.addExecutionLog = this.addExecutionLog.bind(this);
+    
+    // Register webhook handler
+    const webhookUrl = `${process.env.BASE_URL}/webhooks/git/${pipeline.id}`;
+    
+    // Store webhook configuration
+    await this.storeWebhookConfig(pipeline.id, {
+      url: webhookUrl,
+      secret: this.generateWebhookSecret(),
+      events: ['push', 'pull_request']
+    });
+  }
+
+  private addExecutionLog(execution: PipelineExecution, message: string): void {
+    execution.logs.push({
+      timestamp: new Date(),
+      message: message,
+      level: 'info'
+    });
+  }
+
+  async getPipelineExecutions(pipelineId: string, limit: number = 10): Promise<PipelineExecution[]> {
+    const pipeline = this.pipelines.get(pipelineId);
+    if (!pipeline) {
+      throw new Error('Pipeline not found');
+    }
+
+    return pipeline.executions
+      .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+      .slice(0, limit);
+  }
+
+  async getPipelineStatus(pipelineId: string): Promise<PipelineStatus> {
+    const pipeline = this.pipelines.get(pipelineId);
+    if (!pipeline) {
+      throw new Error('Pipeline not found');
+    }
+
+    const lastExecution = pipeline.executions[pipeline.executions.length - 1];
+    
+    return {
+      pipelineId: pipeline.id,
+      status: pipeline.status,
+      lastExecution: lastExecution ? {
+        id: lastExecution.id,
+        status: lastExecution.status,
+        startedAt: lastExecution.startedAt,
+        completedAt: lastExecution.completedAt
+      } : null,
+      totalExecutions: pipeline.executions.length
+    };
+  }
+
+  private generatePipelineId(): string {
+    return `pipeline_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private generateExecutionId(): string {
+    return `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private generateBuildVersion(): string {
+    return `${Date.now()}`;
+  }
+}
+
+interface Pipeline {
+  id: string;
+  projectId: string;
+  name: string;
+  triggers: Trigger[];
+  stages: StageConfig[];
+  status: 'active' | 'inactive';
+  executions: PipelineExecution[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface PipelineConfig {
+  projectId: string;
+  name: string;
+  triggers: Trigger[];
+  stages: StageConfig[];
+}
+
+interface Trigger {
+  type: 'git_push' | 'schedule' | 'manual';
+  configuration: any;
+}
+
+interface StageConfig {
+  name: string;
+  steps: StepConfig[];
+}
+
+interface StepConfig {
+  name: string;
+  type: 'build' | 'test' | 'deploy' | 'script';
+  commands?: string[];
+  environment?: string;
+  environmentVariables?: Record<string, string>;
+  workingDirectory?: string;
+  resources?: {
+    memory: number;
+    cpu: number;
+  };
+}
+
+interface PipelineExecution {
+  id: string;
+  pipelineId: string;
+  trigger: ExecutionTrigger;
+  status: 'running' | 'success' | 'failed' | 'cancelled';
+  stages: StageExecution[];
+  startedAt: Date;
+  completedAt?: Date;
+  error?: string;
+  logs: ExecutionLog[];
+}
+
+interface StageExecution {
+  name: string;
+  status: 'running' | 'success' | 'failed';
+  startedAt: Date;
+  completedAt?: Date;
+  error?: string;
+  steps: StepExecution[];
+}
+
+interface StepExecution {
+  name: string;
+  type: string;
+  status: 'running' | 'success' | 'failed';
+  startedAt: Date;
+  completedAt?: Date;
+  error?: string;
+}
+
+interface ExecutionTrigger {
+  type: string;
+  source: string;
+  metadata?: any;
+}
+
+interface ExecutionLog {
+  timestamp: Date;
+  message: string;
+  level: 'info' | 'warn' | 'error';
+}
+
+interface PipelineStatus {
+  pipelineId: string;
+  status: string;
+  lastExecution: {
+    id: string;
+    status: string;
+    startedAt: Date;
+    completedAt?: Date;
+  } | null;
+  totalExecutions: number;
+}
+```
+
+### 3. Environment Management
+
+```typescript
+// devops/EnvironmentManager.ts
+export class EnvironmentManager {
+  private environments: Map<string, Environment> = new Map();
+  
+  async createEnvironment(config: EnvironmentConfig): Promise<Environment> {
+    const environmentId = this.generateEnvironmentId();
+    
+    const environment: Environment = {
+      id: environmentId,
+      name: config.name,
+      type: config.type,
+      projectId: config.projectId,
+      configuration: config.configuration,
+      status: 'creating',
+      resources: [],
+      deployments: [],
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    this.environments.set(environmentId, environment);
+
+    // Provision environment infrastructure
+    await this.provisionEnvironment(environment);
+    
+    environment.status = 'ready';
+    environment.updatedAt = new Date();
+    
+    return environment;
+  }
+
+  private async provisionEnvironment(environment: Environment): Promise<void> {
+    switch (environment.type) {
+      case 'development':
+        await this.provisionDevelopmentEnvironment(environment);
+        break;
+      case 'staging':
+        await this.provisionStagingEnvironment(environment);
+        break;
+      case 'production':
+        await this.provisionProductionEnvironment(environment);
+        break;
+    }
+  }
+
+  private async provisionDevelopmentEnvironment(environment: Environment): Promise<void> {
+    // Lightweight development environment
+    const resources = [
+      {
+        type: 'container',
+        name: `${environment.projectId}-dev`,
+        specification: {
+          image: 'node:18-alpine',
+          memory: '512MB',
+          cpu: '0.5',
+          ports: [3000],
+          volumes: [`${environment.projectId}-dev-data:/app/data`]
+        }
+      }
+    ];
+
+    environment.resources = resources;
+  }
+
+  private async provisionStagingEnvironment(environment: Environment): Promise<void> {
+    // Production-like staging environment
+    const resources = [
+      {
+        type: 'container',
+        name: `${environment.projectId}-staging`,
+        specification: {
+          image: `${environment.projectId}:latest`,
+          memory: '1GB',
+          cpu: '1.0',
+          ports: [3000],
+          replicas: 2,
+          loadBalancer: true
+        }
+      },
+      {
+        type: 'database',
+        name: `${environment.projectId}-staging-db`,
+        specification: {
+          engine: 'postgresql',
+          version: '14',
+          storage: '20GB'
+        }
+      }
+    ];
+
+    environment.resources = resources;
+  }
+
+  private async provisionProductionEnvironment(environment: Environment): Promise<void> {
+    // Full production environment with redundancy
+    const resources = [
+      {
+        type: 'container',
+        name: `${environment.projectId}-prod`,
+        specification: {
+          image: `${environment.projectId}:latest`,
+          memory: '2GB',
+          cpu: '2.0',
+          ports: [3000],
+          replicas: 3,
+          loadBalancer: true,
+          autoScaling: {
+            minReplicas: 2,
+            maxReplicas: 10,
+            cpuThreshold: 70
+          }
+        }
+      },
+      {
+        type: 'database',
+        name: `${environment.projectId}-prod-db`,
+        specification: {
+          engine: 'postgresql',
+          version: '14',
+          storage: '100GB',
+          backup: {
+            enabled: true,
+            retention: '30d'
+          },
+          highAvailability: true
+        }
+      },
+      {
+        type: 'cache',
+        name: `${environment.projectId}-prod-cache`,
+        specification: {
+          engine: 'redis',
+          memory: '1GB'
+        }
+      }
+    ];
+
+    environment.resources = resources;
+  }
+
+  async deployToEnvironment(
+    environmentId: string, 
+    deploymentConfig: DeploymentConfig
+  ): Promise<EnvironmentDeployment> {
+    const environment = this.environments.get(environmentId);
+    if (!environment) {
+      throw new Error('Environment not found');
+    }
+
+    const deploymentId = this.generateDeploymentId();
+    const deployment: EnvironmentDeployment = {
+      id: deploymentId,
+      environmentId: environmentId,
+      version: deploymentConfig.version,
+      status: 'deploying',
+      deployedAt: new Date()
+    };
+
+    environment.deployments.push(deployment);
+
+    try {
+      // Execute deployment based on environment type
+      await this.executeEnvironmentDeployment(environment, deployment, deploymentConfig);
+      
+      deployment.status = 'deployed';
+      
+    } catch (error) {
+      deployment.status = 'failed';
+      deployment.error = error.message;
+      throw error;
+    }
+
+    return deployment;
+  }
+
+  async promoteDeployment(
+    sourceEnvironmentId: string, 
+    targetEnvironmentId: string, 
+    deploymentId: string
+  ): Promise<EnvironmentDeployment> {
+    const sourceEnvironment = this.environments.get(sourceEnvironmentId);
+    const targetEnvironment = this.environments.get(targetEnvironmentId);
+    
+    if (!sourceEnvironment || !targetEnvironment) {
+      throw new Error('Environment not found');
+    }
+
+    const sourceDeployment = sourceEnvironment.deployments.find(d => d.id === deploymentId);
+    if (!sourceDeployment) {
+      throw new Error('Deployment not found');
+    }
+
+    // Create promotion deployment
+    const promotionDeployment = await this.deployToEnvironment(targetEnvironmentId, {
+      version: sourceDeployment.version,
+      source: 'promotion',
+      sourceEnvironment: sourceEnvironmentId
+    });
+
+    return promotionDeployment;
+  }
+
+  private generateEnvironmentId(): string {
+    return `env_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private generateDeploymentId(): string {
+    return `deploy_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+}
+
+interface Environment {
+  id: string;
+  name: string;
+  type: 'development' | 'staging' | 'production';
+  projectId: string;
+  configuration: any;
+  status: 'creating' | 'ready' | 'error';
+  resources: EnvironmentResource[];
+  deployments: EnvironmentDeployment[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface EnvironmentConfig {
+  name: string;
+  type: 'development' | 'staging' | 'production';
+  projectId: string;
+  configuration: any;
+}
+
+interface EnvironmentResource {
+  type: string;
+  name: string;
+  specification: any;
+}
+
+interface EnvironmentDeployment {
+  id: string;
+  environmentId: string;
+  version: string;
+  status: 'deploying' | 'deployed' | 'failed';
+  deployedAt: Date;
+  error?: string;
+}
+
+interface DeploymentConfig {
+  version: string;
+  source?: string;
+  sourceEnvironment?: string;
+}
+```
+
+This comprehensive deployment and DevOps system provides Vaporform with enterprise-grade deployment capabilities, automated CI/CD pipelines, and sophisticated environment management.

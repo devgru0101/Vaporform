@@ -1,0 +1,1119 @@
+# Real-Time Communication System
+
+## Overview
+
+Vaporform's real-time communication system enables instant updates between the frontend IDE, backend services, and Claude AI processing. It provides live code synchronization, real-time collaboration features, and immediate feedback for all development activities.
+
+## WebSocket Architecture
+
+### 1. Core WebSocket Service
+
+```typescript
+// websocket/WebSocketService.ts
+import { WebSocketServer, WebSocket } from 'ws';
+import { IncomingMessage } from 'http';
+import { JWTService } from '../auth/JWTService';
+import { ProjectAccessControl } from '../security/ProjectAccessControl';
+
+export class VaporformWebSocketService {
+  private wss: WebSocketServer;
+  private connections: Map<string, UserConnection> = new Map();
+  private projectRooms: Map<string, Set<string>> = new Map();
+  private jwtService: JWTService;
+  private accessControl: ProjectAccessControl;
+  
+  constructor(server: any) {
+    this.jwtService = new JWTService();
+    this.accessControl = new ProjectAccessControl();
+    
+    this.wss = new WebSocketServer({
+      server,
+      path: '/ws',
+      verifyClient: this.verifyClient.bind(this)
+    });
+
+    this.setupEventHandlers();
+  }
+
+  private setupEventHandlers(): void {
+    this.wss.on('connection', this.handleConnection.bind(this));
+  }
+
+  private async verifyClient(info: {
+    origin: string;
+    secure: boolean;
+    req: IncomingMessage;
+  }): Promise<boolean> {
+    try {
+      const url = new URL(info.req.url!, `http://${info.req.headers.host}`);
+      const token = url.searchParams.get('token');
+      
+      if (!token) return false;
+      
+      await this.jwtService.validateAccessToken(token);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async handleConnection(ws: WebSocket, req: IncomingMessage): Promise<void> {
+    try {
+      const url = new URL(req.url!, `http://${req.headers.host}`);
+      const token = url.searchParams.get('token')!;
+      const payload = await this.jwtService.validateAccessToken(token);
+      
+      const connectionId = this.generateConnectionId();
+      const connection: UserConnection = {
+        id: connectionId,
+        userId: payload.userId,
+        ws: ws,
+        projectIds: new Set(),
+        lastActivity: new Date(),
+        metadata: {
+          userAgent: req.headers['user-agent'],
+          ipAddress: req.socket.remoteAddress
+        }
+      };
+      
+      this.connections.set(connectionId, connection);
+      
+      // Send connection confirmation
+      this.sendToConnection(connectionId, {
+        type: 'connection_established',
+        data: { connectionId, userId: payload.userId }
+      });
+
+      // Setup message handlers
+      ws.on('message', (data) => this.handleMessage(connectionId, data));
+      ws.on('close', () => this.handleDisconnection(connectionId));
+      ws.on('error', (error) => this.handleError(connectionId, error));
+
+      // Setup ping/pong for connection health
+      ws.on('pong', () => {
+        connection.lastActivity = new Date();
+      });
+
+      console.log(`WebSocket connection established: ${connectionId} for user ${payload.userId}`);
+      
+    } catch (error) {
+      console.error('Failed to establish WebSocket connection:', error);
+      ws.close(1008, 'Authentication failed');
+    }
+  }
+
+  private async handleMessage(connectionId: string, rawData: any): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    if (!connection) return;
+
+    try {
+      const message: WebSocketMessage = JSON.parse(rawData.toString());
+      connection.lastActivity = new Date();
+
+      switch (message.type) {
+        case 'join_project':
+          await this.handleJoinProject(connectionId, message.data);
+          break;
+        case 'leave_project':
+          await this.handleLeaveProject(connectionId, message.data);
+          break;
+        case 'file_change':
+          await this.handleFileChange(connectionId, message.data);
+          break;
+        case 'cursor_position':
+          await this.handleCursorPosition(connectionId, message.data);
+          break;
+        case 'chat_message':
+          await this.handleChatMessage(connectionId, message.data);
+          break;
+        case 'terminal_input':
+          await this.handleTerminalInput(connectionId, message.data);
+          break;
+        case 'project_action':
+          await this.handleProjectAction(connectionId, message.data);
+          break;
+        default:
+          console.warn(`Unknown message type: ${message.type}`);
+      }
+    } catch (error) {
+      console.error('Error handling WebSocket message:', error);
+      this.sendToConnection(connectionId, {
+        type: 'error',
+        data: { message: 'Failed to process message' }
+      });
+    }
+  }
+
+  private async handleJoinProject(connectionId: string, data: any): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    if (!connection) return;
+
+    const { projectId } = data;
+    
+    // Verify project access
+    const hasAccess = await this.accessControl.checkProjectAccess(
+      connection.userId,
+      projectId,
+      'read'
+    );
+
+    if (!hasAccess) {
+      this.sendToConnection(connectionId, {
+        type: 'project_access_denied',
+        data: { projectId }
+      });
+      return;
+    }
+
+    // Add to project room
+    if (!this.projectRooms.has(projectId)) {
+      this.projectRooms.set(projectId, new Set());
+    }
+    this.projectRooms.get(projectId)!.add(connectionId);
+    connection.projectIds.add(projectId);
+
+    // Notify others in the project
+    this.broadcastToProject(projectId, {
+      type: 'user_joined_project',
+      data: { 
+        userId: connection.userId,
+        projectId,
+        timestamp: new Date().toISOString()
+      }
+    }, connectionId);
+
+    // Send project state to new connection
+    const projectState = await this.getProjectState(projectId);
+    this.sendToConnection(connectionId, {
+      type: 'project_state',
+      data: projectState
+    });
+
+    console.log(`User ${connection.userId} joined project ${projectId}`);
+  }
+
+  private async handleFileChange(connectionId: string, data: any): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    if (!connection) return;
+
+    const { projectId, filePath, changes, version } = data;
+    
+    // Verify write access
+    const hasWriteAccess = await this.accessControl.checkProjectAccess(
+      connection.userId,
+      projectId,
+      'write'
+    );
+
+    if (!hasWriteAccess) {
+      this.sendToConnection(connectionId, {
+        type: 'access_denied',
+        data: { action: 'file_change', projectId }
+      });
+      return;
+    }
+
+    // Apply changes to file system
+    try {
+      await this.applyFileChanges(projectId, filePath, changes, version);
+      
+      // Broadcast changes to other project members
+      this.broadcastToProject(projectId, {
+        type: 'file_changed',
+        data: {
+          projectId,
+          filePath,
+          changes,
+          version: version + 1,
+          userId: connection.userId,
+          timestamp: new Date().toISOString()
+        }
+      }, connectionId);
+
+      // Trigger hot reload if applicable
+      await this.triggerHotReload(projectId, filePath);
+      
+    } catch (error) {
+      this.sendToConnection(connectionId, {
+        type: 'file_change_error',
+        data: { 
+          filePath, 
+          error: error.message 
+        }
+      });
+    }
+  }
+
+  private async handleChatMessage(connectionId: string, data: any): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    if (!connection) return;
+
+    const { projectId, message, type } = data;
+    
+    // Process with Claude if it's an AI message
+    if (type === 'claude_request') {
+      await this.processClaudeRequest(connectionId, projectId, message);
+    } else {
+      // Regular chat message - broadcast to project members
+      this.broadcastToProject(projectId, {
+        type: 'chat_message',
+        data: {
+          projectId,
+          userId: connection.userId,
+          message,
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+  }
+
+  private async processClaudeRequest(
+    connectionId: string, 
+    projectId: string, 
+    message: string
+  ): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    if (!connection) return;
+
+    // Send typing indicator
+    this.broadcastToProject(projectId, {
+      type: 'claude_typing',
+      data: { projectId, userId: 'claude' }
+    });
+
+    try {
+      // Queue Claude processing
+      const requestId = await claude.processWithClaude({
+        projectId,
+        message,
+        type: 'modify',
+        userId: connection.userId
+      });
+
+      // Send acknowledgment
+      this.sendToConnection(connectionId, {
+        type: 'claude_request_queued',
+        data: { requestId, projectId }
+      });
+
+    } catch (error) {
+      this.sendToConnection(connectionId, {
+        type: 'claude_error',
+        data: { 
+          projectId, 
+          error: error.message 
+        }
+      });
+    }
+  }
+
+  private async handleTerminalInput(connectionId: string, data: any): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    if (!connection) return;
+
+    const { projectId, command, sessionId } = data;
+    
+    // Verify project access
+    const hasAccess = await this.accessControl.checkProjectAccess(
+      connection.userId,
+      projectId,
+      'write'
+    );
+
+    if (!hasAccess) {
+      this.sendToConnection(connectionId, {
+        type: 'terminal_access_denied',
+        data: { projectId }
+      });
+      return;
+    }
+
+    // Execute command in project container
+    try {
+      const output = await this.executeTerminalCommand(projectId, command, sessionId);
+      
+      this.sendToConnection(connectionId, {
+        type: 'terminal_output',
+        data: {
+          projectId,
+          sessionId,
+          output,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    } catch (error) {
+      this.sendToConnection(connectionId, {
+        type: 'terminal_error',
+        data: {
+          projectId,
+          sessionId,
+          error: error.message
+        }
+      });
+    }
+  }
+
+  // Public methods for external services
+  public notifyClaudeResponse(projectId: string, response: any): void {
+    this.broadcastToProject(projectId, {
+      type: 'claude_response',
+      data: {
+        projectId,
+        response,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  public notifyProjectStatusChange(projectId: string, status: string): void {
+    this.broadcastToProject(projectId, {
+      type: 'project_status_change',
+      data: {
+        projectId,
+        status,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  public notifyContainerUpdate(projectId: string, update: any): void {
+    this.broadcastToProject(projectId, {
+      type: 'container_update',
+      data: {
+        projectId,
+        update,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  private sendToConnection(connectionId: string, message: WebSocketMessage): void {
+    const connection = this.connections.get(connectionId);
+    if (connection && connection.ws.readyState === WebSocket.OPEN) {
+      connection.ws.send(JSON.stringify(message));
+    }
+  }
+
+  private broadcastToProject(
+    projectId: string, 
+    message: WebSocketMessage, 
+    excludeConnectionId?: string
+  ): void {
+    const projectConnections = this.projectRooms.get(projectId);
+    if (!projectConnections) return;
+
+    projectConnections.forEach(connectionId => {
+      if (connectionId !== excludeConnectionId) {
+        this.sendToConnection(connectionId, message);
+      }
+    });
+  }
+
+  private handleDisconnection(connectionId: string): void {
+    const connection = this.connections.get(connectionId);
+    if (!connection) return;
+
+    // Remove from all project rooms
+    connection.projectIds.forEach(projectId => {
+      const projectRoom = this.projectRooms.get(projectId);
+      if (projectRoom) {
+        projectRoom.delete(connectionId);
+        
+        // Notify others in the project
+        this.broadcastToProject(projectId, {
+          type: 'user_left_project',
+          data: {
+            userId: connection.userId,
+            projectId,
+            timestamp: new Date().toISOString()
+          }
+        });
+      }
+    });
+
+    // Clean up connection
+    this.connections.delete(connectionId);
+    console.log(`WebSocket connection closed: ${connectionId}`);
+  }
+
+  private generateConnectionId(): string {
+    return `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  // Health check - ping inactive connections
+  public startHealthCheck(): void {
+    setInterval(() => {
+      this.connections.forEach((connection, connectionId) => {
+        const inactiveTime = Date.now() - connection.lastActivity.getTime();
+        const maxInactiveTime = 5 * 60 * 1000; // 5 minutes
+
+        if (inactiveTime > maxInactiveTime) {
+          if (connection.ws.readyState === WebSocket.OPEN) {
+            connection.ws.ping();
+          } else {
+            this.handleDisconnection(connectionId);
+          }
+        }
+      });
+    }, 30000); // Check every 30 seconds
+  }
+}
+
+interface UserConnection {
+  id: string;
+  userId: string;
+  ws: WebSocket;
+  projectIds: Set<string>;
+  lastActivity: Date;
+  metadata: {
+    userAgent?: string;
+    ipAddress?: string;
+  };
+}
+
+interface WebSocketMessage {
+  type: string;
+  data: any;
+  timestamp?: string;
+}
+```
+
+### 2. Real-Time File Synchronization
+
+```typescript
+// websocket/FileSyncService.ts
+export class FileSyncService {
+  private fileWatchers: Map<string, FileWatcher> = new Map();
+  private pendingChanges: Map<string, PendingChange[]> = new Map();
+  
+  constructor(
+    private webSocketService: VaporformWebSocketService,
+    private fileSystemService: FileSystemService
+  ) {}
+
+  async startWatching(projectId: string): Promise<void> {
+    if (this.fileWatchers.has(projectId)) {
+      return; // Already watching
+    }
+
+    const projectPath = this.fileSystemService.getProjectPath(projectId);
+    const watcher = new FileWatcher(projectPath);
+    
+    watcher.on('file_changed', async (event: FileChangeEvent) => {
+      await this.handleFileSystemChange(projectId, event);
+    });
+
+    watcher.on('file_created', async (event: FileChangeEvent) => {
+      await this.handleFileSystemChange(projectId, event);
+    });
+
+    watcher.on('file_deleted', async (event: FileChangeEvent) => {
+      await this.handleFileSystemChange(projectId, event);
+    });
+
+    this.fileWatchers.set(projectId, watcher);
+    await watcher.start();
+  }
+
+  async stopWatching(projectId: string): Promise<void> {
+    const watcher = this.fileWatchers.get(projectId);
+    if (watcher) {
+      await watcher.stop();
+      this.fileWatchers.delete(projectId);
+    }
+  }
+
+  async handleFileSystemChange(projectId: string, event: FileChangeEvent): Promise<void> {
+    // Check if this change originated from the WebSocket (to avoid loops)
+    if (this.isInternalChange(projectId, event)) {
+      return;
+    }
+
+    // Read the updated file content
+    const content = await this.fileSystemService.readFile(projectId, event.filePath);
+    const version = await this.getFileVersion(projectId, event.filePath);
+
+    // Notify all connected clients
+    this.webSocketService.notifyFileChange(projectId, {
+      filePath: event.filePath,
+      content: content,
+      version: version,
+      changeType: event.type,
+      timestamp: new Date().toISOString(),
+      source: 'filesystem'
+    });
+
+    // Update database
+    await this.updateFileInDatabase(projectId, event.filePath, content, version);
+  }
+
+  async applyClientChanges(
+    projectId: string, 
+    filePath: string, 
+    changes: TextChange[], 
+    version: number
+  ): Promise<ApplyChangesResult> {
+    try {
+      // Get current file state
+      const currentContent = await this.fileSystemService.readFile(projectId, filePath);
+      const currentVersion = await this.getFileVersion(projectId, filePath);
+
+      // Check for version conflicts
+      if (version !== currentVersion) {
+        return await this.resolveVersionConflict(
+          projectId, 
+          filePath, 
+          changes, 
+          version, 
+          currentVersion, 
+          currentContent
+        );
+      }
+
+      // Apply changes
+      const newContent = this.applyTextChanges(currentContent, changes);
+      
+      // Mark as internal change to avoid echo
+      this.markAsInternalChange(projectId, filePath);
+      
+      // Write to filesystem
+      await this.fileSystemService.writeFile(projectId, filePath, newContent);
+      
+      // Update version
+      const newVersion = currentVersion + 1;
+      await this.updateFileVersion(projectId, filePath, newVersion);
+
+      return {
+        success: true,
+        newVersion: newVersion,
+        content: newContent
+      };
+
+    } catch (error) {
+      console.error('Failed to apply client changes:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  private async resolveVersionConflict(
+    projectId: string,
+    filePath: string,
+    clientChanges: TextChange[],
+    clientVersion: number,
+    serverVersion: number,
+    serverContent: string
+  ): Promise<ApplyChangesResult> {
+    // Implement operational transform or simple merge strategy
+    console.warn(`Version conflict detected for ${filePath}: client=${clientVersion}, server=${serverVersion}`);
+    
+    // For now, server wins - in production, implement proper OT
+    return {
+      success: false,
+      error: 'Version conflict',
+      conflictResolution: {
+        strategy: 'server_wins',
+        serverVersion: serverVersion,
+        serverContent: serverContent
+      }
+    };
+  }
+
+  private applyTextChanges(content: string, changes: TextChange[]): string {
+    // Sort changes by position (descending) to apply from end to beginning
+    const sortedChanges = changes.sort((a, b) => b.start - a.start);
+    
+    let result = content;
+    
+    for (const change of sortedChanges) {
+      switch (change.type) {
+        case 'insert':
+          result = result.slice(0, change.start) + change.text + result.slice(change.start);
+          break;
+        case 'delete':
+          result = result.slice(0, change.start) + result.slice(change.end);
+          break;
+        case 'replace':
+          result = result.slice(0, change.start) + change.text + result.slice(change.end);
+          break;
+      }
+    }
+    
+    return result;
+  }
+
+  private isInternalChange(projectId: string, event: FileChangeEvent): boolean {
+    const key = `${projectId}:${event.filePath}`;
+    return this.internalChanges.has(key);
+  }
+
+  private markAsInternalChange(projectId: string, filePath: string): void {
+    const key = `${projectId}:${filePath}`;
+    this.internalChanges.add(key);
+    
+    // Remove after short delay
+    setTimeout(() => {
+      this.internalChanges.delete(key);
+    }, 1000);
+  }
+
+  private internalChanges: Set<string> = new Set();
+}
+
+interface FileChangeEvent {
+  type: 'created' | 'modified' | 'deleted';
+  filePath: string;
+  timestamp: Date;
+}
+
+interface TextChange {
+  type: 'insert' | 'delete' | 'replace';
+  start: number;
+  end?: number;
+  text?: string;
+}
+
+interface ApplyChangesResult {
+  success: boolean;
+  newVersion?: number;
+  content?: string;
+  error?: string;
+  conflictResolution?: {
+    strategy: string;
+    serverVersion: number;
+    serverContent: string;
+  };
+}
+```
+
+### 3. Frontend WebSocket Client
+
+```typescript
+// frontend/services/WebSocketClient.ts
+export class VaporformWebSocketClient {
+  private ws: WebSocket | null = null;
+  private connectionState: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectDelay = 1000;
+  private eventHandlers: Map<string, Function[]> = new Map();
+  private heartbeatInterval: number | null = null;
+
+  constructor(
+    private apiService: VaporformApiService,
+    private authService: AuthService
+  ) {}
+
+  async connect(): Promise<void> {
+    if (this.connectionState === 'connected' || this.connectionState === 'connecting') {
+      return;
+    }
+
+    this.connectionState = 'connecting';
+    
+    try {
+      const token = await this.authService.getAccessToken();
+      const wsUrl = `${this.getWebSocketUrl()}?token=${token}`;
+      
+      this.ws = new WebSocket(wsUrl);
+      
+      this.ws.onopen = this.handleOpen.bind(this);
+      this.ws.onmessage = this.handleMessage.bind(this);
+      this.ws.onclose = this.handleClose.bind(this);
+      this.ws.onerror = this.handleError.bind(this);
+      
+    } catch (error) {
+      console.error('Failed to connect WebSocket:', error);
+      this.connectionState = 'disconnected';
+      throw error;
+    }
+  }
+
+  disconnect(): void {
+    if (this.ws) {
+      this.ws.close(1000, 'Client disconnect');
+    }
+    this.stopHeartbeat();
+    this.connectionState = 'disconnected';
+  }
+
+  send(message: WebSocketMessage): void {
+    if (this.ws && this.connectionState === 'connected') {
+      this.ws.send(JSON.stringify(message));
+    } else {
+      console.warn('WebSocket not connected, message queued');
+      // TODO: Implement message queuing
+    }
+  }
+
+  // Event subscription methods
+  on(event: string, handler: Function): void {
+    if (!this.eventHandlers.has(event)) {
+      this.eventHandlers.set(event, []);
+    }
+    this.eventHandlers.get(event)!.push(handler);
+  }
+
+  off(event: string, handler: Function): void {
+    const handlers = this.eventHandlers.get(event);
+    if (handlers) {
+      const index = handlers.indexOf(handler);
+      if (index > -1) {
+        handlers.splice(index, 1);
+      }
+    }
+  }
+
+  // Project-specific methods
+  joinProject(projectId: string): void {
+    this.send({
+      type: 'join_project',
+      data: { projectId }
+    });
+  }
+
+  leaveProject(projectId: string): void {
+    this.send({
+      type: 'leave_project',
+      data: { projectId }
+    });
+  }
+
+  sendFileChange(projectId: string, filePath: string, changes: TextChange[], version: number): void {
+    this.send({
+      type: 'file_change',
+      data: {
+        projectId,
+        filePath,
+        changes,
+        version
+      }
+    });
+  }
+
+  sendChatMessage(projectId: string, message: string, type: 'user' | 'claude_request' = 'user'): void {
+    this.send({
+      type: 'chat_message',
+      data: {
+        projectId,
+        message,
+        type
+      }
+    });
+  }
+
+  sendTerminalInput(projectId: string, command: string, sessionId: string): void {
+    this.send({
+      type: 'terminal_input',
+      data: {
+        projectId,
+        command,
+        sessionId
+      }
+    });
+  }
+
+  private handleOpen(): void {
+    console.log('WebSocket connected');
+    this.connectionState = 'connected';
+    this.reconnectAttempts = 0;
+    this.startHeartbeat();
+    this.emit('connected');
+  }
+
+  private handleMessage(event: MessageEvent): void {
+    try {
+      const message: WebSocketMessage = JSON.parse(event.data);
+      this.emit(message.type, message.data);
+      this.emit('message', message);
+    } catch (error) {
+      console.error('Failed to parse WebSocket message:', error);
+    }
+  }
+
+  private handleClose(event: CloseEvent): void {
+    console.log('WebSocket disconnected:', event.code, event.reason);
+    this.connectionState = 'disconnected';
+    this.stopHeartbeat();
+    this.emit('disconnected', { code: event.code, reason: event.reason });
+    
+    // Attempt reconnection if not a clean close
+    if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.attemptReconnection();
+    }
+  }
+
+  private handleError(error: Event): void {
+    console.error('WebSocket error:', error);
+    this.emit('error', error);
+  }
+
+  private async attemptReconnection(): Promise<void> {
+    this.reconnectAttempts++;
+    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+    
+    console.log(`Attempting to reconnect WebSocket (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${delay}ms`);
+    
+    setTimeout(async () => {
+      try {
+        await this.connect();
+      } catch (error) {
+        console.error('Reconnection failed:', error);
+      }
+    }, delay);
+  }
+
+  private startHeartbeat(): void {
+    this.heartbeatInterval = window.setInterval(() => {
+      if (this.ws && this.connectionState === 'connected') {
+        this.ws.ping?.();
+      }
+    }, 30000); // Ping every 30 seconds
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+  }
+
+  private emit(event: string, data?: any): void {
+    const handlers = this.eventHandlers.get(event);
+    if (handlers) {
+      handlers.forEach(handler => {
+        try {
+          handler(data);
+        } catch (error) {
+          console.error(`Error in WebSocket event handler for ${event}:`, error);
+        }
+      });
+    }
+  }
+
+  private getWebSocketUrl(): string {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = process.env.VAPORFORM_WS_HOST || window.location.host;
+    return `${protocol}//${host}/ws`;
+  }
+
+  getConnectionState(): string {
+    return this.connectionState;
+  }
+}
+```
+
+### 4. Real-Time Collaboration Features
+
+```typescript
+// frontend/services/CollaborationService.ts
+export class CollaborationService {
+  private wsClient: VaporformWebSocketClient;
+  private cursors: Map<string, UserCursor> = new Map();
+  private selections: Map<string, UserSelection> = new Map();
+  
+  constructor(wsClient: VaporformWebSocketClient) {
+    this.wsClient = wsClient;
+    this.setupEventHandlers();
+  }
+
+  private setupEventHandlers(): void {
+    this.wsClient.on('user_joined_project', this.handleUserJoined.bind(this));
+    this.wsClient.on('user_left_project', this.handleUserLeft.bind(this));
+    this.wsClient.on('cursor_position', this.handleCursorPosition.bind(this));
+    this.wsClient.on('user_selection', this.handleUserSelection.bind(this));
+    this.wsClient.on('file_changed', this.handleRemoteFileChange.bind(this));
+  }
+
+  sendCursorPosition(projectId: string, filePath: string, position: Position): void {
+    this.wsClient.send({
+      type: 'cursor_position',
+      data: {
+        projectId,
+        filePath,
+        position
+      }
+    });
+  }
+
+  sendSelection(projectId: string, filePath: string, selection: Selection): void {
+    this.wsClient.send({
+      type: 'user_selection',
+      data: {
+        projectId,
+        filePath,
+        selection
+      }
+    });
+  }
+
+  private handleUserJoined(data: any): void {
+    const { userId, projectId } = data;
+    console.log(`User ${userId} joined project ${projectId}`);
+    
+    // Update UI to show active collaborators
+    this.updateCollaboratorsList(projectId);
+  }
+
+  private handleUserLeft(data: any): void {
+    const { userId, projectId } = data;
+    console.log(`User ${userId} left project ${projectId}`);
+    
+    // Remove user's cursor and selection
+    this.cursors.delete(userId);
+    this.selections.delete(userId);
+    
+    // Update UI
+    this.updateCollaboratorsList(projectId);
+    this.removeCursorIndicator(userId);
+  }
+
+  private handleCursorPosition(data: any): void {
+    const { userId, filePath, position } = data;
+    
+    this.cursors.set(userId, {
+      userId,
+      filePath,
+      position,
+      timestamp: new Date()
+    });
+    
+    // Update cursor indicator in editor
+    this.updateCursorIndicator(userId, filePath, position);
+  }
+
+  private handleUserSelection(data: any): void {
+    const { userId, filePath, selection } = data;
+    
+    this.selections.set(userId, {
+      userId,
+      filePath,
+      selection,
+      timestamp: new Date()
+    });
+    
+    // Update selection highlight in editor
+    this.updateSelectionHighlight(userId, filePath, selection);
+  }
+
+  private handleRemoteFileChange(data: any): void {
+    const { projectId, filePath, changes, version, userId } = data;
+    
+    // Apply changes to editor if file is currently open
+    const editor = this.getEditorForFile(filePath);
+    if (editor) {
+      this.applyChangesToEditor(editor, changes, version);
+      
+      // Show change indicator
+      this.showChangeIndicator(filePath, userId);
+    }
+  }
+
+  private updateCursorIndicator(userId: string, filePath: string, position: Position): void {
+    const editor = this.getEditorForFile(filePath);
+    if (!editor) return;
+
+    // Create or update cursor widget
+    const cursor = editor.createDecorationsCollection([
+      {
+        range: new monaco.Range(position.line, position.column, position.line, position.column),
+        options: {
+          className: `collaboration-cursor cursor-${userId}`,
+          afterContentClassName: `collaboration-cursor-label cursor-label-${userId}`,
+          stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges
+        }
+      }
+    ]);
+
+    // Store decoration for cleanup
+    this.storeCursorDecoration(userId, cursor);
+  }
+
+  private updateSelectionHighlight(userId: string, filePath: string, selection: Selection): void {
+    const editor = this.getEditorForFile(filePath);
+    if (!editor) return;
+
+    const decoration = editor.createDecorationsCollection([
+      {
+        range: new monaco.Range(
+          selection.start.line, 
+          selection.start.column,
+          selection.end.line, 
+          selection.end.column
+        ),
+        options: {
+          className: `collaboration-selection selection-${userId}`,
+          stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges
+        }
+      }
+    ]);
+
+    this.storeSelectionDecoration(userId, decoration);
+  }
+
+  private applyChangesToEditor(editor: any, changes: TextChange[], version: number): void {
+    // Prevent editor change events during remote updates
+    this.suppressEditorEvents = true;
+    
+    try {
+      // Apply changes using Monaco editor edit operations
+      const edits = changes.map(change => ({
+        range: new monaco.Range(
+          change.start.line,
+          change.start.column,
+          change.end?.line || change.start.line,
+          change.end?.column || change.start.column
+        ),
+        text: change.text || ''
+      }));
+
+      editor.executeEdits('remote-change', edits);
+      
+      // Update file version
+      this.updateFileVersion(editor.getModel().uri.path, version);
+      
+    } finally {
+      this.suppressEditorEvents = false;
+    }
+  }
+
+  getUsersInProject(projectId: string): UserInfo[] {
+    // Return list of active users in the project
+    return Array.from(this.cursors.values())
+      .filter(cursor => cursor.projectId === projectId)
+      .map(cursor => ({
+        userId: cursor.userId,
+        lastActivity: cursor.timestamp
+      }));
+  }
+}
+
+interface UserCursor {
+  userId: string;
+  filePath: string;
+  position: Position;
+  timestamp: Date;
+}
+
+interface UserSelection {
+  userId: string;
+  filePath: string;
+  selection: Selection;
+  timestamp: Date;
+}
+
+interface Position {
+  line: number;
+  column: number;
+}
+
+interface Selection {
+  start: Position;
+  end: Position;
+}
+```
+
+This comprehensive real-time communication system enables seamless collaboration, live updates, and instant feedback throughout the Vaporform development environment.

@@ -1,0 +1,660 @@
+# Frontend Implementation Plan - Modified VSCode
+
+## Overview
+
+The Vaporform frontend is based on a modified version of VSCode that integrates AI-powered development features while maintaining full compatibility with the existing VSCode extension ecosystem.
+
+## Project Structure
+
+```
+vaporform-frontend/
+├── src/
+│   ├── vs/                           # Original VSCode source (modified)
+│   ├── vaporform/                    # Vaporform-specific components
+│   │   ├── chat/                     # Chat panel implementation
+│   │   ├── previewer/                # Project preview panel
+│   │   ├── header/                   # Application header
+│   │   ├── infrastructure/           # Infrastructure management UI
+│   │   ├── terminal/                 # Enhanced terminal integration
+│   │   ├── wizard/                   # Project creation wizard
+│   │   ├── services/                 # API communication services
+│   │   └── store/                    # State management
+│   ├── assets/                       # Static assets
+│   └── styles/                       # Custom styling
+├── extensions/                       # Vaporform-specific extensions
+├── build/                           # Build configuration
+└── package.json
+```
+
+## Core Modifications to VSCode
+
+### 1. Workbench Layout Extension
+
+```typescript
+// src/vaporform/layout/VaporformWorkbenchLayout.ts
+import { IWorkbenchLayoutService } from 'vs/workbench/services/layout/browser/layoutService';
+import { Part } from 'vs/workbench/browser/part';
+
+export class VaporformWorkbenchLayout extends Workbench {
+  
+  private chatPanel: ChatPanel;
+  private previewerPanel: PreviewerPanel;
+  private vaporformHeader: VaporformHeader;
+  
+  constructor(
+    @IWorkbenchLayoutService layoutService: IWorkbenchLayoutService,
+    @IInstantiationService instantiationService: IInstantiationService
+  ) {
+    super();
+    
+    // Initialize Vaporform-specific panels
+    this.chatPanel = instantiationService.createInstance(ChatPanel);
+    this.previewerPanel = instantiationService.createInstance(PreviewerPanel);
+    this.vaporformHeader = instantiationService.createInstance(VaporformHeader);
+  }
+  
+  protected initLayout(): void {
+    super.initLayout();
+    
+    // Add chat panel to left sidebar
+    this.registerPart(this.chatPanel);
+    
+    // Add previewer to right area
+    this.registerPart(this.previewerPanel);
+    
+    // Replace default header with Vaporform header
+    this.workbenchGrid.addView(this.vaporformHeader, Sizing.Fit, this.titleBarPartView, Direction.Up);
+  }
+  
+  public toggleChatPanel(): void {
+    this.layoutService.setPanelHidden(this.chatPanel.getId(), !this.layoutService.isPanelHidden(this.chatPanel.getId()));
+  }
+  
+  public togglePreviewerPanel(): void {
+    this.layoutService.setPanelHidden(this.previewerPanel.getId(), !this.layoutService.isPanelHidden(this.previewerPanel.getId()));
+  }
+}
+```
+
+### 2. Vaporform Header Component
+
+```typescript
+// src/vaporform/header/VaporformHeader.ts
+import { Component } from 'vs/base/browser/ui/component/component';
+import { IThemeService } from 'vs/platform/theme/common/themeService';
+import { VaporformService } from '../services/VaporformService';
+
+export class VaporformHeader extends Component {
+  
+  private projectTerminalButton: HTMLElement;
+  private infrastructureButton: HTMLElement;
+  private encoreDashboardButton: HTMLElement;
+  
+  constructor(
+    container: HTMLElement,
+    @IThemeService private themeService: IThemeService,
+    @VaporformService private vaporformService: VaporformService
+  ) {
+    super();
+    this.create(container);
+  }
+  
+  private create(container: HTMLElement): void {
+    const header = document.createElement('div');
+    header.className = 'vaporform-header';
+    
+    // Logo and branding
+    const logo = document.createElement('div');
+    logo.className = 'vaporform-logo';
+    logo.textContent = 'Vaporform';
+    
+    // Button container
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'vaporform-header-buttons';
+    
+    // Project Terminal Button
+    this.projectTerminalButton = this.createButton('Project Terminal', 'terminal', () => {
+      this.vaporformService.openProjectTerminal();
+    });
+    
+    // Infrastructure Button
+    this.infrastructureButton = this.createButton('Infrastructure', 'server', () => {
+      this.vaporformService.openInfrastructurePanel();
+    });
+    
+    // Encore Dashboard Button (conditional)
+    this.encoreDashboardButton = this.createButton('Encore Dev Dash', 'dashboard', () => {
+      this.vaporformService.openEncoreDashboard();
+    });
+    
+    buttonContainer.appendChild(this.projectTerminalButton);
+    buttonContainer.appendChild(this.infrastructureButton);
+    buttonContainer.appendChild(this.encoreDashboardButton);
+    
+    header.appendChild(logo);
+    header.appendChild(buttonContainer);
+    container.appendChild(header);
+    
+    // Listen for project changes to show/hide Encore button
+    this.vaporformService.onProjectChange((project) => {
+      this.updateEncoreButton(project);
+    });
+  }
+  
+  private createButton(text: string, icon: string, onClick: () => void): HTMLElement {
+    const button = document.createElement('button');
+    button.className = 'vaporform-header-button';
+    button.innerHTML = `<span class="codicon codicon-${icon}"></span> ${text}`;
+    button.addEventListener('click', onClick);
+    return button;
+  }
+  
+  private updateEncoreButton(project: any): void {
+    if (project?.config?.backend?.framework === 'encore.ts' || project?.config?.backend?.framework === 'encore.go') {
+      this.encoreDashboardButton.style.display = 'block';
+    } else {
+      this.encoreDashboardButton.style.display = 'none';
+    }
+  }
+}
+```
+
+### 3. Chat Panel Implementation
+
+```typescript
+// src/vaporform/chat/ChatPanel.ts
+import { Panel } from 'vs/workbench/browser/panel';
+import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
+import { IThemeService } from 'vs/platform/theme/common/themeService';
+import { VaporformApiService } from '../services/VaporformApiService';
+
+export class ChatPanel extends Panel {
+  
+  static readonly ID = 'workbench.panel.vaporform.chat';
+  static readonly TITLE = 'Claude AI Assistant';
+  
+  private chatContainer: HTMLElement;
+  private messageInput: HTMLInputElement;
+  private messagesContainer: HTMLElement;
+  private conversations: ChatMessage[] = [];
+  
+  constructor(
+    @ITelemetryService telemetryService: ITelemetryService,
+    @IThemeService themeService: IThemeService,
+    @VaporformApiService private apiService: VaporformApiService
+  ) {
+    super(ChatPanel.ID, telemetryService, themeService);
+  }
+  
+  protected renderBody(container: HTMLElement): void {
+    this.chatContainer = container;
+    this.chatContainer.className = 'vaporform-chat-panel';
+    
+    // Messages area
+    this.messagesContainer = document.createElement('div');
+    this.messagesContainer.className = 'chat-messages';
+    
+    // Input area
+    const inputContainer = document.createElement('div');
+    inputContainer.className = 'chat-input-container';
+    
+    this.messageInput = document.createElement('input');
+    this.messageInput.className = 'chat-input';
+    this.messageInput.placeholder = 'Ask Claude to help with your project...';
+    this.messageInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.sendMessage();
+      }
+    });
+    
+    const sendButton = document.createElement('button');
+    sendButton.className = 'chat-send-button';
+    sendButton.innerHTML = '<span class="codicon codicon-send"></span>';
+    sendButton.addEventListener('click', () => this.sendMessage());
+    
+    inputContainer.appendChild(this.messageInput);
+    inputContainer.appendChild(sendButton);
+    
+    this.chatContainer.appendChild(this.messagesContainer);
+    this.chatContainer.appendChild(inputContainer);
+    
+    // Load conversation history
+    this.loadConversationHistory();
+  }
+  
+  private async sendMessage(): Promise<void> {
+    const message = this.messageInput.value.trim();
+    if (!message) return;
+    
+    // Add user message to UI
+    this.addMessage({
+      id: generateId(),
+      content: message,
+      role: 'user',
+      timestamp: new Date()
+    });
+    
+    // Clear input
+    this.messageInput.value = '';
+    
+    // Show typing indicator
+    const typingIndicator = this.addTypingIndicator();
+    
+    try {
+      // Send to Claude
+      const response = await this.apiService.sendChatMessage({
+        message,
+        projectId: this.apiService.getCurrentProjectId(),
+        conversationHistory: this.conversations
+      });
+      
+      // Remove typing indicator
+      this.removeTypingIndicator(typingIndicator);
+      
+      // Add Claude's response
+      this.addMessage({
+        id: generateId(),
+        content: response.message,
+        role: 'assistant',
+        timestamp: new Date(),
+        actions: response.actions // File changes, commands, etc.
+      });
+      
+      // Handle any code changes
+      if (response.fileChanges) {
+        await this.handleFileChanges(response.fileChanges);
+      }
+      
+    } catch (error) {
+      this.removeTypingIndicator(typingIndicator);
+      this.addMessage({
+        id: generateId(),
+        content: `Error: ${error.message}`,
+        role: 'system',
+        timestamp: new Date()
+      });
+    }
+  }
+  
+  private addMessage(message: ChatMessage): void {
+    this.conversations.push(message);
+    
+    const messageElement = document.createElement('div');
+    messageElement.className = `chat-message chat-message-${message.role}`;
+    
+    const content = document.createElement('div');
+    content.className = 'chat-message-content';
+    
+    if (message.role === 'assistant') {
+      // Render markdown for Claude responses
+      content.innerHTML = this.renderMarkdown(message.content);
+    } else {
+      content.textContent = message.content;
+    }
+    
+    const timestamp = document.createElement('div');
+    timestamp.className = 'chat-message-timestamp';
+    timestamp.textContent = message.timestamp.toLocaleTimeString();
+    
+    messageElement.appendChild(content);
+    messageElement.appendChild(timestamp);
+    
+    // Add action buttons if present
+    if (message.actions) {
+      const actionsContainer = document.createElement('div');
+      actionsContainer.className = 'chat-message-actions';
+      
+      message.actions.forEach(action => {
+        const button = document.createElement('button');
+        button.className = 'chat-action-button';
+        button.textContent = action.label;
+        button.addEventListener('click', () => this.executeAction(action));
+        actionsContainer.appendChild(button);
+      });
+      
+      messageElement.appendChild(actionsContainer);
+    }
+    
+    this.messagesContainer.appendChild(messageElement);
+    this.scrollToBottom();
+  }
+  
+  private async handleFileChanges(changes: FileChange[]): Promise<void> {
+    for (const change of changes) {
+      await this.apiService.applyFileChange(change);
+      
+      // Update open editors if the file is currently open
+      const editors = this.editorService.editors;
+      const openEditor = editors.find(editor => editor.resource?.path === change.path);
+      
+      if (openEditor) {
+        // Trigger reload of the editor content
+        await this.editorService.openEditor({
+          resource: URI.file(change.path),
+          options: { preserveFocus: true }
+        });
+      }
+    }
+  }
+  
+  private scrollToBottom(): void {
+    this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+  }
+}
+
+interface ChatMessage {
+  id: string;
+  content: string;
+  role: 'user' | 'assistant' | 'system';
+  timestamp: Date;
+  actions?: ChatAction[];
+}
+
+interface ChatAction {
+  type: 'apply_changes' | 'run_command' | 'open_file';
+  label: string;
+  data: any;
+}
+
+interface FileChange {
+  path: string;
+  content: string;
+  operation: 'create' | 'update' | 'delete';
+}
+```
+
+### 4. Project Previewer Panel
+
+```typescript
+// src/vaporform/previewer/PreviewerPanel.ts
+import { Panel } from 'vs/workbench/browser/panel';
+import { VaporformApiService } from '../services/VaporformApiService';
+
+export class PreviewerPanel extends Panel {
+  
+  static readonly ID = 'workbench.panel.vaporform.previewer';
+  static readonly TITLE = 'Project Preview';
+  
+  private previewFrame: HTMLIFrameElement;
+  private urlBar: HTMLInputElement;
+  private refreshButton: HTMLElement;
+  private currentProjectUrl: string = '';
+  
+  constructor(
+    @ITelemetryService telemetryService: ITelemetryService,
+    @IThemeService themeService: IThemeService,
+    @VaporformApiService private apiService: VaporformApiService
+  ) {
+    super(PreviewerPanel.ID, telemetryService, themeService);
+  }
+  
+  protected renderBody(container: HTMLElement): void {
+    container.className = 'vaporform-previewer-panel';
+    
+    // Controls bar
+    const controlsBar = document.createElement('div');
+    controlsBar.className = 'previewer-controls';
+    
+    // URL bar
+    this.urlBar = document.createElement('input');
+    this.urlBar.className = 'previewer-url-bar';
+    this.urlBar.placeholder = 'Project URL will appear here...';
+    this.urlBar.readOnly = true;
+    
+    // Refresh button
+    this.refreshButton = document.createElement('button');
+    this.refreshButton.className = 'previewer-refresh-button';
+    this.refreshButton.innerHTML = '<span class="codicon codicon-refresh"></span>';
+    this.refreshButton.addEventListener('click', () => this.refreshPreview());
+    
+    // External link button
+    const externalButton = document.createElement('button');
+    externalButton.className = 'previewer-external-button';
+    externalButton.innerHTML = '<span class="codicon codicon-link-external"></span>';
+    externalButton.addEventListener('click', () => this.openInExternalBrowser());
+    
+    controlsBar.appendChild(this.urlBar);
+    controlsBar.appendChild(this.refreshButton);
+    controlsBar.appendChild(externalButton);
+    
+    // Preview iframe
+    this.previewFrame = document.createElement('iframe');
+    this.previewFrame.className = 'previewer-frame';
+    this.previewFrame.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
+    
+    container.appendChild(controlsBar);
+    container.appendChild(this.previewFrame);
+    
+    // Listen for project changes
+    this.apiService.onProjectChange((project) => {
+      this.updatePreviewUrl(project?.serviceUrl || '');
+    });
+    
+    // Listen for project status changes
+    this.apiService.onProjectStatusChange((status) => {
+      if (status === 'running') {
+        this.refreshPreview();
+      }
+    });
+  }
+  
+  private updatePreviewUrl(url: string): void {
+    this.currentProjectUrl = url;
+    this.urlBar.value = url;
+    
+    if (url) {
+      this.previewFrame.src = url;
+      this.refreshButton.disabled = false;
+    } else {
+      this.previewFrame.src = 'about:blank';
+      this.refreshButton.disabled = true;
+    }
+  }
+  
+  private refreshPreview(): void {
+    if (this.currentProjectUrl) {
+      // Add timestamp to force refresh
+      const url = new URL(this.currentProjectUrl);
+      url.searchParams.set('_refresh', Date.now().toString());
+      this.previewFrame.src = url.toString();
+    }
+  }
+  
+  private openInExternalBrowser(): void {
+    if (this.currentProjectUrl) {
+      window.open(this.currentProjectUrl, '_blank');
+    }
+  }
+}
+```
+
+### 5. API Service Integration
+
+```typescript
+// src/vaporform/services/VaporformApiService.ts
+import { IDisposable } from 'vs/base/common/lifecycle';
+import { Emitter, Event } from 'vs/base/common/event';
+
+export interface IVaporformApiService {
+  getCurrentProject(): Promise<Project | null>;
+  sendChatMessage(request: ChatRequest): Promise<ChatResponse>;
+  applyFileChange(change: FileChange): Promise<void>;
+  onProjectChange: Event<Project | null>;
+  onProjectStatusChange: Event<string>;
+}
+
+export class VaporformApiService implements IVaporformApiService {
+  
+  private _onProjectChange = new Emitter<Project | null>();
+  public readonly onProjectChange = this._onProjectChange.event;
+  
+  private _onProjectStatusChange = new Emitter<string>();
+  public readonly onProjectStatusChange = this._onProjectStatusChange.event;
+  
+  private currentProject: Project | null = null;
+  private websocket: WebSocket | null = null;
+  private baseUrl: string;
+  private authToken: string;
+  
+  constructor() {
+    this.baseUrl = process.env.VAPORFORM_API_URL || 'http://localhost:4000';
+    this.authToken = localStorage.getItem('vaporform_auth_token') || '';
+    this.initializeWebSocket();
+  }
+  
+  private initializeWebSocket(): void {
+    const wsUrl = this.baseUrl.replace('http', 'ws') + '/ws';
+    this.websocket = new WebSocket(wsUrl);
+    
+    this.websocket.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      this.handleWebSocketMessage(message);
+    };
+    
+    this.websocket.onclose = () => {
+      // Reconnect after delay
+      setTimeout(() => this.initializeWebSocket(), 5000);
+    };
+  }
+  
+  private handleWebSocketMessage(message: any): void {
+    switch (message.type) {
+      case 'project-status-change':
+        this._onProjectStatusChange.fire(message.data.status);
+        break;
+      case 'file-change':
+        this.handleRemoteFileChange(message.data);
+        break;
+      case 'claude-response':
+        this.handleClaudeResponse(message.data);
+        break;
+    }
+  }
+  
+  public async getCurrentProject(): Promise<Project | null> {
+    if (!this.currentProject) {
+      // Load current project from API
+      try {
+        const response = await this.apiCall('GET', '/projects/current');
+        this.currentProject = response.project;
+        this._onProjectChange.fire(this.currentProject);
+      } catch (error) {
+        console.error('Failed to load current project:', error);
+      }
+    }
+    return this.currentProject;
+  }
+  
+  public async sendChatMessage(request: ChatRequest): Promise<ChatResponse> {
+    return await this.apiCall('POST', '/claude/process', {
+      projectId: this.currentProject?.id,
+      message: request.message,
+      type: 'modify',
+      context: {
+        conversationHistory: request.conversationHistory
+      }
+    });
+  }
+  
+  public async applyFileChange(change: FileChange): Promise<void> {
+    await this.apiCall('POST', `/files/${this.currentProject?.id}/apply`, {
+      changes: [change]
+    });
+  }
+  
+  private async apiCall(method: string, path: string, body?: any): Promise<any> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.authToken}`
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    
+    if (!response.ok) {
+      throw new Error(`API call failed: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  }
+}
+```
+
+### 6. Project Creation Wizard Integration
+
+```typescript
+// src/vaporform/wizard/ProjectWizard.ts
+import { Dialog } from 'vs/base/browser/ui/dialog/dialog';
+import { VaporformApiService } from '../services/VaporformApiService';
+
+export class ProjectWizard {
+  
+  private dialog: Dialog;
+  private currentStep: number = 0;
+  private totalSteps: number = 6;
+  private wizardData: any = {};
+  
+  constructor(
+    @VaporformApiService private apiService: VaporformApiService
+  ) {
+    this.createDialog();
+  }
+  
+  public show(): void {
+    this.dialog.show();
+  }
+  
+  private createDialog(): void {
+    this.dialog = new Dialog(
+      'Create New Project',
+      'Create a new Vaporform project with AI assistance',
+      [{
+        label: 'Cancel',
+        run: () => this.cancel()
+      }, {
+        label: 'Next',
+        run: () => this.nextStep()
+      }],
+      {
+        cancelId: 0,
+        defaultId: 1
+      }
+    );
+    
+    this.renderCurrentStep();
+  }
+  
+  private renderCurrentStep(): void {
+    const content = this.dialog.getContentElement();
+    content.innerHTML = '';
+    
+    switch (this.currentStep) {
+      case 0:
+        this.renderProjectDetailsStep(content);
+        break;
+      case 1:
+        this.renderRepositorySetupStep(content);
+        break;
+      case 2:
+        this.renderArchitectureStep(content);
+        break;
+      case 3:
+        this.renderTechnologyStackStep(content);
+        break;
+      case 4:
+        this.renderIntegrationsStep(content);
+        break;
+      case 5:
+        this.renderReviewStep(content);
+        break;
+    }
+  }
+  
+  // Implementation of individual step renderers...
+  // (Following the specification from the project creation document)
+}
+```
+
+This frontend implementation provides a comprehensive foundation for Vaporform that maintains VSCode compatibility while adding powerful AI-driven development features.

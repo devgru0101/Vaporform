@@ -1,0 +1,937 @@
+# Infrastructure Implementation Plan
+
+## Overview
+
+Vaporform's infrastructure layer provides secure, scalable container environments for user projects using Docker, Terraform, and Traefik. Each project runs in an isolated container with automatic service discovery and load balancing.
+
+## Architecture Components
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Infrastructure Layer                     │
+│                                                             │
+│  ┌─────────────────┐    ┌─────────────────┐                │
+│  │     Traefik     │    │    Terraform    │                │
+│  │   (Proxy/LB)    │    │  (Provisioning) │                │
+│  └─────────────────┘    └─────────────────┘                │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │                Docker Engine                           │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │ │
+│  │  │ Project A   │  │ Project B   │  │ Project C   │     │ │
+│  │  │ Container   │  │ Container   │  │ Container   │     │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘     │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │              Shared Infrastructure                     │ │
+│  │  [Database] [Redis] [File Storage] [Monitoring]       │ │
+│  └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Docker Configuration
+
+### 1. Base Project Images
+
+```dockerfile
+# infrastructure/docker/base-images/node-base.dockerfile
+FROM node:18-alpine
+
+# Install essential development tools
+RUN apk add --no-cache \
+    git \
+    curl \
+    vim \
+    htop \
+    bash \
+    openssh-client
+
+# Create app directory
+WORKDIR /app
+
+# Install global packages commonly used in development
+RUN npm install -g \
+    nodemon \
+    typescript \
+    ts-node \
+    vite \
+    create-react-app \
+    @angular/cli \
+    @vue/cli
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup
+
+# Set up proper permissions
+RUN chown -R appuser:appgroup /app
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+EXPOSE 3000
+
+CMD ["node", "index.js"]
+```
+
+```dockerfile
+# infrastructure/docker/base-images/python-base.dockerfile
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    vim \
+    htop \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set work directory
+WORKDIR /app
+
+# Install common Python packages
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    django \
+    flask \
+    requests \
+    sqlalchemy \
+    alembic \
+    pytest
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser
+RUN chown -R appuser:appuser /app
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+EXPOSE 8000
+
+CMD ["python", "main.py"]
+```
+
+```dockerfile
+# infrastructure/docker/base-images/go-base.dockerfile
+FROM golang:1.21-alpine
+
+# Install essential tools
+RUN apk add --no-cache \
+    git \
+    curl \
+    vim \
+    htop \
+    bash
+
+# Set work directory
+WORKDIR /app
+
+# Install common Go tools
+RUN go install github.com/air-verse/air@latest
+RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+# Create non-root user
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup
+
+RUN chown -R appuser:appgroup /app
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+EXPOSE 8080
+
+CMD ["go", "run", "main.go"]
+```
+
+### 2. Docker Compose for Core Infrastructure
+
+```yaml
+# infrastructure/docker/docker-compose.infrastructure.yml
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: vaporform-traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik:/etc/traefik
+      - ./ssl:/ssl
+    networks:
+      - vaporform-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.vaporform.local`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.middlewares=auth"
+      - "traefik.http.middlewares.auth.basicauth.users=admin:$$2y$$10$$..."
+
+  redis:
+    image: redis:7-alpine
+    container_name: vaporform-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - vaporform-redis-data:/data
+    networks:
+      - vaporform-network
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+
+  minio:
+    image: minio/minio:latest
+    container_name: vaporform-minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - vaporform-minio-data:/data
+    networks:
+      - vaporform-network
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    command: server /data --console-address ":9001"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.minio.rule=Host(`storage.vaporform.local`)"
+      - "traefik.http.services.minio.loadbalancer.server.port=9000"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: vaporform-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus
+      - vaporform-prometheus-data:/prometheus
+    networks:
+      - vaporform-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: vaporform-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    volumes:
+      - vaporform-grafana-data:/var/lib/grafana
+    networks:
+      - vaporform-network
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`monitoring.vaporform.local`)"
+
+networks:
+  vaporform-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  vaporform-redis-data:
+  vaporform-minio-data:
+  vaporform-prometheus-data:
+  vaporform-grafana-data:
+```
+
+### 3. Dynamic Project Container Creation
+
+```typescript
+// infrastructure/services/ContainerOrchestrator.ts
+import Docker from 'dockerode';
+import { promises as fs } from 'fs';
+import path from 'path';
+
+export class ContainerOrchestrator {
+  private docker: Docker;
+  private networkName = 'vaporform-network';
+  
+  constructor() {
+    this.docker = new Docker();
+  }
+  
+  async createProjectContainer(config: ProjectContainerConfig): Promise<Container> {
+    const { projectId, techStack, environment } = config;
+    
+    // Generate container configuration
+    const containerConfig = await this.generateContainerConfig(projectId, techStack, environment);
+    
+    // Create project directory
+    const projectPath = `/var/vaporform/projects/${projectId}`;
+    await fs.mkdir(projectPath, { recursive: true });
+    
+    // Create container
+    const container = await this.docker.createContainer({
+      name: `vaporform-${projectId}`,
+      Image: containerConfig.image,
+      Env: Object.entries(containerConfig.environment).map(([key, value]) => `${key}=${value}`),
+      ExposedPorts: containerConfig.exposedPorts,
+      HostConfig: {
+        PortBindings: containerConfig.portBindings,
+        Binds: [
+          `${projectPath}:/app:rw`,
+          ...containerConfig.additionalVolumes
+        ],
+        Memory: 1024 * 1024 * 1024, // 1GB limit
+        CpuShares: 1024,
+        RestartPolicy: { Name: 'unless-stopped' },
+        NetworkMode: this.networkName
+      },
+      Labels: {
+        'vaporform.project': projectId,
+        'vaporform.type': 'project-container',
+        'traefik.enable': 'true',
+        'traefik.http.routers.${projectId}.rule': `Host(\`${projectId}.vaporform.local\`)`,
+        'traefik.http.services.${projectId}.loadbalancer.server.port': containerConfig.mainPort.toString(),
+        'traefik.http.routers.${projectId}.middlewares': 'project-auth'
+      },
+      WorkingDir: '/app'
+    });
+    
+    // Start container
+    await container.start();
+    
+    // Wait for container to be healthy
+    await this.waitForHealthy(container, 60000);
+    
+    return container;
+  }
+  
+  private async generateContainerConfig(
+    projectId: string, 
+    techStack: TechStack, 
+    environment: any
+  ): Promise<ContainerConfig> {
+    
+    const baseImage = this.selectBaseImage(techStack);
+    const ports = this.configurePorts(techStack);
+    
+    return {
+      image: baseImage,
+      environment: {
+        NODE_ENV: 'development',
+        PORT: ports.main.toString(),
+        PROJECT_ID: projectId,
+        VAPORFORM_API_URL: process.env.VAPORFORM_API_URL,
+        ...environment
+      },
+      exposedPorts: ports.exposed,
+      portBindings: ports.bindings,
+      mainPort: ports.main,
+      additionalVolumes: []
+    };
+  }
+  
+  private selectBaseImage(techStack: TechStack): string {
+    const { backend } = techStack;
+    
+    switch (backend.language.toLowerCase()) {
+      case 'javascript':
+      case 'typescript':
+      case 'node.js':
+        return 'vaporform/node-base:latest';
+      case 'python':
+        return 'vaporform/python-base:latest';
+      case 'go':
+        return 'vaporform/go-base:latest';
+      case 'java':
+        return 'vaporform/java-base:latest';
+      case 'php':
+        return 'vaporform/php-base:latest';
+      default:
+        return 'vaporform/node-base:latest'; // Default fallback
+    }
+  }
+  
+  private configurePorts(techStack: TechStack): PortConfiguration {
+    const basePort = this.findAvailablePort();
+    
+    return {
+      main: basePort,
+      exposed: {
+        [`${basePort}/tcp`]: {}
+      },
+      bindings: {
+        [`${basePort}/tcp`]: [{ HostPort: basePort.toString() }]
+      }
+    };
+  }
+  
+  private async findAvailablePort(): Promise<number> {
+    // Find available port in range 3000-9000
+    for (let port = 3000; port <= 9000; port++) {
+      if (await this.isPortAvailable(port)) {
+        return port;
+      }
+    }
+    throw new Error('No available ports found');
+  }
+  
+  private async waitForHealthy(container: Docker.Container, timeout: number): Promise<void> {
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < timeout) {
+      const inspect = await container.inspect();
+      
+      if (inspect.State.Running && inspect.State.Health?.Status === 'healthy') {
+        return;
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    
+    throw new Error('Container failed to become healthy within timeout');
+  }
+}
+
+interface ProjectContainerConfig {
+  projectId: string;
+  techStack: TechStack;
+  environment: Record<string, string>;
+}
+
+interface ContainerConfig {
+  image: string;
+  environment: Record<string, string>;
+  exposedPorts: any;
+  portBindings: any;
+  mainPort: number;
+  additionalVolumes: string[];
+}
+
+interface PortConfiguration {
+  main: number;
+  exposed: any;
+  bindings: any;
+}
+```
+
+## Traefik Configuration
+
+### 1. Main Configuration
+
+```yaml
+# infrastructure/traefik/traefik.yml
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+  debug: true
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entrypoint:
+          to: websecure
+          scheme: https
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: vaporform-network
+    watch: true
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@vaporform.dev
+      storage: /ssl/acme.json
+      httpChallenge:
+        entryPoint: web
+
+log:
+  level: INFO
+  filePath: "/var/log/traefik/traefik.log"
+
+accessLog:
+  filePath: "/var/log/traefik/access.log"
+
+metrics:
+  prometheus:
+    addEntryPointsLabels: true
+    addServicesLabels: true
+```
+
+### 2. Dynamic Configuration
+
+```yaml
+# infrastructure/traefik/dynamic.yml
+http:
+  middlewares:
+    project-auth:
+      forwardAuth:
+        address: "http://vaporform-backend:4000/auth/verify"
+        authResponseHeaders:
+          - "X-User-ID"
+          - "X-Project-Access"
+    
+    secure-headers:
+      headers:
+        frameDeny: true
+        sslRedirect: true
+        browserXssFilter: true
+        contentTypeNosniff: true
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+    
+    rate-limit:
+      rateLimit:
+        burst: 100
+        average: 50
+    
+    cors:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        accessControlAllowOriginList:
+          - "https://vaporform.local"
+          - "https://*.vaporform.local"
+        accessControlMaxAge: 100
+        addVaryHeader: true
+
+  routers:
+    api:
+      rule: "Host(`traefik.vaporform.local`)"
+      service: "api@internal"
+      middlewares:
+        - "project-auth"
+        - "secure-headers"
+      tls:
+        certResolver: letsencrypt
+
+tls:
+  options:
+    default:
+      minVersion: "VersionTLS12"
+      cipherSuites:
+        - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+        - "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
+        - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+```
+
+## Terraform Infrastructure as Code
+
+### 1. Main Infrastructure Definition
+
+```hcl
+# infrastructure/terraform/main.tf
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "~> 3.0"
+    }
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.0"
+    }
+  }
+}
+
+provider "docker" {
+  host = "unix:///var/run/docker.sock"
+}
+
+# Docker network for Vaporform
+resource "docker_network" "vaporform_network" {
+  name   = "vaporform-network"
+  driver = "bridge"
+  
+  ipam_config {
+    subnet  = "172.20.0.0/16"
+    gateway = "172.20.0.1"
+  }
+  
+  options = {
+    "com.docker.network.bridge.enable_icc"           = "true"
+    "com.docker.network.bridge.enable_ip_masquerade" = "true"
+  }
+}
+
+# Shared volume for project data
+resource "docker_volume" "project_data" {
+  name = "vaporform-project-data"
+}
+
+# Redis for caching and sessions
+resource "docker_container" "redis" {
+  name  = "vaporform-redis"
+  image = "redis:7-alpine"
+  
+  ports {
+    internal = 6379
+    external = 6379
+  }
+  
+  volumes {
+    volume_name    = docker_volume.redis_data.name
+    container_path = "/data"
+  }
+  
+  networks_advanced {
+    name = docker_network.vaporform_network.name
+  }
+  
+  command = ["redis-server", "--appendonly", "yes"]
+  
+  restart = "unless-stopped"
+}
+
+resource "docker_volume" "redis_data" {
+  name = "vaporform-redis-data"
+}
+
+# Traefik load balancer
+resource "docker_container" "traefik" {
+  name  = "vaporform-traefik"
+  image = "traefik:v3.0"
+  
+  ports {
+    internal = 80
+    external = 80
+  }
+  
+  ports {
+    internal = 443
+    external = 443
+  }
+  
+  ports {
+    internal = 8080
+    external = 8080
+  }
+  
+  volumes {
+    host_path      = "/var/run/docker.sock"
+    container_path = "/var/run/docker.sock"
+    read_only      = true
+  }
+  
+  volumes {
+    host_path      = "${path.module}/../traefik"
+    container_path = "/etc/traefik"
+    read_only      = true
+  }
+  
+  networks_advanced {
+    name = docker_network.vaporform_network.name
+  }
+  
+  restart = "unless-stopped"
+  
+  labels {
+    label = "traefik.enable"
+    value = "true"
+  }
+}
+```
+
+### 2. Project Container Module
+
+```hcl
+# infrastructure/terraform/modules/project-container/main.tf
+variable "project_id" {
+  description = "Unique project identifier"
+  type        = string
+}
+
+variable "tech_stack" {
+  description = "Technology stack configuration"
+  type = object({
+    backend = object({
+      language  = string
+      framework = string
+    })
+    frontend = object({
+      framework = string
+    })
+  })
+}
+
+variable "environment_vars" {
+  description = "Environment variables for the container"
+  type        = map(string)
+  default     = {}
+}
+
+locals {
+  container_name = "vaporform-${var.project_id}"
+  
+  base_images = {
+    "javascript" = "vaporform/node-base:latest"
+    "typescript" = "vaporform/node-base:latest"
+    "python"     = "vaporform/python-base:latest"
+    "go"         = "vaporform/go-base:latest"
+    "java"       = "vaporform/java-base:latest"
+    "php"        = "vaporform/php-base:latest"
+  }
+  
+  selected_image = lookup(local.base_images, var.tech_stack.backend.language, "vaporform/node-base:latest")
+}
+
+# Project volume
+resource "docker_volume" "project_volume" {
+  name = "vaporform-project-${var.project_id}"
+}
+
+# Project container
+resource "docker_container" "project" {
+  name  = local.container_name
+  image = local.selected_image
+  
+  # Dynamic port allocation
+  ports {
+    internal = 3000
+  }
+  
+  # Project volume mount
+  volumes {
+    volume_name    = docker_volume.project_volume.name
+    container_path = "/app"
+  }
+  
+  # Environment variables
+  dynamic "env" {
+    for_each = merge(var.environment_vars, {
+      PROJECT_ID = var.project_id
+      NODE_ENV   = "development"
+    })
+    
+    content {
+      env = "${env.key}=${env.value}"
+    }
+  }
+  
+  # Network configuration
+  networks_advanced {
+    name = "vaporform-network"
+  }
+  
+  # Resource limits
+  memory = 1024
+  
+  # Traefik labels
+  labels {
+    label = "traefik.enable"
+    value = "true"
+  }
+  
+  labels {
+    label = "traefik.http.routers.${var.project_id}.rule"
+    value = "Host(`${var.project_id}.vaporform.local`)"
+  }
+  
+  labels {
+    label = "traefik.http.services.${var.project_id}.loadbalancer.server.port"
+    value = "3000"
+  }
+  
+  labels {
+    label = "vaporform.project"
+    value = var.project_id
+  }
+  
+  restart = "unless-stopped"
+  
+  # Health check
+  healthcheck {
+    test         = ["CMD", "curl", "-f", "http://localhost:3000/health"]
+    interval     = "30s"
+    timeout      = "3s"
+    retries      = 3
+    start_period = "10s"
+  }
+}
+
+output "container_id" {
+  value = docker_container.project.id
+}
+
+output "service_url" {
+  value = "https://${var.project_id}.vaporform.local"
+}
+
+output "internal_ip" {
+  value = docker_container.project.network_data[0].ip_address
+}
+```
+
+### 3. Infrastructure Management Service
+
+```typescript
+// infrastructure/services/TerraformManager.ts
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { promises as fs } from 'fs';
+import path from 'path';
+
+const execAsync = promisify(exec);
+
+export class TerraformManager {
+  private terraformDir: string;
+  
+  constructor() {
+    this.terraformDir = path.join(__dirname, '../terraform');
+  }
+  
+  async provisionProjectInfrastructure(
+    projectId: string, 
+    config: ProjectInfraConfig
+  ): Promise<InfrastructureResult> {
+    
+    // Generate Terraform variables file
+    const varsFile = path.join(this.terraformDir, 'projects', `${projectId}.tfvars`);
+    await this.generateTerraformVars(varsFile, projectId, config);
+    
+    try {
+      // Initialize Terraform for this project
+      await execAsync(`terraform init`, {
+        cwd: path.join(this.terraformDir, 'projects')
+      });
+      
+      // Plan the infrastructure changes
+      const planResult = await execAsync(
+        `terraform plan -var-file="${varsFile}" -out="${projectId}.tfplan"`,
+        { cwd: path.join(this.terraformDir, 'projects') }
+      );
+      
+      // Apply the infrastructure changes
+      const applyResult = await execAsync(
+        `terraform apply -auto-approve "${projectId}.tfplan"`,
+        { cwd: path.join(this.terraformDir, 'projects') }
+      );
+      
+      // Get outputs
+      const outputResult = await execAsync(
+        `terraform output -json`,
+        { cwd: path.join(this.terraformDir, 'projects') }
+      );
+      
+      const outputs = JSON.parse(outputResult.stdout);
+      
+      return {
+        success: true,
+        containerId: outputs.container_id.value,
+        serviceUrl: outputs.service_url.value,
+        internalIp: outputs.internal_ip.value
+      };
+      
+    } catch (error) {
+      console.error('Terraform provisioning failed:', error);
+      throw new Error(`Infrastructure provisioning failed: ${error.message}`);
+    }
+  }
+  
+  async destroyProjectInfrastructure(projectId: string): Promise<void> {
+    const varsFile = path.join(this.terraformDir, 'projects', `${projectId}.tfvars`);
+    
+    try {
+      await execAsync(
+        `terraform destroy -auto-approve -var-file="${varsFile}"`,
+        { cwd: path.join(this.terraformDir, 'projects') }
+      );
+      
+      // Clean up files
+      await fs.unlink(varsFile);
+      await fs.unlink(path.join(this.terraformDir, 'projects', `${projectId}.tfplan`));
+      
+    } catch (error) {
+      console.error('Terraform destroy failed:', error);
+      throw new Error(`Infrastructure destruction failed: ${error.message}`);
+    }
+  }
+  
+  private async generateTerraformVars(
+    varsFile: string, 
+    projectId: string, 
+    config: ProjectInfraConfig
+  ): Promise<void> {
+    const vars = `
+project_id = "${projectId}"
+
+tech_stack = {
+  backend = {
+    language  = "${config.techStack.backend.language}"
+    framework = "${config.techStack.backend.framework}"
+  }
+  frontend = {
+    framework = "${config.techStack.frontend.framework}"
+  }
+}
+
+environment_vars = {
+${Object.entries(config.environmentVars).map(([key, value]) => 
+  `  ${key} = "${value}"`
+).join('\n')}
+}
+`;
+    
+    await fs.writeFile(varsFile, vars);
+  }
+}
+
+interface ProjectInfraConfig {
+  techStack: {
+    backend: {
+      language: string;
+      framework: string;
+    };
+    frontend: {
+      framework: string;
+    };
+  };
+  environmentVars: Record<string, string>;
+}
+
+interface InfrastructureResult {
+  success: boolean;
+  containerId: string;
+  serviceUrl: string;
+  internalIp: string;
+}
+```
+
+This infrastructure implementation provides a robust, scalable foundation for running user projects in isolated, secure containers with automatic service discovery and load balancing.

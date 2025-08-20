@@ -1,0 +1,177 @@
+# Vaporform System Architecture Overview
+
+## Project Vision
+Vaporform is a next-generation AI-powered coding environment that enables users to create sophisticated applications through natural language conversations with Claude. It combines the familiar VSCode interface with powerful AI agents, containerized development environments, and seamless project management.
+
+## High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     VAPORFORM FRONTEND                     │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
+│  │   Chat Panel    │  │  Modified VSCode │  │  Previewer  │ │
+│  │   (Claude AI)   │  │    IDE Core      │  │   Panel     │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘ │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │              Application Header                         │ │
+│  │  [Project Terminal] [Infrastructure] [Encore Dashboard] │ │
+│  └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ WebSocket/HTTP
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   ENCORE.TS BACKEND                        │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
+│  │   API Gateway   │  │  Claude Code    │  │   Project   │ │
+│  │   & Auth        │  │  SDK Service    │  │  Manager    │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘ │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
+│  │  Infrastructure│  │    Database     │  │  File System│ │
+│  │   Controller    │  │   Service       │  │   Service   │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ Container Management
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 INFRASTRUCTURE LAYER                       │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐ │
+│  │     Docker      │  │    Terraform    │  │   Traefik   │ │
+│  │   Containers    │  │  Infrastructure │  │   Proxy     │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────┘ │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │           User Project Environments                     │ │
+│  │  [Container 1] [Container 2] [Container 3] [...]       │ │
+│  └─────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Core Technology Stack
+
+### Frontend
+- **Base**: Modified VSCode (from github.com/devgru0101/vscode.git)
+- **Framework**: React/TypeScript (VSCode's foundation)
+- **UI Library**: VSCode's Monaco Editor + Custom React components
+- **State Management**: Redux (VSCode's existing state management)
+- **Build Tool**: Webpack (VSCode's existing build system)
+- **Extensions**: Full VSCode extension compatibility
+
+### Backend
+- **Framework**: Encore.ts
+- **Language**: TypeScript
+- **Database**: Encore's built-in PostgreSQL
+- **Authentication**: Encore Auth
+- **API**: REST + WebSocket for real-time features
+- **File Storage**: Local filesystem with S3-compatible backup
+
+### Infrastructure
+- **Containerization**: Docker
+- **Orchestration**: Docker Compose + Custom container manager
+- **Service Discovery**: Traefik
+- **Infrastructure as Code**: Terraform
+- **Networking**: Docker networks with Traefik routing
+- **Monitoring**: Built-in container health checks
+
+### AI Integration
+- **Primary AI**: Claude Code SDK
+- **Secondary AI**: Anthropic API for chat features
+- **Agent Types**: Project Creator, Code Modifier, Infrastructure Manager
+
+## Key System Components
+
+### 1. Frontend Application
+- **Chat Panel**: Left sidebar for Claude interactions
+- **IDE Core**: Modified VSCode with file explorer, editor, and terminal
+- **Previewer**: Right panel showing live project previews
+- **Header Controls**: Project Terminal, Infrastructure, Encore Dashboard buttons
+
+### 2. Backend Services
+- **Project Service**: CRUD operations for user projects
+- **Claude Integration Service**: Manages AI agent interactions
+- **Container Service**: Docker container lifecycle management
+- **File Service**: Project file management and version control
+- **Infrastructure Service**: Terraform and service discovery management
+
+### 3. Infrastructure Layer
+- **Project Containers**: Isolated environments for each user project
+- **Service Mesh**: Traefik-based routing and load balancing
+- **Storage**: Persistent volumes for project data
+- **Networking**: Secure inter-service communication
+
+## Data Flow
+
+### Project Creation Flow
+1. User initiates project creation through wizard
+2. Frontend sends configuration to Backend
+3. Backend stores project metadata in database
+4. Claude Code SDK generates project structure
+5. Infrastructure Service provisions container
+6. Traefik configures routing for new service
+7. Project becomes available in IDE
+
+### Real-Time Development Flow
+1. User modifies code in VSCode editor
+2. Changes trigger WebSocket update to backend
+3. Backend saves changes to project filesystem
+4. Container hot-reloads with new changes
+5. Previewer updates with live changes
+6. Claude can suggest improvements via chat
+
+### AI Interaction Flow
+1. User sends message in chat panel
+2. Frontend forwards to Claude Integration Service
+3. Service processes request with appropriate agent
+4. Agent makes changes to project files/infrastructure
+5. Changes propagate through normal development flow
+6. User sees results in real-time
+
+## Security Considerations
+
+### Container Isolation
+- Each project runs in isolated Docker container
+- Network policies prevent cross-project access
+- Resource limits prevent resource exhaustion
+- Secure secrets management for project credentials
+
+### Authentication & Authorization
+- User authentication via Encore Auth
+- Project-level permissions
+- API rate limiting
+- Secure WebSocket connections
+
+### Data Protection
+- Encrypted data at rest
+- Secure file system access
+- Regular automated backups
+- Audit logging for all operations
+
+## Scalability Architecture
+
+### Horizontal Scaling
+- Stateless backend services
+- Container orchestration for project environments
+- Load balancing via Traefik
+- Database connection pooling
+
+### Performance Optimization
+- Redis caching for frequent operations
+- CDN for static assets
+- WebSocket connection pooling
+- Efficient file watching and updates
+
+## Integration Points
+
+### VSCode Extension Ecosystem
+- Full compatibility with existing extensions
+- Extension marketplace integration
+- Custom extension development support
+- Theme and configuration sync
+
+### External Services
+- GitHub integration for project sync
+- Docker Hub for base images
+- NPM/PyPI for package management
+- Cloud provider APIs for deployment
+
+This architecture provides a robust, scalable foundation for Vaporform while maintaining simplicity and extensibility.
