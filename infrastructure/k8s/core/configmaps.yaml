@@ -1,0 +1,370 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vaporform-config
+  namespace: vaporform-prod
+  labels:
+    app: vaporform
+    tier: config
+    environment: production
+data:
+  # Application Configuration
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  METRICS_ENABLED: "true"
+  TRACING_ENABLED: "true"
+  
+  # Database Configuration
+  DB_MAX_CONNECTIONS: "100"
+  DB_CONNECTION_TIMEOUT: "30000"
+  DB_IDLE_TIMEOUT: "600000"
+  DB_SSL_MODE: "require"
+  
+  # Redis Configuration
+  REDIS_MAX_RETRIES: "3"
+  REDIS_RETRY_DELAY: "1000"
+  REDIS_COMMAND_TIMEOUT: "5000"
+  
+  # Performance Configuration
+  REQUEST_TIMEOUT: "30000"
+  BODY_SIZE_LIMIT: "10mb"
+  RATE_LIMIT_WINDOW: "900000"
+  RATE_LIMIT_MAX: "1000"
+  
+  # Security Configuration
+  CORS_ORIGINS: "https://app.vaporform.com,https://www.vaporform.com"
+  HELMET_ENABLED: "true"
+  SESSION_TIMEOUT: "86400000"
+  
+  # Monitoring Configuration
+  PROMETHEUS_METRICS_PATH: "/metrics"
+  HEALTH_CHECK_PATH: "/health"
+  READINESS_CHECK_PATH: "/ready"
+  
+  # AI Configuration
+  AI_REQUEST_TIMEOUT: "60000"
+  AI_MAX_TOKENS: "4000"
+  AI_TEMPERATURE: "0.7"
+  
+  # Container Configuration
+  CONTAINER_REGISTRY: "registry.vaporform.com"
+  CONTAINER_TIMEOUT: "300000"
+  CONTAINER_MEMORY_LIMIT: "2Gi"
+  CONTAINER_CPU_LIMIT: "1000m"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: vaporform-prod
+  labels:
+    app: nginx
+    tier: config
+    environment: production
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+    
+    events {
+        worker_connections 1024;
+        use epoll;
+        multi_accept on;
+    }
+    
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        
+        # Logging
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                       '$status $body_bytes_sent "$http_referer" '
+                       '"$http_user_agent" "$http_x_forwarded_for" '
+                       'rt=$request_time uct="$upstream_connect_time" '
+                       'uht="$upstream_header_time" urt="$upstream_response_time"';
+        
+        access_log /var/log/nginx/access.log main;
+        
+        # Performance
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 2048;
+        client_max_body_size 10m;
+        
+        # Gzip compression
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_proxied any;
+        gzip_comp_level 6;
+        gzip_types
+            text/plain
+            text/css
+            text/xml
+            text/javascript
+            application/json
+            application/javascript
+            application/xml+rss
+            application/atom+xml
+            image/svg+xml;
+        
+        # Security headers
+        add_header X-Frame-Options DENY;
+        add_header X-Content-Type-Options nosniff;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";
+        add_header Referrer-Policy "strict-origin-when-cross-origin";
+        
+        upstream backend {
+            least_conn;
+            server vaporform-backend:4000 max_fails=3 fail_timeout=30s;
+            keepalive 32;
+        }
+        
+        upstream ai-service {
+            least_conn;
+            server vaporform-ai:4001 max_fails=3 fail_timeout=30s;
+            keepalive 16;
+        }
+        
+        # Rate limiting
+        limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+        limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;
+        
+        server {
+            listen 80;
+            server_name _;
+            return 301 https://$host$request_uri;
+        }
+        
+        server {
+            listen 443 ssl http2;
+            server_name app.vaporform.com;
+            
+            ssl_certificate /etc/ssl/certs/tls.crt;
+            ssl_certificate_key /etc/ssl/private/tls.key;
+            ssl_protocols TLSv1.2 TLSv1.3;
+            ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
+            ssl_prefer_server_ciphers off;
+            ssl_session_cache shared:SSL:10m;
+            ssl_session_timeout 10m;
+            
+            # Frontend
+            location / {
+                root /usr/share/nginx/html;
+                index index.html;
+                try_files $uri $uri/ /index.html;
+                
+                expires 1h;
+                add_header Cache-Control "public, immutable";
+            }
+            
+            # Static assets
+            location /static/ {
+                root /usr/share/nginx/html;
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+            }
+            
+            # API endpoints
+            location /api/ {
+                limit_req zone=api burst=20 nodelay;
+                proxy_pass http://backend;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_cache_bypass $http_upgrade;
+                proxy_read_timeout 60s;
+                proxy_connect_timeout 10s;
+            }
+            
+            # Authentication endpoints
+            location /auth/ {
+                limit_req zone=auth burst=10 nodelay;
+                proxy_pass http://backend;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_read_timeout 30s;
+                proxy_connect_timeout 10s;
+            }
+            
+            # AI endpoints
+            location /ai/ {
+                limit_req zone=api burst=5 nodelay;
+                proxy_pass http://ai-service;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_read_timeout 120s;
+                proxy_connect_timeout 10s;
+            }
+            
+            # WebSocket
+            location /ws {
+                proxy_pass http://backend;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_read_timeout 86400;
+            }
+            
+            # Health checks
+            location /health {
+                access_log off;
+                return 200 "healthy\n";
+                add_header Content-Type text/plain;
+            }
+        }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: vaporform-prod
+  labels:
+    app: prometheus
+    tier: config
+    environment: production
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'vaporform-prod'
+        environment: 'production'
+    
+    rule_files:
+      - "alerts.yml"
+    
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+              - alertmanager:9093
+    
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+      
+      - job_name: 'vaporform-backend'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - vaporform-prod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: vaporform-backend
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+      
+      - job_name: 'vaporform-frontend'
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - vaporform-prod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            action: keep
+            regex: vaporform-frontend
+      
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+  
+  alerts.yml: |
+    groups:
+      - name: vaporform.rules
+        rules:
+          - alert: HighErrorRate
+            expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "High error rate detected"
+              description: "Error rate is {{ $value }} errors per second"
+          
+          - alert: HighLatency
+            expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 1
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High latency detected"
+              description: "99th percentile latency is {{ $value }} seconds"
+          
+          - alert: PodCrashLooping
+            expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+            for: 5m
+            labels:
+              severity: critical
+            annotations:
+              summary: "Pod is crash looping"
+              description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is crash looping"
+          
+          - alert: HighMemoryUsage
+            expr: (container_memory_usage_bytes / container_spec_memory_limit_bytes) > 0.9
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High memory usage"
+              description: "Container {{ $labels.container }} is using {{ $value | humanizePercentage }} of memory limit"
+          
+          - alert: HighCPUUsage
+            expr: (rate(container_cpu_usage_seconds_total[5m]) / container_spec_cpu_quota * container_spec_cpu_period) > 0.9
+            for: 5m
+            labels:
+              severity: warning
+            annotations:
+              summary: "High CPU usage"
+              description: "Container {{ $labels.container }} is using {{ $value | humanizePercentage }} of CPU limit"

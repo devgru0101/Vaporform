@@ -1,0 +1,285 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: vaporform-prod
+  labels:
+    app: postgres
+    tier: database
+    environment: production
+data:
+  postgresql.conf: |
+    # Connection Settings
+    listen_addresses = '*'
+    port = 5432
+    max_connections = 200
+    superuser_reserved_connections = 3
+    
+    # Memory Settings
+    shared_buffers = 512MB
+    effective_cache_size = 1536MB
+    maintenance_work_mem = 128MB
+    checkpoint_completion_target = 0.9
+    wal_buffers = 16MB
+    default_statistics_target = 100
+    
+    # Query Tuning
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    work_mem = 4MB
+    huge_pages = try
+    min_wal_size = 1GB
+    max_wal_size = 4GB
+    
+    # Logging
+    log_destination = 'stderr'
+    logging_collector = on
+    log_directory = 'log'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_file_mode = 0600
+    log_truncate_on_rotation = on
+    log_rotation_age = 1d
+    log_rotation_size = 100MB
+    log_min_duration_statement = 1000
+    log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    log_checkpoints = on
+    log_connections = on
+    log_disconnections = on
+    log_lock_waits = on
+    log_temp_files = 0
+    
+    # Security
+    ssl = on
+    ssl_cert_file = '/etc/ssl/certs/server.crt'
+    ssl_key_file = '/etc/ssl/private/server.key'
+    ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL'
+    ssl_prefer_server_ciphers = on
+    
+    # Replication
+    wal_level = replica
+    max_wal_senders = 3
+    wal_keep_size = 1GB
+    hot_standby = on
+    hot_standby_feedback = on
+    
+    # Performance
+    autovacuum = on
+    autovacuum_max_workers = 3
+    autovacuum_naptime = 1min
+    autovacuum_vacuum_threshold = 50
+    autovacuum_analyze_threshold = 50
+    autovacuum_vacuum_scale_factor = 0.2
+    autovacuum_analyze_scale_factor = 0.1
+  
+  pg_hba.conf: |
+    # TYPE  DATABASE        USER            ADDRESS                 METHOD
+    local   all             all                                     peer
+    host    all             all             127.0.0.1/32            md5
+    host    all             all             ::1/128                 md5
+    host    all             all             0.0.0.0/0               md5
+    hostssl all             all             0.0.0.0/0               md5
+    host    replication     replicator      0.0.0.0/0               md5
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: vaporform-prod
+  labels:
+    app: postgres
+    tier: database
+    environment: production
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+      tier: database
+      environment: production
+  template:
+    metadata:
+      labels:
+        app: postgres
+        tier: database
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9187"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: vaporform-service-account
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - name: postgres
+          containerPort: 5432
+          protocol: TCP
+        env:
+        - name: POSTGRES_DB
+          value: "vaporform_prod"
+        - name: POSTGRES_USER
+          value: "vaporform_user"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: DB_PASSWORD
+        - name: PGDATA
+          value: "/var/lib/postgresql/data/pgdata"
+        - name: POSTGRES_INITDB_ARGS
+          value: "--auth-host=md5"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: postgres-config
+          mountPath: /etc/postgresql/postgresql.conf
+          subPath: postgresql.conf
+        - name: postgres-config
+          mountPath: /etc/postgresql/pg_hba.conf
+          subPath: pg_hba.conf
+        - name: postgres-ssl
+          mountPath: /etc/ssl/certs
+          readOnly: true
+        - name: postgres-ssl
+          mountPath: /etc/ssl/private
+          readOnly: true
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - exec pg_isready -U "vaporform_user" -d "vaporform_prod" -h 127.0.0.1 -p 5432
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - exec pg_isready -U "vaporform_user" -d "vaporform_prod" -h 127.0.0.1 -p 5432
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      - name: postgres-exporter
+        image: prometheuscommunity/postgres-exporter:v0.12.0
+        ports:
+        - name: metrics
+          containerPort: 9187
+          protocol: TCP
+        env:
+        - name: DATA_SOURCE_NAME
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: DATABASE_URL
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: postgres-config
+        configMap:
+          name: postgres-config
+      - name: postgres-ssl
+        secret:
+          secretName: tls-certificates
+          defaultMode: 0600
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        node-type: database
+      tolerations:
+      - key: "database"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+      labels:
+        app: postgres
+        tier: database
+        environment: production
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 500Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: vaporform-prod
+  labels:
+    app: postgres
+    tier: database
+    environment: production
+spec:
+  type: ClusterIP
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: postgres
+    protocol: TCP
+  - name: metrics
+    port: 9187
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: postgres
+    tier: database
+    environment: production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: vaporform-prod
+  labels:
+    app: postgres
+    tier: database
+    environment: production
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: postgres
+    protocol: TCP
+  selector:
+    app: postgres
+    tier: database
+    environment: production

@@ -1,0 +1,311 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vaporform-service-account
+  namespace: vaporform-prod
+  labels:
+    app: vaporform
+    tier: security
+    environment: production
+  annotations:
+    iam.gke.io/gcp-service-account: vaporform-prod@PROJECT_ID.iam.gserviceaccount.com
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: vaporform-prod
+  name: vaporform-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "endpoints", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: vaporform-role-binding
+  namespace: vaporform-prod
+subjects:
+- kind: ServiceAccount
+  name: vaporform-service-account
+  namespace: vaporform-prod
+roleRef:
+  kind: Role
+  name: vaporform-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: vaporform-prod
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: vaporform-authz
+  namespace: vaporform-prod
+spec:
+  selector:
+    matchLabels:
+      app: vaporform-backend
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/vaporform-prod/sa/vaporform-service-account"]
+    - source:
+        namespaces: ["istio-system"]
+  - to:
+    - operation:
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH"]
+        paths: ["/api/*", "/auth/*", "/health", "/metrics"]
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: vaporform-gateway
+  namespace: vaporform-prod
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - app.vaporform.com
+    - api.vaporform.com
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: vaporform-tls-secret
+    hosts:
+    - app.vaporform.com
+    - api.vaporform.com
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: vaporform-virtual-service
+  namespace: vaporform-prod
+spec:
+  hosts:
+  - app.vaporform.com
+  - api.vaporform.com
+  gateways:
+  - vaporform-gateway
+  http:
+  # API routes
+  - match:
+    - uri:
+        prefix: /api/
+    - headers:
+        host:
+          exact: api.vaporform.com
+    route:
+    - destination:
+        host: vaporform-backend.vaporform-prod.svc.cluster.local
+        port:
+          number: 4000
+    retries:
+      attempts: 3
+      perTryTimeout: 30s
+    timeout: 60s
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 5s
+  # Authentication routes
+  - match:
+    - uri:
+        prefix: /auth/
+    route:
+    - destination:
+        host: vaporform-backend.vaporform-prod.svc.cluster.local
+        port:
+          number: 4000
+    retries:
+      attempts: 2
+      perTryTimeout: 15s
+    timeout: 30s
+  # AI routes with circuit breaker
+  - match:
+    - uri:
+        prefix: /ai/
+    route:
+    - destination:
+        host: vaporform-ai.vaporform-prod.svc.cluster.local
+        port:
+          number: 4001
+    retries:
+      attempts: 2
+      perTryTimeout: 60s
+    timeout: 120s
+    fault:
+      abort:
+        percentage:
+          value: 0.1
+        httpStatus: 503
+  # WebSocket routes
+  - match:
+    - uri:
+        prefix: /ws
+    route:
+    - destination:
+        host: vaporform-backend.vaporform-prod.svc.cluster.local
+        port:
+          number: 4000
+    timeout: 0s
+  # Frontend routes (SPA)
+  - match:
+    - uri:
+        prefix: /
+    - headers:
+        host:
+          exact: app.vaporform.com
+    route:
+    - destination:
+        host: vaporform-frontend.vaporform-prod.svc.cluster.local
+        port:
+          number: 80
+    headers:
+      response:
+        add:
+          Cache-Control: "public, max-age=31536000, immutable"
+        set:
+          X-Content-Type-Options: "nosniff"
+          X-Frame-Options: "DENY"
+          X-XSS-Protection: "1; mode=block"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: vaporform-backend-dr
+  namespace: vaporform-prod
+spec:
+  host: vaporform-backend.vaporform-prod.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 10
+        maxRetries: 3
+        consecutiveGatewayErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+    circuitBreaker:
+      consecutiveGatewayErrors: 5
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 30
+    loadBalancer:
+      simple: LEAST_CONN
+  portLevelSettings:
+  - port:
+      number: 4000
+    connectionPool:
+      tcp:
+        maxConnections: 50
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: vaporform-ai-dr
+  namespace: vaporform-prod
+spec:
+  host: vaporform-ai.vaporform-prod.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 50
+      http:
+        http1MaxPendingRequests: 25
+        http2MaxRequests: 50
+        maxRequestsPerConnection: 5
+        maxRetries: 2
+        consecutiveGatewayErrors: 3
+        interval: 60s
+        baseEjectionTime: 60s
+    circuitBreaker:
+      consecutiveGatewayErrors: 3
+      consecutive5xxErrors: 3
+      interval: 60s
+      baseEjectionTime: 60s
+      maxEjectionPercent: 30
+      minHealthPercent: 50
+    loadBalancer:
+      simple: ROUND_ROBIN
+    outlierDetection:
+      consecutiveGatewayErrors: 3
+      consecutive5xxErrors: 3
+      interval: 60s
+      baseEjectionTime: 60s
+      maxEjectionPercent: 30
+      minHealthPercent: 50
+---
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-apis
+  namespace: vaporform-prod
+spec:
+  hosts:
+  - api.openai.com
+  - api.anthropic.com
+  - api.github.com
+  - api.stripe.com
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: vaporform-metrics
+  namespace: vaporform-prod
+spec:
+  metrics:
+  - providers:
+    - name: prometheus
+  - overrides:
+    - match:
+        metric: ALL_METRICS
+      tagOverrides:
+        destination_app:
+          value: "vaporform"
+        source_app:
+          value: "vaporform"
+---
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: vaporform-tracing
+  namespace: vaporform-prod
+spec:
+  tracing:
+  - providers:
+    - name: jaeger

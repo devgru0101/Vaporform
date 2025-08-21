@@ -1,0 +1,609 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: disaster-recovery-procedures
+  namespace: vaporform-prod
+  labels:
+    app: disaster-recovery
+    tier: infrastructure
+    environment: production
+data:
+  dr-playbook.md: |
+    # Vaporform Disaster Recovery Playbook
+    
+    ## Overview
+    This playbook provides step-by-step procedures for disaster recovery scenarios.
+    
+    **Recovery Time Objective (RTO):** < 5 minutes
+    **Recovery Point Objective (RPO):** < 1 minute
+    
+    ## Incident Response Team
+    - **Incident Commander:** On-call engineer
+    - **Technical Lead:** Senior backend engineer
+    - **Database Expert:** Database administrator
+    - **Infrastructure Lead:** DevOps engineer
+    - **Communications Lead:** Product manager
+    
+    ## Escalation Matrix
+    1. **Level 1:** Service degradation (auto-recovery attempts)
+    2. **Level 2:** Service outage (manual intervention required)
+    3. **Level 3:** Data center failure (regional failover)
+    4. **Level 4:** Multi-region disaster (full DR activation)
+    
+    ## Recovery Procedures
+    
+    ### 1. Application Pod Recovery
+    **Scenario:** Individual pods or services are failing
+    **RTO:** < 2 minutes
+    
+    ```bash
+    # Check pod status
+    kubectl get pods -n vaporform-prod
+    
+    # Restart failed pods
+    kubectl delete pod <pod-name> -n vaporform-prod
+    
+    # Scale up if needed
+    kubectl scale deployment <deployment> --replicas=<count> -n vaporform-prod
+    
+    # Check health
+    kubectl get pods -n vaporform-prod -w
+    ```
+    
+    ### 2. Database Recovery
+    **Scenario:** PostgreSQL primary failure
+    **RTO:** < 5 minutes
+    
+    ```bash
+    # Promote read replica to primary
+    kubectl patch postgresql postgres -n vaporform-prod --type='merge' \
+      -p='{"spec":{"postgresql":{"parameters":{"hot_standby":"off"}}}}'
+    
+    # Update application connection strings
+    kubectl patch secret vaporform-secrets -n vaporform-prod \
+      --type='merge' -p='{"data":{"DATABASE_URL":"<new-primary-url>"}}'
+    
+    # Restart application pods
+    kubectl rollout restart deployment/vaporform-backend -n vaporform-prod
+    ```
+    
+    ### 3. Regional Failover
+    **Scenario:** Primary region failure
+    **RTO:** < 5 minutes
+    
+    ```bash
+    # Switch DNS to secondary region
+    aws route53 change-resource-record-sets \
+      --hosted-zone-id <zone-id> \
+      --change-batch file://failover-dns.json
+    
+    # Activate standby cluster
+    kubectl config use-context vaporform-prod-dr
+    kubectl apply -f infrastructure/k8s/ -n vaporform-prod
+    
+    # Restore latest backup
+    ./restore-from-backup.sh --region=dr --timestamp=latest
+    ```
+    
+    ### 4. Full System Recovery
+    **Scenario:** Complete infrastructure failure
+    **RTO:** < 30 minutes
+    
+    ```bash
+    # Deploy fresh infrastructure
+    terraform apply -var="disaster_recovery=true" \
+      -var="region=us-east1" infrastructure/terraform/
+    
+    # Deploy applications
+    kubectl apply -f infrastructure/k8s/ -n vaporform-prod
+    
+    # Restore from backup
+    ./restore-from-backup.sh --full-restore --timestamp=latest
+    
+    # Validate system health
+    ./health-check.sh --comprehensive
+    ```
+  
+  restore-script.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    
+    # Vaporform Disaster Recovery Restore Script
+    
+    # Configuration
+    BACKUP_BUCKET="${S3_BACKUP_BUCKET:-vaporform-backups-prod}"
+    ENCRYPTION_KEY="${BACKUP_ENCRYPTION_KEY}"
+    LOG_FILE="/var/log/disaster-recovery/restore-$(date +%Y%m%d-%H%M%S).log"
+    
+    # Logging setup
+    mkdir -p "$(dirname "$LOG_FILE")"
+    exec 1> >(tee -a "$LOG_FILE")
+    exec 2>&1
+    
+    echo "=== Vaporform Disaster Recovery Restore ==="
+    echo "Started at: $(date)"
+    echo "Restore ID: $(uuidgen)"
+    
+    # Function to log with timestamp
+    log() {
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    }
+    
+    # Function to send notifications
+    notify() {
+        local severity="$1"
+        local message="$2"
+        
+        # Send to Slack
+        curl -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            --data "{\"text\":\"🚨 [$severity] Disaster Recovery: $message\"}"
+        
+        # Send to PagerDuty
+        if [ "$severity" = "CRITICAL" ]; then
+            curl -X POST https://events.pagerduty.com/v2/enqueue \
+                -H 'Content-Type: application/json' \
+                -d "{
+                    \"routing_key\": \"$PAGERDUTY_ROUTING_KEY\",
+                    \"event_action\": \"trigger\",
+                    \"payload\": {
+                        \"summary\": \"Disaster Recovery: $message\",
+                        \"severity\": \"critical\",
+                        \"source\": \"vaporform-dr\"
+                    }
+                }"
+        fi
+    }
+    
+    # Function to validate prerequisites
+    validate_prerequisites() {
+        log "Validating prerequisites..."
+        
+        # Check tools
+        for tool in kubectl aws gpg psql redis-cli; do
+            if ! command -v "$tool" &> /dev/null; then
+                log "ERROR: Required tool '$tool' not found"
+                exit 1
+            fi
+        done
+        
+        # Check environment variables
+        for var in BACKUP_ENCRYPTION_KEY S3_BACKUP_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [ -z "${!var:-}" ]; then
+                log "ERROR: Required environment variable '$var' not set"
+                exit 1
+            fi
+        done
+        
+        # Check cluster connectivity
+        if ! kubectl cluster-info &> /dev/null; then
+            log "ERROR: Cannot connect to Kubernetes cluster"
+            exit 1
+        fi
+        
+        log "Prerequisites validated successfully"
+    }
+    
+    # Function to get latest backup
+    get_latest_backup() {
+        local backup_type="$1"
+        local timestamp="${2:-latest}"
+        
+        log "Getting latest $backup_type backup..."
+        
+        if [ "$timestamp" = "latest" ]; then
+            aws s3api list-objects-v2 \
+                --bucket "$BACKUP_BUCKET" \
+                --prefix "$backup_type/" \
+                --query 'sort_by(Contents, &LastModified)[-1].Key' \
+                --output text
+        else
+            aws s3api list-objects-v2 \
+                --bucket "$BACKUP_BUCKET" \
+                --prefix "$backup_type/" \
+                --query "Contents[?contains(Key, '$timestamp')].Key" \
+                --output text | head -1
+        fi
+    }
+    
+    # Function to restore database
+    restore_database() {
+        local backup_timestamp="${1:-latest}"
+        
+        log "Starting database restore..."
+        notify "INFO" "Starting database restore from backup: $backup_timestamp"
+        
+        # Get latest database backup
+        local backup_key
+        backup_key=$(get_latest_backup "database" "$backup_timestamp")
+        
+        if [ -z "$backup_key" ]; then
+            log "ERROR: No database backup found"
+            notify "CRITICAL" "Database backup not found for timestamp: $backup_timestamp"
+            exit 1
+        fi
+        
+        log "Found database backup: $backup_key"
+        
+        # Download backup
+        local backup_file="/tmp/database-restore.dump.gpg"
+        aws s3 cp "s3://$BACKUP_BUCKET/$backup_key" "$backup_file"
+        
+        # Decrypt backup
+        gpg --decrypt --batch --yes --passphrase "$ENCRYPTION_KEY" \
+            "$backup_file" > "/tmp/database-restore.dump"
+        
+        # Stop application to prevent writes
+        log "Scaling down applications..."
+        kubectl scale deployment vaporform-backend --replicas=0 -n vaporform-prod
+        kubectl scale deployment vaporform-frontend --replicas=0 -n vaporform-prod
+        
+        # Wait for pods to terminate
+        kubectl wait --for=delete pod -l app=vaporform-backend -n vaporform-prod --timeout=60s || true
+        
+        # Create maintenance page
+        kubectl apply -f - <<EOF
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: maintenance-page
+      namespace: vaporform-prod
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: maintenance-page
+      template:
+        metadata:
+          labels:
+            app: maintenance-page
+        spec:
+          containers:
+          - name: nginx
+            image: nginx:alpine
+            ports:
+            - containerPort: 80
+            volumeMounts:
+            - name: maintenance-html
+              mountPath: /usr/share/nginx/html
+          volumes:
+          - name: maintenance-html
+            configMap:
+              name: maintenance-page
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: maintenance-page
+      namespace: vaporform-prod
+    spec:
+      selector:
+        app: maintenance-page
+      ports:
+      - port: 80
+        targetPort: 80
+    EOF
+        
+        # Drop and recreate database
+        log "Recreating database..."
+        kubectl exec -it postgres-0 -n vaporform-prod -- \
+            psql -U postgres -c "DROP DATABASE IF EXISTS vaporform_prod;"
+        kubectl exec -it postgres-0 -n vaporform-prod -- \
+            psql -U postgres -c "CREATE DATABASE vaporform_prod OWNER vaporform_user;"
+        
+        # Restore database
+        log "Restoring database from backup..."
+        kubectl cp "/tmp/database-restore.dump" \
+            vaporform-prod/postgres-0:/tmp/restore.dump
+        
+        kubectl exec -it postgres-0 -n vaporform-prod -- \
+            pg_restore -U vaporform_user -d vaporform_prod \
+            --verbose --clean --if-exists /tmp/restore.dump
+        
+        # Verify restoration
+        local row_count
+        row_count=$(kubectl exec -it postgres-0 -n vaporform-prod -- \
+            psql -U vaporform_user -d vaporform_prod -t -c "SELECT COUNT(*) FROM users;" | tr -d ' \n\r')
+        
+        log "Database restored successfully. User count: $row_count"
+        
+        # Cleanup
+        rm -f "/tmp/database-restore.dump" "/tmp/database-restore.dump.gpg"
+        
+        notify "INFO" "Database restore completed successfully"
+    }
+    
+    # Function to restore Redis data
+    restore_redis() {
+        local backup_timestamp="${1:-latest}"
+        
+        log "Starting Redis restore..."
+        
+        # Get latest Redis backup
+        local backup_key
+        backup_key=$(get_latest_backup "app-state" "$backup_timestamp")
+        
+        if [ -z "$backup_key" ]; then
+            log "WARNING: No Redis backup found"
+            return 0
+        fi
+        
+        # Download and extract backup
+        local backup_file="/tmp/app-state-restore.tar.gz.gpg"
+        aws s3 cp "s3://$BACKUP_BUCKET/$backup_key" "$backup_file"
+        
+        gpg --decrypt --batch --yes --passphrase "$ENCRYPTION_KEY" \
+            "$backup_file" > "/tmp/app-state-restore.tar.gz"
+        
+        tar -xzf "/tmp/app-state-restore.tar.gz" -C /tmp/
+        
+        # Restore Redis data
+        kubectl cp "/tmp/redis-backup.rdb" vaporform-prod/redis-0:/data/dump.rdb
+        kubectl exec redis-0 -n vaporform-prod -- redis-cli FLUSHALL
+        kubectl exec redis-0 -n vaporform-prod -- redis-cli DEBUG RELOAD
+        
+        # Cleanup
+        rm -rf /tmp/app-state-restore.* /tmp/redis-backup.rdb
+        
+        log "Redis restore completed"
+    }
+    
+    # Function to restore application
+    restore_application() {
+        log "Starting application restore..."
+        
+        # Remove maintenance page
+        kubectl delete deployment maintenance-page -n vaporform-prod || true
+        kubectl delete service maintenance-page -n vaporform-prod || true
+        
+        # Scale up applications
+        log "Scaling up applications..."
+        kubectl scale deployment vaporform-backend --replicas=3 -n vaporform-prod
+        kubectl scale deployment vaporform-frontend --replicas=3 -n vaporform-prod
+        
+        # Wait for pods to be ready
+        kubectl wait --for=condition=available deployment/vaporform-backend \
+            -n vaporform-prod --timeout=300s
+        kubectl wait --for=condition=available deployment/vaporform-frontend \
+            -n vaporform-prod --timeout=300s
+        
+        log "Application restore completed"
+    }
+    
+    # Function to verify system health
+    verify_system_health() {
+        log "Verifying system health..."
+        
+        # Check pod status
+        kubectl get pods -n vaporform-prod
+        
+        # Health check endpoints
+        local health_checks=(
+            "http://vaporform-backend:4000/health"
+            "http://vaporform-frontend:80/health"
+        )
+        
+        for endpoint in "${health_checks[@]}"; do
+            log "Checking $endpoint..."
+            if kubectl exec -n vaporform-prod deployment/vaporform-backend -- \
+                curl -f "$endpoint" > /dev/null 2>&1; then
+                log "✓ $endpoint is healthy"
+            else
+                log "✗ $endpoint is unhealthy"
+                notify "CRITICAL" "Health check failed for $endpoint"
+                return 1
+            fi
+        done
+        
+        # Check database connectivity
+        if kubectl exec postgres-0 -n vaporform-prod -- \
+            psql -U vaporform_user -d vaporform_prod -c "SELECT 1;" > /dev/null 2>&1; then
+            log "✓ Database connectivity verified"
+        else
+            log "✗ Database connectivity failed"
+            notify "CRITICAL" "Database connectivity check failed"
+            return 1
+        fi
+        
+        # Check Redis connectivity
+        if kubectl exec redis-0 -n vaporform-prod -- redis-cli ping | grep -q PONG; then
+            log "✓ Redis connectivity verified"
+        else
+            log "✗ Redis connectivity failed"
+            notify "CRITICAL" "Redis connectivity check failed"
+            return 1
+        fi
+        
+        log "System health verification completed successfully"
+        notify "INFO" "Disaster recovery completed successfully - system is healthy"
+    }
+    
+    # Main restore function
+    main() {
+        local restore_type="${1:-full}"
+        local backup_timestamp="${2:-latest}"
+        
+        log "Starting disaster recovery restore"
+        log "Restore type: $restore_type"
+        log "Backup timestamp: $backup_timestamp"
+        
+        notify "INFO" "Starting disaster recovery restore (type: $restore_type)"
+        
+        validate_prerequisites
+        
+        case "$restore_type" in
+            "database")
+                restore_database "$backup_timestamp"
+                ;;
+            "redis")
+                restore_redis "$backup_timestamp"
+                ;;
+            "application")
+                restore_application
+                ;;
+            "full")
+                restore_database "$backup_timestamp"
+                restore_redis "$backup_timestamp"
+                restore_application
+                verify_system_health
+                ;;
+            *)
+                log "ERROR: Invalid restore type: $restore_type"
+                log "Valid types: database, redis, application, full"
+                exit 1
+                ;;
+        esac
+        
+        log "Disaster recovery restore completed successfully"
+        log "Completed at: $(date)"
+    }
+    
+    # Execute main function with error handling
+    if ! main "$@"; then
+        notify "CRITICAL" "Disaster recovery restore failed"
+        exit 1
+    fi
+  
+  health-check.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    
+    # Comprehensive health check script
+    
+    echo "=== Vaporform System Health Check ==="
+    echo "Started at: $(date)"
+    
+    EXIT_CODE=0
+    
+    # Function to check and report
+    check() {
+        local name="$1"
+        local command="$2"
+        
+        echo -n "Checking $name... "
+        if eval "$command" &> /dev/null; then
+            echo "✓ PASS"
+        else
+            echo "✗ FAIL"
+            EXIT_CODE=1
+        fi
+    }
+    
+    # Kubernetes cluster health
+    echo "## Kubernetes Cluster Health"
+    check "Cluster connectivity" "kubectl cluster-info"
+    check "Node readiness" "kubectl get nodes --no-headers | grep -v NotReady"
+    check "System pods" "kubectl get pods -n kube-system --no-headers | grep -v 'Running\|Completed'"
+    
+    # Application health
+    echo "## Application Health"
+    check "Backend pods" "kubectl get pods -n vaporform-prod -l app=vaporform-backend --no-headers | grep Running"
+    check "Frontend pods" "kubectl get pods -n vaporform-prod -l app=vaporform-frontend --no-headers | grep Running"
+    check "Database pods" "kubectl get pods -n vaporform-prod -l app=postgres --no-headers | grep Running"
+    check "Redis pods" "kubectl get pods -n vaporform-prod -l app=redis --no-headers | grep Running"
+    
+    # Service health
+    echo "## Service Health"
+    check "Backend service" "kubectl get service vaporform-backend -n vaporform-prod"
+    check "Frontend service" "kubectl get service vaporform-frontend -n vaporform-prod"
+    check "Database service" "kubectl get service postgres -n vaporform-prod"
+    check "Redis service" "kubectl get service redis -n vaporform-prod"
+    
+    # Application endpoints
+    echo "## Application Endpoints"
+    check "Backend health endpoint" "kubectl exec -n vaporform-prod deployment/vaporform-backend -- curl -f http://localhost:4000/health"
+    check "Frontend health endpoint" "kubectl exec -n vaporform-prod deployment/vaporform-frontend -- curl -f http://localhost:80/health"
+    
+    # Database connectivity
+    echo "## Database Health"
+    check "PostgreSQL connectivity" "kubectl exec postgres-0 -n vaporform-prod -- pg_isready -U vaporform_user"
+    check "Database query" "kubectl exec postgres-0 -n vaporform-prod -- psql -U vaporform_user -d vaporform_prod -c 'SELECT 1;'"
+    
+    # Redis connectivity
+    echo "## Redis Health"
+    check "Redis connectivity" "kubectl exec redis-0 -n vaporform-prod -- redis-cli ping"
+    check "Redis memory usage" "kubectl exec redis-0 -n vaporform-prod -- redis-cli info memory | grep used_memory_human"
+    
+    # Monitoring stack
+    echo "## Monitoring Health"
+    check "Prometheus" "kubectl get pods -n vaporform-prod -l app=prometheus --no-headers | grep Running"
+    check "Grafana" "kubectl get pods -n vaporform-prod -l app=grafana --no-headers | grep Running"
+    check "Jaeger" "kubectl get pods -n vaporform-prod -l app=jaeger --no-headers | grep Running"
+    
+    echo "=== Health Check Summary ==="
+    if [ $EXIT_CODE -eq 0 ]; then
+        echo "✓ All health checks passed"
+    else
+        echo "✗ Some health checks failed"
+    fi
+    
+    echo "Completed at: $(date)"
+    exit $EXIT_CODE
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: disaster-recovery-test
+  namespace: vaporform-prod
+  labels:
+    app: disaster-recovery
+    type: test
+    tier: infrastructure
+    environment: production
+spec:
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: disaster-recovery
+        type: test
+    spec:
+      restartPolicy: Never
+      serviceAccountName: backup-service-account
+      containers:
+      - name: dr-test
+        image: bitnami/kubectl:latest
+        command: ["/bin/bash"]
+        args:
+        - -c
+        - |
+          echo "=== Disaster Recovery Test ==="
+          echo "This is a scheduled DR test to validate recovery procedures"
+          
+          # Test backup availability
+          echo "Testing backup availability..."
+          aws s3 ls s3://$S3_BACKUP_BUCKET/database/ | tail -5
+          
+          # Test restore scripts
+          echo "Validating restore scripts..."
+          bash -n /scripts/restore-script.sh
+          
+          # Test health check
+          echo "Running health check..."
+          bash /scripts/health-check.sh
+          
+          echo "DR test completed successfully"
+        env:
+        - name: S3_BACKUP_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: backup-credentials
+              key: s3-bucket
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: backup-credentials
+              key: aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: backup-credentials
+              key: aws-secret-access-key
+        volumeMounts:
+        - name: dr-scripts
+          mountPath: /scripts
+      volumes:
+      - name: dr-scripts
+        configMap:
+          name: disaster-recovery-procedures
+          defaultMode: 0755

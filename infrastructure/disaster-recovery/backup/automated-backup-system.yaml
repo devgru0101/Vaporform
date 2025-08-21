@@ -1,0 +1,602 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backup-config
+  namespace: vaporform-prod
+  labels:
+    app: backup-system
+    tier: infrastructure
+    environment: production
+data:
+  backup.conf: |
+    # Vaporform Automated Backup Configuration
+    
+    # Database Backup Settings
+    DB_BACKUP_SCHEDULE="0 2 * * *"  # Daily at 2 AM UTC
+    DB_BACKUP_RETENTION_DAYS=30
+    DB_BACKUP_COMPRESSION=true
+    DB_BACKUP_ENCRYPTION=true
+    DB_BACKUP_VERIFICATION=true
+    
+    # File System Backup Settings
+    FS_BACKUP_SCHEDULE="0 3 * * *"  # Daily at 3 AM UTC
+    FS_BACKUP_RETENTION_DAYS=14
+    FS_BACKUP_INCREMENTAL=true
+    FS_BACKUP_COMPRESSION=true
+    
+    # Application State Backup
+    APP_STATE_BACKUP_SCHEDULE="*/30 * * * *"  # Every 30 minutes
+    APP_STATE_RETENTION_HOURS=72
+    
+    # Cross-Region Replication
+    CROSS_REGION_ENABLED=true
+    PRIMARY_REGION="us-central1"
+    BACKUP_REGIONS="us-east1,eu-west1"
+    
+    # Monitoring and Alerting
+    BACKUP_MONITORING_ENABLED=true
+    ALERT_ON_FAILURE=true
+    ALERT_ON_RETENTION_BREACH=true
+    
+    # Compliance Settings
+    COMPLIANCE_MODE="SOC2"
+    AUDIT_LOGGING=true
+    IMMUTABLE_BACKUPS=true
+  
+  backup-script.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    
+    # Load configuration
+    source /etc/backup/backup.conf
+    
+    # Set up logging
+    LOGFILE="/var/log/backup/backup-$(date +%Y%m%d-%H%M%S).log"
+    exec 1> >(tee -a "$LOGFILE")
+    exec 2>&1
+    
+    echo "Starting backup process at $(date)"
+    
+    # Function to send metrics to Prometheus
+    send_metric() {
+        local metric_name="$1"
+        local metric_value="$2"
+        local labels="$3"
+        
+        curl -X POST http://prometheus-pushgateway:9091/metrics/job/backup-system/instance/$(hostname) \
+            --data-binary "${metric_name}{${labels}} ${metric_value}"
+    }
+    
+    # Function to send alerts
+    send_alert() {
+        local severity="$1"
+        local message="$2"
+        
+        curl -X POST http://alertmanager:9093/api/v1/alerts \
+            -H "Content-Type: application/json" \
+            -d "[{
+                \"labels\": {
+                    \"alertname\": \"BackupAlert\",
+                    \"severity\": \"${severity}\",
+                    \"service\": \"backup-system\",
+                    \"environment\": \"production\"
+                },
+                \"annotations\": {
+                    \"description\": \"${message}\"
+                }
+            }]"
+    }
+    
+    # Database backup function
+    backup_database() {
+        echo "Starting database backup..."
+        local start_time=$(date +%s)
+        
+        # Create backup directory
+        local backup_dir="/backups/database/$(date +%Y%m%d)"
+        mkdir -p "$backup_dir"
+        
+        # Dump database with compression and encryption
+        PGPASSWORD="$POSTGRES_PASSWORD" pg_dump \
+            -h postgres \
+            -U vaporform_user \
+            -d vaporform_prod \
+            --verbose \
+            --compress=9 \
+            --format=custom \
+            --file="${backup_dir}/vaporform_prod_$(date +%Y%m%d_%H%M%S).dump"
+        
+        # Encrypt backup
+        if [ "$DB_BACKUP_ENCRYPTION" = "true" ]; then
+            gpg --symmetric --cipher-algo AES256 --batch --yes --passphrase "$BACKUP_ENCRYPTION_KEY" \
+                "${backup_dir}/vaporform_prod_$(date +%Y%m%d_%H%M%S).dump"
+            rm "${backup_dir}/vaporform_prod_$(date +%Y%m%d_%H%M%S).dump"
+        fi
+        
+        # Verify backup
+        if [ "$DB_BACKUP_VERIFICATION" = "true" ]; then
+            echo "Verifying database backup..."
+            # Implement backup verification logic
+        fi
+        
+        # Upload to cloud storage
+        aws s3 sync "$backup_dir" "s3://$S3_BACKUP_BUCKET/database/$(date +%Y%m%d)/" \
+            --storage-class STANDARD_IA \
+            --server-side-encryption AES256
+        
+        # Cross-region replication
+        if [ "$CROSS_REGION_ENABLED" = "true" ]; then
+            aws s3 sync "$backup_dir" "s3://$S3_BACKUP_BUCKET-dr/database/$(date +%Y%m%d)/" \
+                --storage-class STANDARD_IA \
+                --server-side-encryption AES256 \
+                --region eu-west-1
+        fi
+        
+        local end_time=$(date +%s)
+        local duration=$((end_time - start_time))
+        
+        send_metric "backup_duration_seconds" "$duration" "type=\"database\""
+        send_metric "backup_success" "1" "type=\"database\""
+        
+        echo "Database backup completed in ${duration} seconds"
+    }
+    
+    # File system backup function
+    backup_filesystem() {
+        echo "Starting filesystem backup..."
+        local start_time=$(date +%s)
+        
+        # Create backup directory
+        local backup_dir="/backups/filesystem/$(date +%Y%m%d)"
+        mkdir -p "$backup_dir"
+        
+        # Backup persistent volumes
+        kubectl get pvc -n vaporform-prod -o jsonpath='{.items[*].metadata.name}' | \
+        while read pvc; do
+            echo "Backing up PVC: $pvc"
+            
+            # Create volume snapshot
+            kubectl create -f - <<EOF
+    apiVersion: snapshot.storage.k8s.io/v1
+    kind: VolumeSnapshot
+    metadata:
+      name: ${pvc}-snapshot-$(date +%Y%m%d-%H%M%S)
+      namespace: vaporform-prod
+    spec:
+      source:
+        persistentVolumeClaimName: $pvc
+      volumeSnapshotClassName: csi-hostpath-snapclass
+    EOF
+        done
+        
+        # Archive application logs
+        kubectl logs -n vaporform-prod --all-containers=true --since=24h > \
+            "${backup_dir}/application-logs-$(date +%Y%m%d).log"
+        
+        # Compress logs
+        gzip "${backup_dir}/application-logs-$(date +%Y%m%d).log"
+        
+        # Upload to cloud storage
+        aws s3 sync "$backup_dir" "s3://$S3_BACKUP_BUCKET/filesystem/$(date +%Y%m%d)/" \
+            --storage-class STANDARD_IA \
+            --server-side-encryption AES256
+        
+        local end_time=$(date +%s)
+        local duration=$((end_time - start_time))
+        
+        send_metric "backup_duration_seconds" "$duration" "type=\"filesystem\""
+        send_metric "backup_success" "1" "type=\"filesystem\""
+        
+        echo "Filesystem backup completed in ${duration} seconds"
+    }
+    
+    # Application state backup function
+    backup_application_state() {
+        echo "Starting application state backup..."
+        local start_time=$(date +%s)
+        
+        # Create backup directory
+        local backup_dir="/backups/app-state/$(date +%Y%m%d-%H%M)"
+        mkdir -p "$backup_dir"
+        
+        # Backup Kubernetes resources
+        kubectl get all,configmaps,secrets,ingress,pvc -n vaporform-prod -o yaml > \
+            "${backup_dir}/kubernetes-resources.yaml"
+        
+        # Backup Redis data
+        kubectl exec -n vaporform-prod redis-0 -- redis-cli --rdb /tmp/redis-backup.rdb
+        kubectl cp vaporform-prod/redis-0:/tmp/redis-backup.rdb "${backup_dir}/redis-backup.rdb"
+        
+        # Backup configuration
+        kubectl get configmaps -n vaporform-prod -o yaml > "${backup_dir}/configmaps.yaml"
+        
+        # Encrypt and upload
+        tar -czf "${backup_dir}.tar.gz" -C "$backup_dir" .
+        gpg --symmetric --cipher-algo AES256 --batch --yes --passphrase "$BACKUP_ENCRYPTION_KEY" \
+            "${backup_dir}.tar.gz"
+        
+        aws s3 cp "${backup_dir}.tar.gz.gpg" \
+            "s3://$S3_BACKUP_BUCKET/app-state/$(date +%Y%m%d)/app-state-$(date +%H%M).tar.gz.gpg" \
+            --storage-class STANDARD_IA \
+            --server-side-encryption AES256
+        
+        local end_time=$(date +%s)
+        local duration=$((end_time - start_time))
+        
+        send_metric "backup_duration_seconds" "$duration" "type=\"app_state\""
+        send_metric "backup_success" "1" "type=\"app_state\""
+        
+        echo "Application state backup completed in ${duration} seconds"
+    }
+    
+    # Cleanup old backups
+    cleanup_old_backups() {
+        echo "Cleaning up old backups..."
+        
+        # Clean up database backups older than retention period
+        find /backups/database -type d -mtime +$DB_BACKUP_RETENTION_DAYS -exec rm -rf {} \;
+        
+        # Clean up filesystem backups
+        find /backups/filesystem -type d -mtime +$FS_BACKUP_RETENTION_DAYS -exec rm -rf {} \;
+        
+        # Clean up app state backups
+        find /backups/app-state -type f -mtime +$((APP_STATE_RETENTION_HOURS / 24)) -exec rm -f {} \;
+        
+        # Clean up cloud storage
+        aws s3api list-objects-v2 --bucket "$S3_BACKUP_BUCKET" --prefix "database/" \
+            --query "Contents[?LastModified<='$(date -d "$DB_BACKUP_RETENTION_DAYS days ago" --iso-8601)'].Key" \
+            --output text | xargs -I {} aws s3 rm "s3://$S3_BACKUP_BUCKET/{}"
+        
+        echo "Cleanup completed"
+    }
+    
+    # Main execution
+    main() {
+        case "${1:-all}" in
+            "database")
+                backup_database
+                ;;
+            "filesystem")
+                backup_filesystem
+                ;;
+            "app-state")
+                backup_application_state
+                ;;
+            "cleanup")
+                cleanup_old_backups
+                ;;
+            "all")
+                backup_database
+                backup_filesystem
+                backup_application_state
+                cleanup_old_backups
+                ;;
+            *)
+                echo "Usage: $0 {database|filesystem|app-state|cleanup|all}"
+                exit 1
+                ;;
+        esac
+        
+        echo "Backup process completed at $(date)"
+    }
+    
+    # Execute main function with error handling
+    if ! main "$@"; then
+        send_alert "critical" "Backup process failed: $?"
+        exit 1
+    fi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: database-backup
+  namespace: vaporform-prod
+  labels:
+    app: backup-system
+    type: database
+    tier: infrastructure
+    environment: production
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM UTC
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400  # 24 hours
+      template:
+        metadata:
+          labels:
+            app: backup-system
+            type: database
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: backup-service-account
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+          - name: database-backup
+            image: postgres:15-alpine
+            command: ["/bin/bash", "/scripts/backup-script.sh", "database"]
+            env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vaporform-secrets
+                  key: DB_PASSWORD
+            - name: BACKUP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: backup-encryption-key
+            - name: S3_BACKUP_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: s3-bucket
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: aws-access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: aws-secret-access-key
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "200m"
+              limits:
+                memory: "2Gi"
+                cpu: "1000m"
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            - name: backup-config
+              mountPath: /etc/backup
+            - name: backup-scripts
+              mountPath: /scripts
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-storage
+          - name: backup-config
+            configMap:
+              name: backup-config
+          - name: backup-scripts
+            configMap:
+              name: backup-config
+              defaultMode: 0755
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: filesystem-backup
+  namespace: vaporform-prod
+  labels:
+    app: backup-system
+    type: filesystem
+    tier: infrastructure
+    environment: production
+spec:
+  schedule: "0 3 * * *"  # Daily at 3 AM UTC
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app: backup-system
+            type: filesystem
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: backup-service-account
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+          - name: filesystem-backup
+            image: bitnami/kubectl:latest
+            command: ["/bin/bash", "/scripts/backup-script.sh", "filesystem"]
+            env:
+            - name: BACKUP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: backup-encryption-key
+            - name: S3_BACKUP_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: s3-bucket
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: aws-access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: aws-secret-access-key
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            - name: backup-config
+              mountPath: /etc/backup
+            - name: backup-scripts
+              mountPath: /scripts
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-storage
+          - name: backup-config
+            configMap:
+              name: backup-config
+          - name: backup-scripts
+            configMap:
+              name: backup-config
+              defaultMode: 0755
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: app-state-backup
+  namespace: vaporform-prod
+  labels:
+    app: backup-system
+    type: app-state
+    tier: infrastructure
+    environment: production
+spec:
+  schedule: "*/30 * * * *"  # Every 30 minutes
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 5
+  successfulJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600  # 1 hour
+      template:
+        metadata:
+          labels:
+            app: backup-system
+            type: app-state
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: backup-service-account
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+          - name: app-state-backup
+            image: bitnami/kubectl:latest
+            command: ["/bin/bash", "/scripts/backup-script.sh", "app-state"]
+            env:
+            - name: BACKUP_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: backup-encryption-key
+            - name: S3_BACKUP_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: s3-bucket
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: aws-access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: backup-credentials
+                  key: aws-secret-access-key
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "50m"
+              limits:
+                memory: "512Mi"
+                cpu: "200m"
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backups
+            - name: backup-config
+              mountPath: /etc/backup
+            - name: backup-scripts
+              mountPath: /scripts
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-storage
+          - name: backup-config
+            configMap:
+              name: backup-config
+          - name: backup-scripts
+            configMap:
+              name: backup-config
+              defaultMode: 0755
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-storage
+  namespace: vaporform-prod
+  labels:
+    app: backup-system
+    tier: infrastructure
+    environment: production
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 500Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backup-service-account
+  namespace: vaporform-prod
+  labels:
+    app: backup-system
+    tier: infrastructure
+    environment: production
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: backup-system-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "persistentvolumeclaims", "configmaps", "secrets", "services"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets", "statefulsets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["snapshot.storage.k8s.io"]
+  resources: ["volumesnapshots"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+- apiGroups: ["extensions", "networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: backup-system-role-binding
+subjects:
+- kind: ServiceAccount
+  name: backup-service-account
+  namespace: vaporform-prod
+roleRef:
+  kind: ClusterRole
+  name: backup-system-role
+  apiGroup: rbac.authorization.k8s.io

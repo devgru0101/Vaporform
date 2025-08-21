@@ -1,0 +1,356 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: vaporform-prod
+  labels:
+    app: grafana
+    tier: monitoring
+    environment: production
+data:
+  grafana.ini: |
+    [server]
+    http_port = 3000
+    domain = grafana.vaporform.com
+    root_url = https://grafana.vaporform.com
+    serve_from_sub_path = false
+    
+    [database]
+    type = postgres
+    host = postgres:5432
+    name = grafana
+    user = grafana_user
+    password = $__env{GRAFANA_DB_PASSWORD}
+    ssl_mode = require
+    
+    [security]
+    admin_user = admin
+    admin_password = $__env{GRAFANA_ADMIN_PASSWORD}
+    secret_key = $__env{GRAFANA_SECRET_KEY}
+    disable_gravatar = true
+    cookie_secure = true
+    cookie_samesite = strict
+    content_type_protection = true
+    x_content_type_options = true
+    x_xss_protection = true
+    strict_transport_security = true
+    
+    [auth]
+    disable_login_form = false
+    oauth_auto_login = false
+    
+    [auth.google]
+    enabled = true
+    client_id = $__env{GOOGLE_OAUTH_CLIENT_ID}
+    client_secret = $__env{GOOGLE_OAUTH_CLIENT_SECRET}
+    scopes = https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email
+    auth_url = https://accounts.google.com/o/oauth2/auth
+    token_url = https://accounts.google.com/o/oauth2/token
+    allowed_domains = vaporform.com
+    allow_sign_up = true
+    
+    [session]
+    provider = redis
+    provider_config = addr=redis:6379,pool_size=100,db=grafana,password=$__env{REDIS_PASSWORD}
+    cookie_name = grafana_sess
+    cookie_secure = true
+    session_life_time = 86400
+    
+    [log]
+    mode = console
+    level = info
+    
+    [metrics]
+    enabled = true
+    interval_seconds = 10
+    
+    [alerting]
+    enabled = true
+    execute_alerts = true
+    
+    [smtp]
+    enabled = true
+    host = smtp.sendgrid.net:587
+    user = apikey
+    password = $__env{SENDGRID_API_KEY}
+    from_address = alerts@vaporform.com
+    from_name = Vaporform Alerts
+    
+    [unified_alerting]
+    enabled = true
+    ha_peers = grafana-0.grafana-headless:9094,grafana-1.grafana-headless:9094
+    ha_listen_address = 0.0.0.0:9094
+    ha_advertise_address = $(POD_IP):9094
+    
+    [feature_toggles]
+    enable = ngalert
+  
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - name: Prometheus
+      type: prometheus
+      access: proxy
+      url: http://prometheus:9090
+      isDefault: true
+      editable: false
+      jsonData:
+        timeInterval: 30s
+        queryTimeout: 60s
+        httpMethod: POST
+        customQueryParameters: ''
+        manageAlerts: true
+        alertmanagerUid: alertmanager
+    
+    - name: Jaeger
+      type: jaeger
+      access: proxy
+      url: http://jaeger-query:16686
+      editable: false
+      jsonData:
+        tracesToLogs:
+          datasourceUid: 'loki'
+          tags: ['job', 'instance', 'pod', 'namespace']
+          mappedTags: [
+            { key: 'service.name', value: 'service' },
+            { key: 'service.namespace', value: 'namespace' }
+          ]
+    
+    - name: Loki
+      type: loki
+      access: proxy
+      url: http://loki:3100
+      editable: false
+      jsonData:
+        derivedFields:
+        - name: TraceID
+          matcherRegex: 'trace_id=(\w+)'
+          url: '$${__value.raw}'
+          datasourceUid: 'jaeger'
+    
+    - name: Alertmanager
+      type: alertmanager
+      access: proxy
+      url: http://alertmanager:9093
+      editable: false
+      uid: alertmanager
+      implementation: prometheus
+  
+  dashboards.yaml: |
+    apiVersion: 1
+    providers:
+    - name: 'vaporform-dashboards'
+      type: file
+      folder: 'Vaporform'
+      options:
+        path: /var/lib/grafana/dashboards
+        foldersFromFilesStructure: true
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: grafana
+  namespace: vaporform-prod
+  labels:
+    app: grafana
+    tier: monitoring
+    environment: production
+spec:
+  serviceName: grafana-headless
+  replicas: 2
+  selector:
+    matchLabels:
+      app: grafana
+      tier: monitoring
+      environment: production
+  template:
+    metadata:
+      labels:
+        app: grafana
+        tier: monitoring
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "3000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: vaporform-service-account
+      securityContext:
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+      containers:
+      - name: grafana
+        image: grafana/grafana:10.1.0
+        ports:
+        - name: grafana
+          containerPort: 3000
+          protocol: TCP
+        - name: gossip
+          containerPort: 9094
+          protocol: TCP
+        env:
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: GRAFANA_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: monitoring-credentials
+              key: grafana-admin-password
+        - name: GRAFANA_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: DB_PASSWORD
+        - name: GRAFANA_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: JWT_SECRET
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: REDIS_PASSWORD
+        - name: GOOGLE_OAUTH_CLIENT_ID
+          value: "your-google-oauth-client-id"
+        - name: GOOGLE_OAUTH_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: GOOGLE_CLIENT_SECRET
+        - name: SENDGRID_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: SENDGRID_API_KEY
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+        - name: grafana-config
+          mountPath: /etc/grafana/grafana.ini
+          subPath: grafana.ini
+        - name: grafana-config
+          mountPath: /etc/grafana/provisioning/datasources/datasources.yaml
+          subPath: datasources.yaml
+        - name: grafana-config
+          mountPath: /etc/grafana/provisioning/dashboards/dashboards.yaml
+          subPath: dashboards.yaml
+        - name: grafana-dashboards
+          mountPath: /var/lib/grafana/dashboards
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: grafana
+          initialDelaySeconds: 60
+          timeoutSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: grafana
+          initialDelaySeconds: 10
+          timeoutSeconds: 30
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: grafana-config
+        configMap:
+          name: grafana-config
+      - name: grafana-dashboards
+        configMap:
+          name: grafana-dashboards
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        node-type: monitoring
+      tolerations:
+      - key: "monitoring"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - grafana
+              topologyKey: kubernetes.io/hostname
+  volumeClaimTemplates:
+  - metadata:
+      name: grafana-storage
+      labels:
+        app: grafana
+        tier: monitoring
+        environment: production
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: vaporform-prod
+  labels:
+    app: grafana
+    tier: monitoring
+    environment: production
+spec:
+  type: ClusterIP
+  ports:
+  - name: grafana
+    port: 3000
+    targetPort: grafana
+    protocol: TCP
+  selector:
+    app: grafana
+    tier: monitoring
+    environment: production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-headless
+  namespace: vaporform-prod
+  labels:
+    app: grafana
+    tier: monitoring
+    environment: production
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: grafana
+    port: 3000
+    targetPort: grafana
+    protocol: TCP
+  - name: gossip
+    port: 9094
+    targetPort: gossip
+    protocol: TCP
+  selector:
+    app: grafana
+    tier: monitoring
+    environment: production

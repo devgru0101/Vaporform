@@ -1,0 +1,356 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: vaporform-prod
+  labels:
+    app: prometheus
+    tier: monitoring
+    environment: production
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: prometheus
+      tier: monitoring
+      environment: production
+  template:
+    metadata:
+      labels:
+        app: prometheus
+        tier: monitoring
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: vaporform-service-account
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+      containers:
+      - name: prometheus
+        image: prom/prometheus:v2.45.0
+        args:
+        - "--config.file=/etc/prometheus/prometheus.yml"
+        - "--storage.tsdb.path=/prometheus/"
+        - "--web.console.libraries=/etc/prometheus/console_libraries"
+        - "--web.console.templates=/etc/prometheus/consoles"
+        - "--storage.tsdb.retention.time=30d"
+        - "--storage.tsdb.retention.size=50GB"
+        - "--web.enable-lifecycle"
+        - "--web.enable-admin-api"
+        - "--query.max-concurrency=20"
+        - "--query.timeout=120s"
+        - "--web.external-url=https://prometheus.vaporform.com"
+        ports:
+        - name: prometheus
+          containerPort: 9090
+          protocol: TCP
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "500m"
+          limits:
+            memory: "8Gi"
+            cpu: "2000m"
+        volumeMounts:
+        - name: prometheus-config
+          mountPath: /etc/prometheus/
+        - name: prometheus-storage
+          mountPath: /prometheus/
+        - name: prometheus-rules
+          mountPath: /etc/prometheus/rules/
+        livenessProbe:
+          httpGet:
+            path: /-/healthy
+            port: prometheus
+          initialDelaySeconds: 30
+          timeoutSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /-/ready
+            port: prometheus
+          initialDelaySeconds: 30
+          timeoutSeconds: 30
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      - name: config-reloader
+        image: jimmidyson/configmap-reload:v0.8.0
+        args:
+        - "--volume-dir=/etc/prometheus"
+        - "--webhook-url=http://localhost:9090/-/reload"
+        resources:
+          requests:
+            memory: "10Mi"
+            cpu: "10m"
+          limits:
+            memory: "50Mi"
+            cpu: "50m"
+        volumeMounts:
+        - name: prometheus-config
+          mountPath: /etc/prometheus/
+          readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: prometheus-config
+        configMap:
+          name: prometheus-config
+      - name: prometheus-rules
+        configMap:
+          name: prometheus-rules
+      - name: prometheus-storage
+        persistentVolumeClaim:
+          claimName: prometheus-storage
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        node-type: monitoring
+      tolerations:
+      - key: "monitoring"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - prometheus
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-storage
+  namespace: vaporform-prod
+  labels:
+    app: prometheus
+    tier: monitoring
+    environment: production
+spec:
+  accessModes:
+  - ReadWriteOnce
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: vaporform-prod
+  labels:
+    app: prometheus
+    tier: monitoring
+    environment: production
+spec:
+  type: ClusterIP
+  ports:
+  - name: prometheus
+    port: 9090
+    targetPort: prometheus
+    protocol: TCP
+  selector:
+    app: prometheus
+    tier: monitoring
+    environment: production
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: vaporform-prod
+  labels:
+    app: prometheus
+    tier: monitoring
+    environment: production
+data:
+  vaporform.rules.yml: |
+    groups:
+    - name: vaporform.application
+      rules:
+      - alert: VaporformHighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="vaporform-backend",status=~"5.."}[5m])) /
+            sum(rate(http_requests_total{job="vaporform-backend"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "Vaporform backend has high error rate"
+          description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+          runbook_url: "https://runbooks.vaporform.com/backend/high-error-rate"
+      
+      - alert: VaporformHighLatency
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(http_request_duration_seconds_bucket{job="vaporform-backend"}[5m])) by (le)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Vaporform backend has high latency"
+          description: "95th percentile latency is {{ $value }}s over the last 5 minutes"
+      
+      - alert: VaporformDatabaseConnections
+        expr: |
+          postgres_stat_database_numbackends{datname="vaporform_prod"} > 180
+        for: 5m
+        labels:
+          severity: warning
+          team: database
+        annotations:
+          summary: "High number of database connections"
+          description: "{{ $value }} active connections to vaporform_prod database"
+      
+      - alert: VaporformRedisMemoryUsage
+        expr: |
+          (redis_memory_used_bytes / redis_memory_max_bytes) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Redis memory usage is high"
+          description: "Redis is using {{ $value | humanizePercentage }} of available memory"
+      
+      - alert: VaporformAIServiceDown
+        expr: |
+          up{job="vaporform-ai"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: ai
+        annotations:
+          summary: "Vaporform AI service is down"
+          description: "AI service has been down for more than 1 minute"
+    
+    - name: vaporform.infrastructure
+      rules:
+      - alert: KubernetesNodeDown
+        expr: |
+          up{job="kubernetes-nodes"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "Kubernetes node is down"
+          description: "Node {{ $labels.instance }} has been down for more than 5 minutes"
+      
+      - alert: KubernetesPodCrashLooping
+        expr: |
+          rate(kube_pod_container_status_restarts_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          team: infrastructure
+        annotations:
+          summary: "Pod is crash looping"
+          description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is restarting frequently"
+      
+      - alert: KubernetesHighMemoryUsage
+        expr: |
+          (
+            container_memory_usage_bytes{container!="POD",container!=""} / 
+            container_spec_memory_limit_bytes
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Container memory usage is high"
+          description: "Container {{ $labels.container }} is using {{ $value | humanizePercentage }} of memory limit"
+      
+      - alert: KubernetesHighCPUUsage
+        expr: |
+          (
+            rate(container_cpu_usage_seconds_total{container!="POD",container!=""}[5m]) /
+            (container_spec_cpu_quota / container_spec_cpu_period)
+          ) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Container CPU usage is high"
+          description: "Container {{ $labels.container }} is using {{ $value | humanizePercentage }} of CPU limit"
+      
+      - alert: KubernetesPersistentVolumeUsage
+        expr: |
+          (
+            kubelet_volume_stats_used_bytes / 
+            kubelet_volume_stats_capacity_bytes
+          ) > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          team: infrastructure
+        annotations:
+          summary: "Persistent volume usage is high"
+          description: "PV {{ $labels.persistentvolumeclaim }} is {{ $value | humanizePercentage }} full"
+    
+    - name: vaporform.business
+      rules:
+      - alert: VaporformLowActiveUsers
+        expr: |
+          vaporform_active_users_total < 100
+        for: 10m
+        labels:
+          severity: info
+          team: product
+        annotations:
+          summary: "Low number of active users"
+          description: "Only {{ $value }} active users in the last 10 minutes"
+      
+      - alert: VaporformProjectCreationFailures
+        expr: |
+          rate(vaporform_project_creation_failures_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High project creation failure rate"
+          description: "{{ $value }} project creation failures per second"
+      
+      - alert: VaporformContainerStartupFailures
+        expr: |
+          rate(vaporform_container_startup_failures_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: containers
+        annotations:
+          summary: "High container startup failure rate"
+          description: "{{ $value }} container startup failures per second"

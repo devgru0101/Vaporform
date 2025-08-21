@@ -1,0 +1,323 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: vaporform-prod
+  labels:
+    app: redis
+    tier: cache
+    environment: production
+data:
+  redis.conf: |
+    # Network
+    bind 0.0.0.0
+    port 6379
+    tcp-backlog 511
+    timeout 0
+    tcp-keepalive 300
+    
+    # General
+    daemonize no
+    supervised no
+    pidfile /var/run/redis_6379.pid
+    loglevel notice
+    logfile ""
+    databases 16
+    
+    # Snapshotting
+    save 900 1
+    save 300 10
+    save 60 10000
+    stop-writes-on-bgsave-error yes
+    rdbcompression yes
+    rdbchecksum yes
+    dbfilename dump.rdb
+    dir /data
+    
+    # Replication
+    masterauth ${REDIS_PASSWORD}
+    requirepass ${REDIS_PASSWORD}
+    
+    # Security
+    rename-command FLUSHDB ""
+    rename-command FLUSHALL ""
+    rename-command SHUTDOWN SHUTDOWN_SECRET
+    rename-command CONFIG CONFIG_SECRET
+    
+    # Clients
+    maxclients 10000
+    
+    # Memory Management
+    maxmemory 1gb
+    maxmemory-policy allkeys-lru
+    maxmemory-samples 5
+    
+    # Lazy Freeing
+    lazyfree-lazy-eviction yes
+    lazyfree-lazy-expire yes
+    lazyfree-lazy-server-del yes
+    
+    # Append Only Mode
+    appendonly yes
+    appendfilename "appendonly.aof"
+    appendfsync everysec
+    no-appendfsync-on-rewrite no
+    auto-aof-rewrite-percentage 100
+    auto-aof-rewrite-min-size 64mb
+    aof-load-truncated yes
+    aof-use-rdb-preamble yes
+    
+    # Lua
+    lua-time-limit 5000
+    
+    # Slow Log
+    slowlog-log-slower-than 10000
+    slowlog-max-len 128
+    
+    # Latency Monitor
+    latency-monitor-threshold 100
+    
+    # Event Notification
+    notify-keyspace-events ""
+    
+    # Advanced Config
+    hash-max-ziplist-entries 512
+    hash-max-ziplist-value 64
+    list-max-ziplist-size -2
+    list-compress-depth 0
+    set-max-intset-entries 512
+    zset-max-ziplist-entries 128
+    zset-max-ziplist-value 64
+    hll-sparse-max-bytes 3000
+    stream-node-max-bytes 4096
+    stream-node-max-entries 100
+    activerehashing yes
+    client-output-buffer-limit normal 0 0 0
+    client-output-buffer-limit replica 256mb 64mb 60
+    client-output-buffer-limit pubsub 32mb 8mb 60
+    client-query-buffer-limit 1gb
+    proto-max-bulk-len 512mb
+    hz 10
+    dynamic-hz yes
+    aof-rewrite-incremental-fsync yes
+    rdb-save-incremental-fsync yes
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: vaporform-prod
+  labels:
+    app: redis
+    tier: cache
+    environment: production
+spec:
+  serviceName: redis
+  replicas: 3
+  selector:
+    matchLabels:
+      app: redis
+      tier: cache
+      environment: production
+  template:
+    metadata:
+      labels:
+        app: redis
+        tier: cache
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9121"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: vaporform-service-account
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        command:
+        - redis-server
+        - /etc/redis/redis.conf
+        ports:
+        - name: redis
+          containerPort: 6379
+          protocol: TCP
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: REDIS_PASSWORD
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "2Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        - name: redis-config
+          mountPath: /etc/redis/redis.conf
+          subPath: redis.conf
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - --no-auth-warning
+            - -a
+            - $(REDIS_PASSWORD)
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - --no-auth-warning
+            - -a
+            - $(REDIS_PASSWORD)
+            - ping
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+      - name: redis-exporter
+        image: oliver006/redis_exporter:v1.55.0-alpine
+        ports:
+        - name: metrics
+          containerPort: 9121
+          protocol: TCP
+        env:
+        - name: REDIS_ADDR
+          value: "redis://localhost:6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: REDIS_PASSWORD
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: redis-config
+        configMap:
+          name: redis-config
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      tolerations:
+      - key: "kubernetes.io/arch"
+        operator: "Equal"
+        value: "amd64"
+        effect: "NoSchedule"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - redis
+              topologyKey: kubernetes.io/hostname
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+      labels:
+        app: redis
+        tier: cache
+        environment: production
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 50Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: vaporform-prod
+  labels:
+    app: redis
+    tier: cache
+    environment: production
+spec:
+  type: ClusterIP
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: redis
+    protocol: TCP
+  - name: metrics
+    port: 9121
+    targetPort: metrics
+    protocol: TCP
+  selector:
+    app: redis
+    tier: cache
+    environment: production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-headless
+  namespace: vaporform-prod
+  labels:
+    app: redis
+    tier: cache
+    environment: production
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: redis
+    port: 6379
+    targetPort: redis
+    protocol: TCP
+  selector:
+    app: redis
+    tier: cache
+    environment: production
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-pdb
+  namespace: vaporform-prod
+  labels:
+    app: redis
+    tier: cache
+    environment: production
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: redis
+      tier: cache
+      environment: production

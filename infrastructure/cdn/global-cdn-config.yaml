@@ -1,0 +1,858 @@
+# Global CDN and Edge Computing Configuration for Vaporform
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cdn-configuration
+  namespace: vaporform-prod
+  labels:
+    app: cdn
+    tier: infrastructure
+    environment: production
+data:
+  cloudflare-config.json: |
+    {
+      "zones": [
+        {
+          "name": "vaporform.com",
+          "plan": "enterprise",
+          "settings": {
+            "ssl": "full_strict",
+            "security_level": "high",
+            "browser_cache_ttl": 14400,
+            "cache_level": "aggressive",
+            "development_mode": false,
+            "always_online": true,
+            "opportunistic_encryption": true,
+            "automatic_https_rewrites": true,
+            "minify": {
+              "css": true,
+              "html": true,
+              "js": true
+            },
+            "brotli": true,
+            "early_hints": true,
+            "h2_prioritization": true,
+            "http3": true,
+            "zero_rtt": true,
+            "image_resizing": true,
+            "polish": "lossless",
+            "webp": true,
+            "rocket_loader": true,
+            "mirage": true
+          },
+          "page_rules": [
+            {
+              "targets": [
+                {
+                  "target": "url",
+                  "constraint": {
+                    "operator": "matches",
+                    "value": "app.vaporform.com/static/*"
+                  }
+                }
+              ],
+              "actions": [
+                {
+                  "id": "cache_level",
+                  "value": "cache_everything"
+                },
+                {
+                  "id": "edge_cache_ttl",
+                  "value": 31536000
+                },
+                {
+                  "id": "browser_cache_ttl",
+                  "value": 31536000
+                }
+              ],
+              "priority": 1,
+              "status": "active"
+            },
+            {
+              "targets": [
+                {
+                  "target": "url",
+                  "constraint": {
+                    "operator": "matches",
+                    "value": "api.vaporform.com/api/public/*"
+                  }
+                }
+              ],
+              "actions": [
+                {
+                  "id": "cache_level",
+                  "value": "cache_everything"
+                },
+                {
+                  "id": "edge_cache_ttl",
+                  "value": 300
+                },
+                {
+                  "id": "browser_cache_ttl",
+                  "value": 300
+                }
+              ],
+              "priority": 2,
+              "status": "active"
+            }
+          ],
+          "firewall_rules": [
+            {
+              "filter": {
+                "expression": "(http.request.uri.path contains \"/admin\" and ip.geoip.country ne \"US\")"
+              },
+              "action": "block",
+              "priority": 1000,
+              "description": "Block admin access from non-US countries"
+            },
+            {
+              "filter": {
+                "expression": "(http.request.method eq \"POST\" and http.request.uri.path contains \"/api/auth\" and cf.threat_score gt 10)"
+              },
+              "action": "challenge",
+              "priority": 2000,
+              "description": "Challenge suspicious auth requests"
+            },
+            {
+              "filter": {
+                "expression": "(rate(1m) gt 100)"
+              },
+              "action": "rate_limit",
+              "priority": 3000,
+              "description": "Rate limit high-frequency requests",
+              "rate_limit": {
+                "threshold": 100,
+                "period": 60,
+                "action": "simulate"
+              }
+            }
+          ]
+        }
+      ],
+      "workers": [
+        {
+          "name": "vaporform-edge-ai",
+          "script": "edge-ai-worker.js",
+          "routes": [
+            {
+              "pattern": "api.vaporform.com/ai/edge/*",
+              "zone": "vaporform.com"
+            }
+          ],
+          "bindings": [
+            {
+              "type": "kv_namespace",
+              "name": "EDGE_CACHE",
+              "namespace_id": "vaporform_edge_cache"
+            },
+            {
+              "type": "durable_object",
+              "name": "AI_SESSION",
+              "class_name": "AISession"
+            }
+          ]
+        },
+        {
+          "name": "vaporform-edge-auth",
+          "script": "edge-auth-worker.js",
+          "routes": [
+            {
+              "pattern": "api.vaporform.com/auth/verify/*",
+              "zone": "vaporform.com"
+            }
+          ]
+        }
+      ]
+    }
+  
+  edge-ai-worker.js: |
+    // Cloudflare Worker for Edge AI Processing
+    
+    class AISession {
+      constructor(state, env) {
+        this.state = state;
+        this.env = env;
+      }
+      
+      async fetch(request) {
+        const sessionId = new URL(request.url).pathname.split('/').pop();
+        
+        // Get or create session state
+        let session = await this.state.storage.get(sessionId) || {
+          id: sessionId,
+          context: [],
+          model: 'claude-3-haiku',
+          tokens_used: 0,
+          created_at: Date.now()
+        };
+        
+        if (request.method === 'POST') {
+          const body = await request.json();
+          
+          // Process AI request with local cache
+          const cacheKey = `ai:${session.model}:${JSON.stringify(body.prompt)}`;
+          let response = await this.env.EDGE_CACHE.get(cacheKey);
+          
+          if (!response) {
+            // Forward to backend AI service
+            const aiResponse = await fetch('https://ai-backend.vaporform.com/process', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': request.headers.get('Authorization')
+              },
+              body: JSON.stringify({
+                ...body,
+                session_id: sessionId,
+                edge_region: request.cf.colo
+              })
+            });
+            
+            response = await aiResponse.text();
+            
+            // Cache non-sensitive responses
+            if (!body.sensitive) {
+              await this.env.EDGE_CACHE.put(cacheKey, response, {
+                expirationTtl: 3600 // 1 hour
+              });
+            }
+          }
+          
+          // Update session
+          session.context.push({
+            prompt: body.prompt,
+            response: response,
+            timestamp: Date.now()
+          });
+          session.tokens_used += response.length * 0.75; // Approximate
+          
+          await this.state.storage.put(sessionId, session);
+          
+          return new Response(response, {
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Edge-Cache': response.includes('cached') ? 'HIT' : 'MISS',
+              'X-Session-Tokens': session.tokens_used.toString()
+            }
+          });
+        }
+        
+        return new Response(JSON.stringify(session), {
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+    
+    export default {
+      async fetch(request, env, ctx) {
+        const url = new URL(request.url);
+        
+        // Route to appropriate handler
+        if (url.pathname.startsWith('/ai/edge/session/')) {
+          const sessionId = url.pathname.split('/').pop();
+          const durableObjectId = env.AI_SESSION.idFromName(sessionId);
+          const durableObject = env.AI_SESSION.get(durableObjectId);
+          return durableObject.fetch(request);
+        }
+        
+        // General AI processing
+        if (url.pathname.startsWith('/ai/edge/process')) {
+          return handleAIProcess(request, env);
+        }
+        
+        return new Response('Not Found', { status: 404 });
+      }
+    };
+    
+    async function handleAIProcess(request, env) {
+      const startTime = Date.now();
+      
+      try {
+        // Check rate limits
+        const clientIP = request.headers.get('CF-Connecting-IP');
+        const rateLimitKey = `rate_limit:${clientIP}`;
+        const currentCount = await env.EDGE_CACHE.get(rateLimitKey) || 0;
+        
+        if (currentCount > 60) { // 60 requests per minute
+          return new Response('Rate limit exceeded', { 
+            status: 429,
+            headers: {
+              'Retry-After': '60',
+              'X-Rate-Limit-Remaining': '0'
+            }
+          });
+        }
+        
+        // Increment rate limit counter
+        await env.EDGE_CACHE.put(rateLimitKey, parseInt(currentCount) + 1, {
+          expirationTtl: 60
+        });
+        
+        const body = await request.json();
+        
+        // Simple AI processing for edge cases
+        if (body.type === 'code_completion' && body.language) {
+          const cacheKey = `completion:${body.language}:${body.prefix}`;
+          let completion = await env.EDGE_CACHE.get(cacheKey);
+          
+          if (!completion) {
+            // Generate simple completions for common patterns
+            completion = generateCompletion(body.prefix, body.language);
+            
+            if (completion) {
+              await env.EDGE_CACHE.put(cacheKey, completion, {
+                expirationTtl: 7200 // 2 hours
+              });
+            }
+          }
+          
+          if (completion) {
+            return new Response(JSON.stringify({
+              completion: completion,
+              source: 'edge',
+              latency: Date.now() - startTime
+            }), {
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Edge-Processing': 'true'
+              }
+            });
+          }
+        }
+        
+        // Forward complex requests to backend
+        const backendResponse = await fetch('https://ai-backend.vaporform.com/process', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': request.headers.get('Authorization'),
+            'X-Edge-Region': request.cf.colo,
+            'X-Client-IP': clientIP
+          },
+          body: JSON.stringify(body)
+        });
+        
+        const response = await backendResponse.text();
+        
+        return new Response(response, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Backend-Latency': (Date.now() - startTime).toString(),
+            'X-Edge-Region': request.cf.colo
+          }
+        });
+        
+      } catch (error) {
+        return new Response(JSON.stringify({
+          error: 'Edge processing failed',
+          fallback: 'backend'
+        }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+    
+    function generateCompletion(prefix, language) {
+      const completions = {
+        javascript: {
+          'function ': 'function name() {\n  // TODO: implement\n}',
+          'const ': 'const variable = ',
+          'import ': 'import { } from \'\';',
+          'export ': 'export default ',
+        },
+        typescript: {
+          'interface ': 'interface Name {\n  // properties\n}',
+          'type ': 'type Name = ',
+          'function ': 'function name(): ReturnType {\n  // TODO: implement\n}',
+        },
+        python: {
+          'def ': 'def function_name():\n    """TODO: implement"""\n    pass',
+          'class ': 'class ClassName:\n    """TODO: implement"""\n    pass',
+          'import ': 'import ',
+        }
+      };
+      
+      const langCompletions = completions[language.toLowerCase()];
+      if (!langCompletions) return null;
+      
+      for (const [pattern, completion] of Object.entries(langCompletions)) {
+        if (prefix.endsWith(pattern)) {
+          return completion;
+        }
+      }
+      
+      return null;
+    }
+  
+  edge-auth-worker.js: |
+    // Cloudflare Worker for Edge Authentication
+    
+    export default {
+      async fetch(request, env, ctx) {
+        const url = new URL(request.url);
+        
+        if (url.pathname === '/auth/verify/token') {
+          return verifyToken(request, env);
+        }
+        
+        if (url.pathname === '/auth/verify/session') {
+          return verifySession(request, env);
+        }
+        
+        return new Response('Not Found', { status: 404 });
+      }
+    };
+    
+    async function verifyToken(request, env) {
+      try {
+        const authHeader = request.headers.get('Authorization');
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return new Response('Unauthorized', { status: 401 });
+        }
+        
+        const token = authHeader.substring(7);
+        
+        // Check token cache first
+        const cacheKey = `token:${token}`;
+        let tokenData = await env.EDGE_CACHE.get(cacheKey);
+        
+        if (!tokenData) {
+          // Verify with backend
+          const verifyResponse = await fetch('https://auth-backend.vaporform.com/verify', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ token })
+          });
+          
+          if (!verifyResponse.ok) {
+            return new Response('Invalid token', { status: 401 });
+          }
+          
+          tokenData = await verifyResponse.text();
+          
+          // Cache valid token for 5 minutes
+          await env.EDGE_CACHE.put(cacheKey, tokenData, {
+            expirationTtl: 300
+          });
+        }
+        
+        return new Response(tokenData, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Auth-Source': tokenData.includes('cached') ? 'edge' : 'backend'
+          }
+        });
+        
+      } catch (error) {
+        return new Response('Auth verification failed', { status: 500 });
+      }
+    }
+    
+    async function verifySession(request, env) {
+      const sessionId = request.headers.get('X-Session-ID');
+      if (!sessionId) {
+        return new Response('Session ID required', { status: 400 });
+      }
+      
+      // Check session cache
+      const cacheKey = `session:${sessionId}`;
+      let sessionData = await env.EDGE_CACHE.get(cacheKey);
+      
+      if (!sessionData) {
+        return new Response('Session not found', { status: 404 });
+      }
+      
+      return new Response(sessionData, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  
+  aws-cloudfront-config.json: |
+    {
+      "distributions": [
+        {
+          "id": "vaporform-main",
+          "domain": "app.vaporform.com",
+          "origins": [
+            {
+              "id": "vaporform-frontend",
+              "domain": "frontend-lb.vaporform.com",
+              "protocol": "https",
+              "port": 443,
+              "custom_headers": {
+                "X-Origin-Verify": "vaporform-production"
+              }
+            },
+            {
+              "id": "vaporform-api",
+              "domain": "api-lb.vaporform.com",
+              "protocol": "https",
+              "port": 443,
+              "custom_headers": {
+                "X-Origin-Verify": "vaporform-api-production"
+              }
+            }
+          ],
+          "behaviors": [
+            {
+              "path": "/api/*",
+              "origin": "vaporform-api",
+              "cache_policy": "api-cache-policy",
+              "origin_request_policy": "api-request-policy",
+              "response_headers_policy": "security-headers",
+              "viewer_protocol_policy": "redirect-to-https",
+              "allowed_methods": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+              "cached_methods": ["GET", "HEAD", "OPTIONS"],
+              "compress": true,
+              "field_level_encryption_id": null
+            },
+            {
+              "path": "/static/*",
+              "origin": "vaporform-frontend",
+              "cache_policy": "static-assets-cache-policy",
+              "origin_request_policy": "cors-s3-origin",
+              "response_headers_policy": "cors-headers",
+              "viewer_protocol_policy": "redirect-to-https",
+              "allowed_methods": ["GET", "HEAD"],
+              "cached_methods": ["GET", "HEAD"],
+              "compress": true
+            },
+            {
+              "path": "/*",
+              "origin": "vaporform-frontend",
+              "cache_policy": "spa-cache-policy",
+              "origin_request_policy": "spa-request-policy",
+              "response_headers_policy": "security-headers",
+              "viewer_protocol_policy": "redirect-to-https",
+              "allowed_methods": ["GET", "HEAD"],
+              "cached_methods": ["GET", "HEAD"],
+              "compress": true,
+              "lambda_functions": [
+                {
+                  "event_type": "origin-request",
+                  "lambda_arn": "arn:aws:lambda:us-east-1:123456789012:function:spa-router:1"
+                }
+              ]
+            }
+          ],
+          "cache_policies": [
+            {
+              "name": "api-cache-policy",
+              "ttl": {
+                "default": 0,
+                "minimum": 0,
+                "maximum": 300
+              },
+              "key_parameters": {
+                "query_strings": "all",
+                "headers": ["Authorization", "Content-Type", "X-Requested-With"],
+                "cookies": "none"
+              }
+            },
+            {
+              "name": "static-assets-cache-policy",
+              "ttl": {
+                "default": 31536000,
+                "minimum": 31536000,
+                "maximum": 31536000
+              },
+              "key_parameters": {
+                "query_strings": "none",
+                "headers": ["Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"],
+                "cookies": "none"
+              }
+            },
+            {
+              "name": "spa-cache-policy",
+              "ttl": {
+                "default": 86400,
+                "minimum": 0,
+                "maximum": 86400
+              },
+              "key_parameters": {
+                "query_strings": "none",
+                "headers": ["Host"],
+                "cookies": "none"
+              }
+            }
+          ],
+          "geo_restrictions": {
+            "type": "none"
+          },
+          "price_class": "all",
+          "viewer_certificate": {
+            "acm_certificate_arn": "arn:aws:acm:us-east-1:123456789012:certificate/vaporform-cert",
+            "ssl_support_method": "sni-only",
+            "minimum_protocol_version": "TLSv1.2_2021"
+          },
+          "logging": {
+            "enabled": true,
+            "bucket": "vaporform-cloudfront-logs.s3.amazonaws.com",
+            "prefix": "cloudfront-logs/",
+            "include_cookies": false
+          },
+          "web_acl_id": "arn:aws:wafv2:us-east-1:123456789012:global/webacl/vaporform-waf/12345"
+        }
+      ],
+      "lambda_functions": [
+        {
+          "name": "spa-router",
+          "runtime": "nodejs18.x",
+          "handler": "index.handler",
+          "code": "exports.handler = async (event) => { const request = event.Records[0].cf.request; if (!request.uri.includes('.') && !request.uri.startsWith('/api')) { request.uri = '/index.html'; } return request; };"
+        }
+      ]
+    }
+  
+  terraform-cdn.tf: |
+    # Terraform configuration for CDN infrastructure
+    
+    terraform {
+      required_providers {
+        cloudflare = {
+          source  = "cloudflare/cloudflare"
+          version = "~> 4.0"
+        }
+        aws = {
+          source  = "hashicorp/aws"
+          version = "~> 5.0"
+        }
+      }
+    }
+    
+    # Cloudflare Zone
+    resource "cloudflare_zone" "vaporform" {
+      zone = "vaporform.com"
+      plan = "enterprise"
+    }
+    
+    # Cloudflare DNS Records
+    resource "cloudflare_record" "app" {
+      zone_id = cloudflare_zone.vaporform.id
+      name    = "app"
+      value   = aws_cloudfront_distribution.main.domain_name
+      type    = "CNAME"
+      proxied = true
+    }
+    
+    resource "cloudflare_record" "api" {
+      zone_id = cloudflare_zone.vaporform.id
+      name    = "api"
+      value   = aws_cloudfront_distribution.main.domain_name
+      type    = "CNAME"
+      proxied = true
+    }
+    
+    # Cloudflare Zone Settings
+    resource "cloudflare_zone_settings_override" "vaporform" {
+      zone_id = cloudflare_zone.vaporform.id
+      
+      settings {
+        ssl                      = "full_strict"
+        always_use_https        = "on"
+        min_tls_version         = "1.2"
+        opportunistic_encryption = "on"
+        tls_1_3                 = "zrt"
+        automatic_https_rewrites = "on"
+        security_level          = "medium"
+        brotli                  = "on"
+        minify {
+          css  = "on"
+          js   = "on"
+          html = "on"
+        }
+        rocket_loader       = "on"
+        mirage             = "on"
+        polish             = "lossless"
+        image_resizing     = "on"
+        h2_prioritization  = "on"
+        http3              = "on"
+        zero_rtt           = "on"
+        early_hints        = "on"
+      }
+    }
+    
+    # CloudFront Distribution
+    resource "aws_cloudfront_distribution" "main" {
+      origin {
+        domain_name = var.frontend_lb_domain
+        origin_id   = "vaporform-frontend"
+        
+        custom_origin_config {
+          http_port              = 80
+          https_port             = 443
+          origin_protocol_policy = "https-only"
+          origin_ssl_protocols   = ["TLSv1.2"]
+        }
+        
+        custom_header {
+          name  = "X-Origin-Verify"
+          value = var.origin_verify_header
+        }
+      }
+      
+      origin {
+        domain_name = var.api_lb_domain
+        origin_id   = "vaporform-api"
+        
+        custom_origin_config {
+          http_port              = 80
+          https_port             = 443
+          origin_protocol_policy = "https-only"
+          origin_ssl_protocols   = ["TLSv1.2"]
+        }
+        
+        custom_header {
+          name  = "X-Origin-Verify"
+          value = var.api_origin_verify_header
+        }
+      }
+      
+      enabled             = true
+      is_ipv6_enabled     = true
+      comment             = "Vaporform Production CDN"
+      default_root_object = "index.html"
+      
+      aliases = ["app.vaporform.com", "api.vaporform.com"]
+      
+      # API behavior
+      ordered_cache_behavior {
+        path_pattern     = "/api/*"
+        allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+        cached_methods   = ["GET", "HEAD", "OPTIONS"]
+        target_origin_id = "vaporform-api"
+        
+        forwarded_values {
+          query_string = true
+          headers      = ["Authorization", "Content-Type", "X-Requested-With"]
+          
+          cookies {
+            forward = "none"
+          }
+        }
+        
+        viewer_protocol_policy = "redirect-to-https"
+        min_ttl                = 0
+        default_ttl            = 0
+        max_ttl                = 300
+        compress               = true
+        
+        lambda_function_association {
+          event_type   = "origin-request"
+          lambda_arn   = aws_lambda_function.api_headers.qualified_arn
+          include_body = false
+        }
+      }
+      
+      # Static assets behavior
+      ordered_cache_behavior {
+        path_pattern     = "/static/*"
+        allowed_methods  = ["GET", "HEAD"]
+        cached_methods   = ["GET", "HEAD"]
+        target_origin_id = "vaporform-frontend"
+        
+        forwarded_values {
+          query_string = false
+          
+          cookies {
+            forward = "none"
+          }
+        }
+        
+        viewer_protocol_policy = "redirect-to-https"
+        min_ttl                = 31536000
+        default_ttl            = 31536000
+        max_ttl                = 31536000
+        compress               = true
+      }
+      
+      # Default behavior for SPA
+      default_cache_behavior {
+        allowed_methods  = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
+        cached_methods   = ["GET", "HEAD"]
+        target_origin_id = "vaporform-frontend"
+        
+        forwarded_values {
+          query_string = false
+          
+          cookies {
+            forward = "none"
+          }
+        }
+        
+        viewer_protocol_policy = "redirect-to-https"
+        min_ttl                = 0
+        default_ttl            = 86400
+        max_ttl                = 86400
+        compress               = true
+        
+        lambda_function_association {
+          event_type   = "origin-request"
+          lambda_arn   = aws_lambda_function.spa_router.qualified_arn
+          include_body = false
+        }
+      }
+      
+      price_class = "PriceClass_All"
+      
+      restrictions {
+        geo_restriction {
+          restriction_type = "none"
+        }
+      }
+      
+      viewer_certificate {
+        acm_certificate_arn      = aws_acm_certificate.vaporform.arn
+        ssl_support_method       = "sni-only"
+        minimum_protocol_version = "TLSv1.2_2021"
+      }
+      
+      logging_config {
+        include_cookies = false
+        bucket          = aws_s3_bucket.cloudfront_logs.bucket_domain_name
+        prefix          = "cloudfront-logs/"
+      }
+      
+      web_acl_id = aws_wafv2_web_acl.vaporform.arn
+      
+      tags = {
+        Name        = "vaporform-production"
+        Environment = "production"
+      }
+    }
+    
+    # Variables
+    variable "frontend_lb_domain" {
+      description = "Frontend load balancer domain"
+      type        = string
+    }
+    
+    variable "api_lb_domain" {
+      description = "API load balancer domain"  
+      type        = string
+    }
+    
+    variable "origin_verify_header" {
+      description = "Origin verification header value"
+      type        = string
+      sensitive   = true
+    }
+    
+    variable "api_origin_verify_header" {
+      description = "API origin verification header value"
+      type        = string
+      sensitive   = true
+    }
+    
+    # Outputs
+    output "cloudfront_domain_name" {
+      value = aws_cloudfront_distribution.main.domain_name
+    }
+    
+    output "cloudfront_distribution_id" {
+      value = aws_cloudfront_distribution.main.id
+    }

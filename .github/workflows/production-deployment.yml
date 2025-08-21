@@ -1,0 +1,553 @@
+name: Production Deployment Pipeline
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  CLUSTER_NAME: vaporform-prod
+  CLUSTER_ZONE: us-central1-a
+
+jobs:
+  # Security and Quality Gates
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci --legacy-peer-deps
+          cd frontend && npm ci --legacy-peer-deps
+          cd ../backend && npm ci --legacy-peer-deps
+
+      # SAST - Static Application Security Testing
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript,typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+      # Dependency scanning
+      - name: Run npm audit
+        run: |
+          npm audit --audit-level=high
+          cd frontend && npm audit --audit-level=high
+          cd ../backend && npm audit --audit-level=high
+
+      # SAST with Semgrep
+      - name: Run Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+            p/react
+            p/typescript
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      # Secret scanning
+      - name: Run TruffleHog OSS
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+
+      # License compliance
+      - name: License Check
+        run: |
+          npx license-checker --onlyAllow 'MIT;BSD;ISC;Apache-2.0;BSD-2-Clause;BSD-3-Clause' --excludePrivatePackages
+
+      # Docker image scanning
+      - name: Build temp image for scanning
+        run: |
+          docker build -t temp-scan:latest -f backend/Dockerfile backend/
+          docker build -t temp-frontend-scan:latest -f frontend/Dockerfile frontend/
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'temp-scan:latest'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Code Quality and Testing
+  quality-tests:
+    name: Quality Assurance
+    runs-on: ubuntu-latest
+    needs: security-scan
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci --legacy-peer-deps
+          cd frontend && npm ci --legacy-peer-deps
+          cd ../backend && npm ci --legacy-peer-deps
+
+      - name: Run ESLint
+        run: |
+          cd backend && npm run lint
+          cd ../frontend && npm run lint
+
+      - name: Run Prettier check
+        run: |
+          cd backend && npm run format:check
+          cd ../frontend && npm run format:check
+
+      - name: TypeScript type checking
+        run: |
+          cd backend && npm run type-check
+          cd ../frontend && npm run type-check
+
+      - name: Run unit tests
+        run: |
+          cd backend && npm run test:coverage
+          cd ../frontend && npm run test:coverage
+
+      - name: Run integration tests
+        run: |
+          cd backend && npm run test:integration
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./backend/coverage/lcov.info,./frontend/coverage/lcov.info
+          fail_ci_if_error: true
+
+      # Performance testing
+      - name: Build application
+        run: |
+          cd frontend && npm run build
+          cd ../backend && npm run build
+
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          configPath: './lighthouserc.json'
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+  # Build and Push Images
+  build-images:
+    name: Build and Push Container Images
+    runs-on: ubuntu-latest
+    needs: [security-scan, quality-tests]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    outputs:
+      backend-image: ${{ steps.meta-backend.outputs.tags }}
+      frontend-image: ${{ steps.meta-frontend.outputs.tags }}
+      backend-digest: ${{ steps.build-backend.outputs.digest }}
+      frontend-digest: ${{ steps.build-frontend.outputs.digest }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Backend image
+      - name: Extract metadata for backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push backend image
+        id: build-backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            BUILD_DATE=${{ fromJSON(steps.meta-backend.outputs.json).labels['org.opencontainers.image.created'] }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ fromJSON(steps.meta-backend.outputs.json).labels['org.opencontainers.image.version'] }}
+
+      # Frontend image
+      - name: Extract metadata for frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push frontend image
+        id: build-frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            BUILD_DATE=${{ fromJSON(steps.meta-frontend.outputs.json).labels['org.opencontainers.image.created'] }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ fromJSON(steps.meta-frontend.outputs.json).labels['org.opencontainers.image.version'] }}
+
+      # Sign images with Cosign
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.1.1'
+
+      - name: Sign backend image with a key
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend@${{ steps.build-backend.outputs.digest }}
+
+      - name: Sign frontend image with a key
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.COSIGN_PRIVATE_KEY }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: |
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend@${{ steps.build-frontend.outputs.digest }}
+
+  # Staging Deployment
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-images
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: staging
+      url: https://staging.vaporform.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+          kubectl config use-context staging
+
+      - name: Deploy to staging
+        run: |
+          export KUBECONFIG=kubeconfig
+          # Update image tags in manifests
+          sed -i "s|registry.vaporform.com/vaporform-backend:latest|${{ needs.build-images.outputs.backend-image }}|g" infrastructure/k8s/applications/backend-deployment.yaml
+          sed -i "s|registry.vaporform.com/vaporform-frontend:latest|${{ needs.build-images.outputs.frontend-image }}|g" infrastructure/k8s/applications/frontend-deployment.yaml
+          
+          # Apply staging manifests
+          kubectl apply -f infrastructure/k8s/core/ -n vaporform-staging
+          kubectl apply -f infrastructure/k8s/applications/ -n vaporform-staging
+          kubectl apply -f infrastructure/k8s/monitoring/ -n vaporform-staging
+          
+          # Wait for rollout
+          kubectl rollout status deployment/vaporform-backend -n vaporform-staging --timeout=600s
+          kubectl rollout status deployment/vaporform-frontend -n vaporform-staging --timeout=600s
+
+      - name: Run smoke tests
+        run: |
+          # Wait for services to be ready
+          sleep 60
+          
+          # Basic health checks
+          curl -f https://staging-api.vaporform.com/health || exit 1
+          curl -f https://staging.vaporform.com || exit 1
+          
+          # Run comprehensive smoke tests
+          npm run test:smoke -- --baseUrl=https://staging.vaporform.com
+
+  # Production Canary Deployment
+  deploy-canary:
+    name: Canary Deployment
+    runs-on: ubuntu-latest
+    needs: [build-images, deploy-staging]
+    if: startsWith(github.ref, 'refs/tags/')
+    environment:
+      name: production-canary
+      url: https://canary.vaporform.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+          kubectl config use-context production
+
+      - name: Deploy canary version
+        run: |
+          export KUBECONFIG=kubeconfig
+          
+          # Create canary deployments (10% traffic)
+          envsubst < infrastructure/k8s/applications/canary-deployment.yaml | kubectl apply -f -
+          
+          # Update Istio VirtualService for canary routing
+          kubectl patch virtualservice vaporform-virtual-service -n vaporform-prod --type merge -p '{
+            "spec": {
+              "http": [{
+                "match": [{"headers": {"canary": {"exact": "true"}}}],
+                "route": [{"destination": {"host": "vaporform-backend-canary", "port": {"number": 4000}}, "weight": 100}]
+              }, {
+                "route": [
+                  {"destination": {"host": "vaporform-backend-canary", "port": {"number": 4000}}, "weight": 10},
+                  {"destination": {"host": "vaporform-backend", "port": {"number": 4000}}, "weight": 90}
+                ]
+              }]
+            }
+          }'
+
+      - name: Monitor canary deployment
+        run: |
+          export KUBECONFIG=kubeconfig
+          
+          # Monitor for 10 minutes
+          for i in {1..20}; do
+            echo "Monitoring canary deployment... ($i/20)"
+            
+            # Check error rate
+            ERROR_RATE=$(kubectl exec -n vaporform-prod deployment/prometheus -- \
+              promtool query instant 'rate(http_requests_total{job="vaporform-backend-canary",status=~"5.."}[5m]) / rate(http_requests_total{job="vaporform-backend-canary"}[5m])' | \
+              grep -o '[0-9.]*' | head -1)
+            
+            # Check latency
+            LATENCY=$(kubectl exec -n vaporform-prod deployment/prometheus -- \
+              promtool query instant 'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="vaporform-backend-canary"}[5m]))' | \
+              grep -o '[0-9.]*' | head -1)
+            
+            echo "Error rate: ${ERROR_RATE:-0}, Latency P95: ${LATENCY:-0}s"
+            
+            # Fail if error rate > 1% or latency > 2s
+            if (( $(echo "${ERROR_RATE:-0} > 0.01" | bc -l) )) || (( $(echo "${LATENCY:-0} > 2" | bc -l) )); then
+              echo "Canary deployment failed quality gates"
+              exit 1
+            fi
+            
+            sleep 30
+          done
+
+  # Production Blue-Green Deployment
+  deploy-production:
+    name: Blue-Green Production Deployment
+    runs-on: ubuntu-latest
+    needs: [build-images, deploy-canary]
+    if: startsWith(github.ref, 'refs/tags/')
+    environment:
+      name: production
+      url: https://app.vaporform.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+          kubectl config use-context production
+
+      - name: Create blue-green deployment
+        id: deploy
+        run: |
+          export KUBECONFIG=kubeconfig
+          
+          # Determine current and next colors
+          CURRENT_COLOR=$(kubectl get service vaporform-backend -n vaporform-prod -o jsonpath='{.spec.selector.color}' || echo "blue")
+          if [ "$CURRENT_COLOR" = "blue" ]; then
+            NEXT_COLOR="green"
+          else
+            NEXT_COLOR="blue"
+          fi
+          
+          echo "current-color=$CURRENT_COLOR" >> $GITHUB_OUTPUT
+          echo "next-color=$NEXT_COLOR" >> $GITHUB_OUTPUT
+          
+          # Deploy to next color
+          sed -i "s|registry.vaporform.com/vaporform-backend:latest|${{ needs.build-images.outputs.backend-image }}|g" infrastructure/k8s/applications/backend-deployment.yaml
+          sed -i "s|registry.vaporform.com/vaporform-frontend:latest|${{ needs.build-images.outputs.frontend-image }}|g" infrastructure/k8s/applications/frontend-deployment.yaml
+          sed -i "s|color: blue|color: $NEXT_COLOR|g" infrastructure/k8s/applications/backend-deployment.yaml
+          sed -i "s|color: blue|color: $NEXT_COLOR|g" infrastructure/k8s/applications/frontend-deployment.yaml
+          
+          kubectl apply -f infrastructure/k8s/applications/ -n vaporform-prod
+          
+          # Wait for deployment
+          kubectl rollout status deployment/vaporform-backend-$NEXT_COLOR -n vaporform-prod --timeout=600s
+          kubectl rollout status deployment/vaporform-frontend-$NEXT_COLOR -n vaporform-prod --timeout=600s
+
+      - name: Run production tests
+        run: |
+          export KUBECONFIG=kubeconfig
+          
+          # Get next color service endpoint
+          NEXT_COLOR="${{ steps.deploy.outputs.next-color }}"
+          SERVICE_IP=$(kubectl get service vaporform-backend-$NEXT_COLOR -n vaporform-prod -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          
+          # Run comprehensive tests against new deployment
+          npm run test:e2e -- --baseUrl=http://$SERVICE_IP:4000
+          npm run test:performance -- --target=http://$SERVICE_IP:4000
+
+      - name: Switch traffic to new deployment
+        run: |
+          export KUBECONFIG=kubeconfig
+          
+          NEXT_COLOR="${{ steps.deploy.outputs.next-color }}"
+          
+          # Update service selectors to point to new color
+          kubectl patch service vaporform-backend -n vaporform-prod -p "{\"spec\":{\"selector\":{\"color\":\"$NEXT_COLOR\"}}}"
+          kubectl patch service vaporform-frontend -n vaporform-prod -p "{\"spec\":{\"selector\":{\"color\":\"$NEXT_COLOR\"}}}"
+          
+          echo "Traffic switched to $NEXT_COLOR deployment"
+
+      - name: Monitor production deployment
+        run: |
+          export KUBECONFIG=kubeconfig
+          
+          # Monitor for 5 minutes after traffic switch
+          for i in {1..10}; do
+            echo "Monitoring production deployment... ($i/10)"
+            
+            # Check overall health
+            kubectl get pods -n vaporform-prod -l app=vaporform-backend
+            kubectl get pods -n vaporform-prod -l app=vaporform-frontend
+            
+            # Check metrics
+            curl -f https://app.vaporform.com/health || exit 1
+            
+            sleep 30
+          done
+
+      - name: Cleanup old deployment
+        if: success()
+        run: |
+          export KUBECONFIG=kubeconfig
+          
+          CURRENT_COLOR="${{ steps.deploy.outputs.current-color }}"
+          
+          # Scale down old deployment
+          kubectl scale deployment vaporform-backend-$CURRENT_COLOR --replicas=0 -n vaporform-prod
+          kubectl scale deployment vaporform-frontend-$CURRENT_COLOR --replicas=0 -n vaporform-prod
+          
+          echo "Old $CURRENT_COLOR deployment scaled down"
+
+  # Rollback on failure
+  rollback:
+    name: Rollback Production
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    if: failure()
+    environment:
+      name: production-rollback
+    steps:
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.28.0'
+
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBECONFIG_PROD }}" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+          kubectl config use-context production
+
+      - name: Rollback deployment
+        run: |
+          export KUBECONFIG=kubeconfig
+          
+          # Rollback to previous version
+          kubectl rollout undo deployment/vaporform-backend -n vaporform-prod
+          kubectl rollout undo deployment/vaporform-frontend -n vaporform-prod
+          
+          # Wait for rollback
+          kubectl rollout status deployment/vaporform-backend -n vaporform-prod --timeout=300s
+          kubectl rollout status deployment/vaporform-frontend -n vaporform-prod --timeout=300s
+          
+          echo "Production deployment rolled back successfully"
+
+  # Notification
+  notify:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always()
+    steps:
+      - name: Notify Slack
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow

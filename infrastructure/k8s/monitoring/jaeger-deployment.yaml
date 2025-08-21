@@ -1,0 +1,456 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-config
+  namespace: vaporform-prod
+  labels:
+    app: jaeger
+    tier: monitoring
+    environment: production
+data:
+  jaeger-config.yaml: |
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      pprof:
+        endpoint: 0.0.0.0:1777
+      zpages:
+        endpoint: 0.0.0.0:55679
+    
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      jaeger:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:14250
+          thrift_http:
+            endpoint: 0.0.0.0:14268
+          thrift_compact:
+            endpoint: 0.0.0.0:6831
+          thrift_binary:
+            endpoint: 0.0.0.0:6832
+      zipkin:
+        endpoint: 0.0.0.0:9411
+    
+    processors:
+      batch:
+        timeout: 1s
+        send_batch_size: 8192
+        send_batch_max_size: 16384
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 512
+      resource:
+        attributes:
+        - key: environment
+          value: production
+          action: upsert
+        - key: service.namespace
+          from_attribute: k8s.namespace.name
+          action: insert
+        - key: service.instance.id
+          from_attribute: k8s.pod.name
+          action: insert
+    
+    exporters:
+      jaeger:
+        endpoint: jaeger-collector:14250
+        tls:
+          insecure: true
+      logging:
+        loglevel: info
+    
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp, jaeger, zipkin]
+          processors: [memory_limiter, resource, batch]
+          exporters: [jaeger, logging]
+      extensions: [health_check, pprof, zpages]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger-collector
+  namespace: vaporform-prod
+  labels:
+    app: jaeger-collector
+    component: collector
+    tier: monitoring
+    environment: production
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: jaeger-collector
+      component: collector
+      tier: monitoring
+      environment: production
+  template:
+    metadata:
+      labels:
+        app: jaeger-collector
+        component: collector
+        tier: monitoring
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "14269"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: vaporform-service-account
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+      - name: jaeger-collector
+        image: jaegertracing/jaeger-collector:1.48.0
+        args:
+        - "--config-file=/etc/jaeger/jaeger-config.yaml"
+        - "--es.server-urls=http://elasticsearch:9200"
+        - "--es.num-shards=5"
+        - "--es.num-replicas=1"
+        - "--es.index-prefix=jaeger"
+        - "--es.create-index-templates=true"
+        - "--collector.zipkin.host-port=:9411"
+        - "--collector.grpc.host-port=:14250"
+        - "--collector.http.host-port=:14268"
+        - "--metrics-backend=prometheus"
+        - "--metrics-http-route=/metrics"
+        ports:
+        - name: grpc
+          containerPort: 14250
+          protocol: TCP
+        - name: http
+          containerPort: 14268
+          protocol: TCP
+        - name: zipkin
+          containerPort: 9411
+          protocol: TCP
+        - name: admin
+          containerPort: 14269
+          protocol: TCP
+        env:
+        - name: SPAN_STORAGE_TYPE
+          value: elasticsearch
+        - name: ES_SERVER_URLS
+          value: "http://elasticsearch:9200"
+        - name: ES_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: ELASTICSEARCH_USERNAME
+              optional: true
+        - name: ES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: ELASTICSEARCH_PASSWORD
+              optional: true
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: jaeger-config
+          mountPath: /etc/jaeger
+        livenessProbe:
+          httpGet:
+            path: /
+            port: admin
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: admin
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: jaeger-config
+        configMap:
+          name: jaeger-config
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        node-type: monitoring
+      tolerations:
+      - key: "monitoring"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - jaeger-collector
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-collector
+  namespace: vaporform-prod
+  labels:
+    app: jaeger-collector
+    component: collector
+    tier: monitoring
+    environment: production
+spec:
+  type: ClusterIP
+  ports:
+  - name: grpc
+    port: 14250
+    targetPort: grpc
+    protocol: TCP
+  - name: http
+    port: 14268
+    targetPort: http
+    protocol: TCP
+  - name: zipkin
+    port: 9411
+    targetPort: zipkin
+    protocol: TCP
+  - name: admin
+    port: 14269
+    targetPort: admin
+    protocol: TCP
+  selector:
+    app: jaeger-collector
+    component: collector
+    tier: monitoring
+    environment: production
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger-query
+  namespace: vaporform-prod
+  labels:
+    app: jaeger-query
+    component: query
+    tier: monitoring
+    environment: production
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: jaeger-query
+      component: query
+      tier: monitoring
+      environment: production
+  template:
+    metadata:
+      labels:
+        app: jaeger-query
+        component: query
+        tier: monitoring
+        environment: production
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "16687"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: vaporform-service-account
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+      - name: jaeger-query
+        image: jaegertracing/jaeger-query:1.48.0
+        args:
+        - "--es.server-urls=http://elasticsearch:9200"
+        - "--es.num-shards=5"
+        - "--es.num-replicas=1"
+        - "--es.index-prefix=jaeger"
+        - "--query.base-path=/"
+        - "--query.ui-config=/etc/jaeger/ui-config.json"
+        - "--metrics-backend=prometheus"
+        - "--metrics-http-route=/metrics"
+        ports:
+        - name: query
+          containerPort: 16686
+          protocol: TCP
+        - name: admin
+          containerPort: 16687
+          protocol: TCP
+        env:
+        - name: SPAN_STORAGE_TYPE
+          value: elasticsearch
+        - name: ES_SERVER_URLS
+          value: "http://elasticsearch:9200"
+        - name: ES_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: ELASTICSEARCH_USERNAME
+              optional: true
+        - name: ES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: vaporform-secrets
+              key: ELASTICSEARCH_PASSWORD
+              optional: true
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: jaeger-ui-config
+          mountPath: /etc/jaeger
+        livenessProbe:
+          httpGet:
+            path: /
+            port: query
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: query
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: jaeger-ui-config
+        configMap:
+          name: jaeger-ui-config
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        node-type: monitoring
+      tolerations:
+      - key: "monitoring"
+        operator: "Equal"
+        value: "true"
+        effect: "NoSchedule"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - jaeger-query
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-query
+  namespace: vaporform-prod
+  labels:
+    app: jaeger-query
+    component: query
+    tier: monitoring
+    environment: production
+spec:
+  type: ClusterIP
+  ports:
+  - name: query
+    port: 16686
+    targetPort: query
+    protocol: TCP
+  - name: admin
+    port: 16687
+    targetPort: admin
+    protocol: TCP
+  selector:
+    app: jaeger-query
+    component: query
+    tier: monitoring
+    environment: production
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-ui-config
+  namespace: vaporform-prod
+  labels:
+    app: jaeger
+    tier: monitoring
+    environment: production
+data:
+  ui-config.json: |
+    {
+      "monitor": {
+        "menuEnabled": true
+      },
+      "dependencies": {
+        "menuEnabled": true
+      },
+      "archiveEnabled": true,
+      "tracking": {
+        "gaID": "UA-000000-2",
+        "trackErrors": true
+      },
+      "menu": [
+        {
+          "label": "Vaporform Docs",
+          "url": "https://docs.vaporform.com/observability/tracing",
+          "anchorTarget": "_blank"
+        },
+        {
+          "label": "Support",
+          "url": "https://support.vaporform.com",
+          "anchorTarget": "_blank"
+        }
+      ],
+      "linkPatterns": [
+        {
+          "type": "logs",
+          "key": "logTraceID",
+          "url": "https://grafana.vaporform.com/explore?left=[\"now-1h\",\"now\",\"loki\",{\"expr\":\"{job=\\\"vaporform-backend\\\"} |= \\\"#VAL#\\\"\"}]",
+          "text": "View logs for this trace"
+        }
+      ]
+    }

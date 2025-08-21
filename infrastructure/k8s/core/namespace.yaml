@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vaporform-prod
+  labels:
+    name: vaporform-prod
+    environment: production
+    project: vaporform
+    managed-by: kubernetes
+  annotations:
+    description: "Vaporform production environment"
+spec:
+  finalizers:
+  - kubernetes
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: vaporform-resource-quota
+  namespace: vaporform-prod
+spec:
+  hard:
+    requests.cpu: "20"
+    requests.memory: 40Gi
+    limits.cpu: "40"
+    limits.memory: 80Gi
+    persistentvolumeclaims: "10"
+    pods: "100"
+    services: "20"
+    secrets: "50"
+    configmaps: "50"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: vaporform-limit-range
+  namespace: vaporform-prod
+spec:
+  limits:
+  - default:
+      cpu: "500m"
+      memory: "1Gi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "256Mi"
+    type: Container
+  - max:
+      cpu: "2"
+      memory: "4Gi"
+    min:
+      cpu: "50m"
+      memory: "128Mi"
+    type: Container
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vaporform-network-policy
+  namespace: vaporform-prod
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: vaporform-prod
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: vaporform-prod
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 443

@@ -1,0 +1,243 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vaporform-frontend
+  namespace: vaporform-prod
+  labels:
+    app: vaporform-frontend
+    tier: frontend
+    environment: production
+    version: v1
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 2
+  selector:
+    matchLabels:
+      app: vaporform-frontend
+      tier: frontend
+      environment: production
+  template:
+    metadata:
+      labels:
+        app: vaporform-frontend
+        tier: frontend
+        environment: production
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "80"
+        prometheus.io/path: "/metrics"
+        sidecar.istio.io/inject: "true"
+    spec:
+      serviceAccountName: vaporform-service-account
+      imagePullSecrets:
+      - name: registry-credentials
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+      containers:
+      - name: frontend
+        image: registry.vaporform.com/vaporform-frontend:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 80
+          protocol: TCP
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: REACT_APP_API_URL
+          value: "https://api.vaporform.com"
+        - name: REACT_APP_WS_URL
+          value: "wss://api.vaporform.com/ws"
+        - name: REACT_APP_VERSION
+          value: "1.0.0"
+        - name: REACT_APP_BUILD_DATE
+          value: "2024-01-01"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "512Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+            httpHeaders:
+            - name: Host
+              value: localhost
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+            httpHeaders:
+            - name: Host
+              value: localhost
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        - name: tmp
+          mountPath: /tmp
+        - name: var-cache
+          mountPath: /var/cache/nginx
+        - name: var-run
+          mountPath: /var/run
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+      - name: tmp
+        emptyDir: {}
+      - name: var-cache
+        emptyDir: {}
+      - name: var-run
+        emptyDir: {}
+      nodeSelector:
+        kubernetes.io/arch: amd64
+      tolerations:
+      - key: "kubernetes.io/arch"
+        operator: "Equal"
+        value: "amd64"
+        effect: "NoSchedule"
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - vaporform-frontend
+              topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                - amd64
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vaporform-frontend
+  namespace: vaporform-prod
+  labels:
+    app: vaporform-frontend
+    tier: frontend
+    environment: production
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: vaporform-frontend
+    tier: frontend
+    environment: production
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vaporform-frontend-hpa
+  namespace: vaporform-prod
+  labels:
+    app: vaporform-frontend
+    tier: frontend
+    environment: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vaporform-frontend
+  minReplicas: 3
+  maxReplicas: 15
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 3
+        periodSeconds: 15
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 20
+        periodSeconds: 60
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      selectPolicy: Min
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vaporform-frontend-pdb
+  namespace: vaporform-prod
+  labels:
+    app: vaporform-frontend
+    tier: frontend
+    environment: production
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: vaporform-frontend
+      tier: frontend
+      environment: production

@@ -1,0 +1,762 @@
+# Production Security Hardening Configuration for Vaporform
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: security-hardening-config
+  namespace: vaporform-prod
+  labels:
+    app: security
+    tier: infrastructure
+    environment: production
+data:
+  security-policy.yaml: |
+    # Vaporform Production Security Policy
+    
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: security-policies
+      namespace: vaporform-prod
+    data:
+      network-policy.yaml: |
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: deny-all-default
+          namespace: vaporform-prod
+        spec:
+          podSelector: {}
+          policyTypes:
+          - Ingress
+          - Egress
+        ---
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: allow-frontend-to-backend
+          namespace: vaporform-prod
+        spec:
+          podSelector:
+            matchLabels:
+              app: vaporform-backend
+          policyTypes:
+          - Ingress
+          ingress:
+          - from:
+            - podSelector:
+                matchLabels:
+                  app: vaporform-frontend
+            ports:
+            - protocol: TCP
+              port: 4000
+        ---
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        metadata:
+          name: allow-backend-to-database
+          namespace: vaporform-prod
+        spec:
+          podSelector:
+            matchLabels:
+              app: postgres
+          policyTypes:
+          - Ingress
+          ingress:
+          - from:
+            - podSelector:
+                matchLabels:
+                  app: vaporform-backend
+            ports:
+            - protocol: TCP
+              port: 5432
+      
+      pod-security-standards.yaml: |
+        apiVersion: v1
+        kind: Namespace
+        metadata:
+          name: vaporform-prod
+          labels:
+            pod-security.kubernetes.io/enforce: restricted
+            pod-security.kubernetes.io/audit: restricted
+            pod-security.kubernetes.io/warn: restricted
+        ---
+        apiVersion: policy/v1beta1
+        kind: PodSecurityPolicy
+        metadata:
+          name: vaporform-restricted
+          namespace: vaporform-prod
+        spec:
+          privileged: false
+          allowPrivilegeEscalation: false
+          requiredDropCapabilities:
+          - ALL
+          volumes:
+          - 'configMap'
+          - 'emptyDir'
+          - 'projected'
+          - 'secret'
+          - 'downwardAPI'
+          - 'persistentVolumeClaim'
+          runAsUser:
+            rule: 'MustRunAsNonRoot'
+          seLinux:
+            rule: 'RunAsAny'
+          fsGroup:
+            rule: 'RunAsAny'
+          readOnlyRootFilesystem: true
+          allowedHostPaths: []
+          hostNetwork: false
+          hostIPC: false
+          hostPID: false
+      
+      rbac-policies.yaml: |
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata:
+          namespace: vaporform-prod
+          name: vaporform-app-role
+        rules:
+        - apiGroups: [""]
+          resources: ["configmaps", "secrets"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: [""]
+          resources: ["pods"]
+          verbs: ["get", "list", "watch"]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata:
+          name: vaporform-app-binding
+          namespace: vaporform-prod
+        subjects:
+        - kind: ServiceAccount
+          name: vaporform-service-account
+          namespace: vaporform-prod
+        roleRef:
+          kind: Role
+          name: vaporform-app-role
+          apiGroup: rbac.authorization.k8s.io
+  
+  compliance-scanner.yaml: |
+    apiVersion: batch/v1
+    kind: CronJob
+    metadata:
+      name: compliance-scanner
+      namespace: vaporform-prod
+      labels:
+        app: compliance-scanner
+        tier: security
+        environment: production
+    spec:
+      schedule: "0 2 * * 1"  # Weekly on Monday at 2 AM
+      successfulJobsHistoryLimit: 3
+      failedJobsHistoryLimit: 3
+      jobTemplate:
+        spec:
+          template:
+            metadata:
+              labels:
+                app: compliance-scanner
+                tier: security
+            spec:
+              restartPolicy: OnFailure
+              serviceAccountName: compliance-scanner
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 1000
+                runAsGroup: 1000
+                fsGroup: 1000
+              containers:
+              - name: kube-bench
+                image: aquasec/kube-bench:latest
+                command: ["kube-bench"]
+                args: ["--json", "--outputfile", "/tmp/kube-bench-results.json"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities:
+                    drop:
+                    - ALL
+                volumeMounts:
+                - name: results
+                  mountPath: /tmp
+                - name: kube-bench-config
+                  mountPath: /opt/kube-bench/cfg
+                  readOnly: true
+              - name: kube-hunter
+                image: aquasec/kube-hunter:latest
+                command: ["kube-hunter"]
+                args: ["--pod", "--quick", "--report", "json", "--log", "WARNING"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities:
+                    drop:
+                    - ALL
+                volumeMounts:
+                - name: results
+                  mountPath: /tmp
+              - name: polaris
+                image: quay.io/fairwinds/polaris:latest
+                command: ["polaris"]
+                args: ["audit", "--format", "json", "--output-file", "/tmp/polaris-results.json"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities:
+                    drop:
+                    - ALL
+                volumeMounts:
+                - name: results
+                  mountPath: /tmp
+              - name: falco
+                image: falcosecurity/falco:latest
+                command: ["falco"]
+                args: ["--json_output", "--json_include_output_property"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities:
+                    drop:
+                    - ALL
+                volumeMounts:
+                - name: results
+                  mountPath: /tmp
+                - name: falco-config
+                  mountPath: /etc/falco
+                  readOnly: true
+              - name: report-uploader
+                image: curlimages/curl:latest
+                command: ["/bin/sh"]
+                args:
+                - -c
+                - |
+                  echo "Uploading compliance reports..."
+                  
+                  # Upload to S3
+                  if [ -f /tmp/kube-bench-results.json ]; then
+                    curl -X PUT "$S3_UPLOAD_URL/kube-bench-$(date +%Y%m%d).json" \
+                      -H "Authorization: Bearer $AWS_TOKEN" \
+                      --data-binary @/tmp/kube-bench-results.json
+                  fi
+                  
+                  if [ -f /tmp/polaris-results.json ]; then
+                    curl -X PUT "$S3_UPLOAD_URL/polaris-$(date +%Y%m%d).json" \
+                      -H "Authorization: Bearer $AWS_TOKEN" \
+                      --data-binary @/tmp/polaris-results.json
+                  fi
+                  
+                  # Send summary to Slack
+                  KUBE_BENCH_PASS=$(jq '.Totals.total_pass' /tmp/kube-bench-results.json 2>/dev/null || echo "0")
+                  KUBE_BENCH_FAIL=$(jq '.Totals.total_fail' /tmp/kube-bench-results.json 2>/dev/null || echo "0")
+                  POLARIS_SCORE=$(jq '.score' /tmp/polaris-results.json 2>/dev/null || echo "0")
+                  
+                  curl -X POST "$SLACK_WEBHOOK_URL" \
+                    -H 'Content-type: application/json' \
+                    --data "{
+                      \"text\": \"🔒 Weekly Compliance Scan Completed\",
+                      \"attachments\": [{
+                        \"color\": \"good\",
+                        \"fields\": [
+                          {\"title\": \"CIS Benchmark\", \"value\": \"Pass: $KUBE_BENCH_PASS, Fail: $KUBE_BENCH_FAIL\", \"short\": true},
+                          {\"title\": \"Polaris Score\", \"value\": \"$POLARIS_SCORE%\", \"short\": true}
+                        ]
+                      }]
+                    }"
+                env:
+                - name: S3_UPLOAD_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: compliance-secrets
+                      key: s3-upload-url
+                - name: AWS_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: compliance-secrets
+                      key: aws-token
+                - name: SLACK_WEBHOOK_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: compliance-secrets
+                      key: slack-webhook-url
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities:
+                    drop:
+                    - ALL
+                volumeMounts:
+                - name: results
+                  mountPath: /tmp
+                  readOnly: true
+              volumes:
+              - name: results
+                emptyDir: {}
+              - name: kube-bench-config
+                configMap:
+                  name: kube-bench-config
+              - name: falco-config
+                configMap:
+                  name: falco-config
+  
+  vulnerability-scanner.yaml: |
+    apiVersion: batch/v1
+    kind: CronJob
+    metadata:
+      name: vulnerability-scanner
+      namespace: vaporform-prod
+      labels:
+        app: vulnerability-scanner
+        tier: security
+        environment: production
+    spec:
+      schedule: "0 1 * * *"  # Daily at 1 AM
+      successfulJobsHistoryLimit: 7
+      failedJobsHistoryLimit: 3
+      jobTemplate:
+        spec:
+          template:
+            metadata:
+              labels:
+                app: vulnerability-scanner
+                tier: security
+            spec:
+              restartPolicy: OnFailure
+              serviceAccountName: vulnerability-scanner
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 1000
+                runAsGroup: 1000
+                fsGroup: 1000
+              containers:
+              - name: trivy-scanner
+                image: aquasec/trivy:latest
+                command: ["/bin/sh"]
+                args:
+                - -c
+                - |
+                  echo "Starting vulnerability scan..."
+                  
+                  # Get list of images from deployments
+                  kubectl get deployments -n vaporform-prod -o jsonpath='{.items[*].spec.template.spec.containers[*].image}' > /tmp/images.txt
+                  
+                  # Scan each image
+                  for image in $(cat /tmp/images.txt); do
+                    echo "Scanning image: $image"
+                    trivy image --format json --output "/tmp/$(echo $image | tr '/' '_' | tr ':' '_').json" "$image"
+                  done
+                  
+                  # Generate summary report
+                  echo "{\"scan_date\": \"$(date -Iseconds)\", \"images\": [" > /tmp/summary.json
+                  
+                  first=true
+                  for file in /tmp/*.json; do
+                    if [ "$file" != "/tmp/summary.json" ]; then
+                      if [ "$first" = true ]; then
+                        first=false
+                      else
+                        echo "," >> /tmp/summary.json
+                      fi
+                      cat "$file" >> /tmp/summary.json
+                    fi
+                  done
+                  
+                  echo "]}" >> /tmp/summary.json
+                  
+                  # Check for critical vulnerabilities
+                  CRITICAL_COUNT=$(jq '[.images[] | select(.Results != null) | .Results[] | select(.Vulnerabilities != null) | .Vulnerabilities[] | select(.Severity == "CRITICAL")] | length' /tmp/summary.json)
+                  HIGH_COUNT=$(jq '[.images[] | select(.Results != null) | .Results[] | select(.Vulnerabilities != null) | .Vulnerabilities[] | select(.Severity == "HIGH")] | length' /tmp/summary.json)
+                  
+                  echo "Critical vulnerabilities: $CRITICAL_COUNT"
+                  echo "High vulnerabilities: $HIGH_COUNT"
+                  
+                  # Alert if critical vulnerabilities found
+                  if [ "$CRITICAL_COUNT" -gt "0" ]; then
+                    curl -X POST "$PAGERDUTY_WEBHOOK_URL" \
+                      -H 'Content-Type: application/json' \
+                      -d "{
+                        \"routing_key\": \"$PAGERDUTY_ROUTING_KEY\",
+                        \"event_action\": \"trigger\",
+                        \"payload\": {
+                          \"summary\": \"Critical vulnerabilities found in container images\",
+                          \"severity\": \"critical\",
+                          \"source\": \"vulnerability-scanner\",
+                          \"custom_details\": {
+                            \"critical_count\": $CRITICAL_COUNT,
+                            \"high_count\": $HIGH_COUNT
+                          }
+                        }
+                      }"
+                  fi
+                  
+                  # Upload results
+                  aws s3 cp /tmp/summary.json "s3://$SECURITY_BUCKET/vulnerability-scans/$(date +%Y%m%d).json"
+                env:
+                - name: PAGERDUTY_WEBHOOK_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: security-secrets
+                      key: pagerduty-webhook-url
+                - name: PAGERDUTY_ROUTING_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: security-secrets
+                      key: pagerduty-routing-key
+                - name: SECURITY_BUCKET
+                  valueFrom:
+                    secretKeyRef:
+                      name: security-secrets
+                      key: security-bucket
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: security-secrets
+                      key: aws-access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: security-secrets
+                      key: aws-secret-access-key
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  capabilities:
+                    drop:
+                    - ALL
+                volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+              volumes:
+              - name: tmp
+                emptyDir: {}
+  
+  security-monitoring.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: falco
+      namespace: vaporform-prod
+      labels:
+        app: falco
+        tier: security
+        environment: production
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: falco
+          tier: security
+      template:
+        metadata:
+          labels:
+            app: falco
+            tier: security
+        spec:
+          serviceAccountName: falco
+          hostNetwork: true
+          hostPID: true
+          securityContext:
+            runAsUser: 0
+          containers:
+          - name: falco
+            image: falcosecurity/falco:latest
+            args:
+            - /usr/bin/falco
+            - --cri
+            - /run/containerd/containerd.sock
+            - --k8s-api
+            - --k8s-api-cert
+            - /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+            - --k8s-api-token
+            - /var/run/secrets/kubernetes.io/serviceaccount/token
+            - --json_output
+            - --json_include_output_property
+            securityContext:
+              privileged: true
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "100m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+            volumeMounts:
+            - mountPath: /var/run/docker.sock
+              name: docker-socket
+            - mountPath: /run/containerd/containerd.sock
+              name: containerd-socket
+            - mountPath: /dev
+              name: dev-fs
+            - mountPath: /proc
+              name: proc-fs
+              readOnly: true
+            - mountPath: /boot
+              name: boot-fs
+              readOnly: true
+            - mountPath: /lib/modules
+              name: lib-modules
+              readOnly: true
+            - mountPath: /usr
+              name: usr-fs
+              readOnly: true
+            - mountPath: /etc/falco
+              name: falco-config
+          - name: falco-exporter
+            image: falcosecurity/falco-exporter:latest
+            args:
+            - --web.listen-address=0.0.0.0:9376
+            - --client.hostname=localhost
+            - --client.port=5060
+            ports:
+            - containerPort: 9376
+              protocol: TCP
+              name: metrics
+            resources:
+              requests:
+                memory: "64Mi"
+                cpu: "50m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                - ALL
+          volumes:
+          - name: docker-socket
+            hostPath:
+              path: /var/run/docker.sock
+          - name: containerd-socket
+            hostPath:
+              path: /run/containerd/containerd.sock
+          - name: dev-fs
+            hostPath:
+              path: /dev
+          - name: proc-fs
+            hostPath:
+              path: /proc
+          - name: boot-fs
+            hostPath:
+              path: /boot
+          - name: lib-modules
+            hostPath:
+              path: /lib/modules
+          - name: usr-fs
+            hostPath:
+              path: /usr
+          - name: falco-config
+            configMap:
+              name: falco-config
+          tolerations:
+          - effect: NoSchedule
+            key: node-role.kubernetes.io/master
+          - effect: NoSchedule
+            key: node-role.kubernetes.io/control-plane
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: falco
+      namespace: vaporform-prod
+      labels:
+        app: falco
+        tier: security
+    spec:
+      selector:
+        app: falco
+        tier: security
+      ports:
+      - name: grpc
+        port: 5060
+        protocol: TCP
+      - name: metrics
+        port: 9376
+        protocol: TCP
+  
+  cert-manager.yaml: |
+    apiVersion: cert-manager.io/v1
+    kind: ClusterIssuer
+    metadata:
+      name: letsencrypt-prod
+    spec:
+      acme:
+        email: security@vaporform.com
+        server: https://acme-v02.api.letsencrypt.org/directory
+        privateKeySecretRef:
+          name: letsencrypt-prod-private-key
+        solvers:
+        - dns01:
+            cloudflare:
+              email: admin@vaporform.com
+              apiTokenSecretRef:
+                name: cloudflare-api-token
+                key: api-token
+        - http01:
+            ingress:
+              class: nginx
+    ---
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      name: vaporform-tls
+      namespace: vaporform-prod
+    spec:
+      secretName: vaporform-tls-secret
+      issuerRef:
+        name: letsencrypt-prod
+        kind: ClusterIssuer
+      dnsNames:
+      - vaporform.com
+      - app.vaporform.com
+      - api.vaporform.com
+      - '*.vaporform.com'
+      usages:
+      - digital signature
+      - key encipherment
+      - server auth
+  
+  oauth2-proxy.yaml: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: oauth2-proxy
+      namespace: vaporform-prod
+      labels:
+        app: oauth2-proxy
+        tier: security
+        environment: production
+    spec:
+      replicas: 2
+      selector:
+        matchLabels:
+          app: oauth2-proxy
+          tier: security
+      template:
+        metadata:
+          labels:
+            app: oauth2-proxy
+            tier: security
+        spec:
+          serviceAccountName: oauth2-proxy
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            fsGroup: 65532
+          containers:
+          - name: oauth2-proxy
+            image: quay.io/oauth2-proxy/oauth2-proxy:latest
+            args:
+            - --config=/etc/oauth2-proxy/oauth2-proxy.cfg
+            - --email-domain=vaporform.com
+            - --upstream=http://vaporform-frontend:80
+            - --http-address=0.0.0.0:4180
+            - --metrics-address=0.0.0.0:44180
+            - --redirect-url=https://app.vaporform.com/oauth2/callback
+            - --oidc-issuer-url=https://accounts.google.com
+            - --provider=oidc
+            - --scope=openid email profile
+            - --cookie-secure=true
+            - --cookie-httponly=true
+            - --cookie-samesite=lax
+            - --cookie-expire=24h
+            - --session-store-type=redis
+            - --redis-connection-url=redis://redis:6379
+            ports:
+            - containerPort: 4180
+              protocol: TCP
+              name: http
+            - containerPort: 44180
+              protocol: TCP
+              name: metrics
+            env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secrets
+                  key: client-id
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secrets
+                  key: client-secret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secrets
+                  key: cookie-secret
+            - name: OAUTH2_PROXY_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: vaporform-secrets
+                  key: REDIS_PASSWORD
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+            livenessProbe:
+              httpGet:
+                path: /ping
+                port: http
+              initialDelaySeconds: 30
+              timeoutSeconds: 5
+            readinessProbe:
+              httpGet:
+                path: /ready
+                port: http
+              initialDelaySeconds: 5
+              timeoutSeconds: 5
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop:
+                - ALL
+            volumeMounts:
+            - name: oauth2-proxy-config
+              mountPath: /etc/oauth2-proxy
+              readOnly: true
+          volumes:
+          - name: oauth2-proxy-config
+            configMap:
+              name: oauth2-proxy-config
+          affinity:
+            podAntiAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                podAffinityTerm:
+                  labelSelector:
+                    matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                      - oauth2-proxy
+                  topologyKey: kubernetes.io/hostname
+    ---
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: oauth2-proxy
+      namespace: vaporform-prod
+      labels:
+        app: oauth2-proxy
+        tier: security
+    spec:
+      selector:
+        app: oauth2-proxy
+        tier: security
+      ports:
+      - name: http
+        port: 4180
+        targetPort: http
+        protocol: TCP
+      - name: metrics
+        port: 44180
+        targetPort: metrics
+        protocol: TCP
