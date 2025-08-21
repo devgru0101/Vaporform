@@ -43,14 +43,12 @@
     "otplib": "^12.0.1",
     "node-2fa": "^2.0.3",
     "prom-client": "^15.1.0",
-    "opentelemetry": "^0.52.1",
     "@opentelemetry/api": "^1.7.0",
     "@opentelemetry/sdk-node": "^0.46.0",
     "@opentelemetry/instrumentation": "^0.46.0",
     "@sentry/node": "^7.81.1",
     "@sentry/tracing": "^7.81.1",
     "elastic-apm-node": "^4.5.4",
-    "crypto": "^1.0.1",
     "node-vault": "^0.10.2",
     "express-validator": "^7.0.1",
     "express-session": "^1.17.3",
@@ -94,8 +92,7 @@
     "@testing-library/user-event": "^14.5.1",
     "axe-core": "^4.8.3",
     "@axe-core/playwright": "^4.8.3",
-    "lighthouse": "^11.4.0",
-    "security-audit": "^1.0.0"
+    "lighthouse": "^11.4.0"
   },
   "keywords": [
     "vaporform",
