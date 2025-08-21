@@ -1,314 +1,411 @@
 # Vaporform
 
-> AI-powered development environment combining modified VSCode IDE, Encore.ts backend, and Claude Code SDK integration
+AI-powered development environment with React frontend and pure Encore.ts backend
 
 ## Overview
 
-Vaporform is a revolutionary AI-powered development environment that seamlessly integrates artificial intelligence capabilities into the developer workflow. It combines a modified VSCode IDE with a robust Encore.ts backend and Claude Code SDK integration to provide intelligent code generation, review, debugging, and testing capabilities.
-
-## Features
-
-### Core Features
-- 🤖 **AI-Powered Code Generation** - Generate code using Claude AI with contextual awareness
-- 🔍 **Intelligent Code Review** - Automated code analysis and improvement suggestions
-- 🐛 **Smart Debugging** - AI-assisted error detection and resolution
-- 🧪 **Automated Testing** - Generate comprehensive test suites automatically
-- 📚 **Documentation Generation** - Create inline docs, APIs, and tutorials
-- 🔄 **Code Refactoring** - Intelligent code optimization and modernization
-
-### Development Environment
-- 🎨 **Modified VSCode IDE** - Enhanced with AI capabilities and custom integrations
-- ⚡ **Real-time Collaboration** - Multi-user project development with live updates
-- 🏗️ **Project Templates** - Pre-configured setups for popular frameworks
-- 🔧 **Container Orchestration** - Docker-based development and deployment
-- 🚀 **CI/CD Integration** - Automated testing, security scanning, and deployment
-
-### AI & Security
-- 🛡️ **Enterprise Security** - Role-based access control and audit logging
-- 📊 **Analytics & Insights** - Development metrics and AI usage analytics
-- 🔐 **API Management** - Secure AI service integration with rate limiting
-- 🌐 **Multi-language Support** - TypeScript, JavaScript, Python, Go, and more
+Vaporform is a professional AI-powered development environment that integrates artificial intelligence capabilities into the developer workflow. It features a React-based IDE interface with a pure Encore.ts backend and Claude AI integration for intelligent code generation, review, debugging, and project management.
 
 ## Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Frontend      │    │    Backend      │    │   AI Services   │
-│  (VSCode Mod)   │◄──►│   (Encore.ts)   │◄──►│   (Claude AI)   │
+│  (React 18)     │◄──►│   (Encore.ts)   │◄──►│   (Claude AI)   │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          │                       │                       │
          ▼                       ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Web UI/UX     │    │   PostgreSQL    │    │   Redis Cache   │
-│   Components    │    │   Database      │    │   & Sessions    │
+│ Redux Toolkit   │    │   PostgreSQL    │    │   File System   │
+│ State Management│    │   Database      │    │   Integration   │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## Quick Start
+## System Dependencies
 
-### Prerequisites
-- Node.js 18+
-- Docker & Docker Compose
-- Git
-- Anthropic API Key
+### Required Software
+- **Node.js** 18.x or later
+- **npm** 9.x or later
+- **Git** 2.30 or later
+- **Docker** 20.x or later (optional, for database)
+- **Docker Compose** 1.29 or later (optional, for database)
 
-### 1. Clone and Setup
+### Operating System Support
+- Linux (Ubuntu 20.04+, Debian 11+, CentOS 8+)
+- macOS 11+ (Big Sur or later)
+- Windows 10/11 with WSL2
+
+### Hardware Requirements
+- **Minimum**: 4GB RAM, 2 CPU cores, 10GB disk space
+- **Recommended**: 8GB RAM, 4 CPU cores, 25GB disk space
+- **Network**: Stable internet connection for AI API calls
+
+## Installation and Setup
+
+### 1. Clone Repository
 ```bash
-git clone https://github.com/your-org/vaporform.git
-cd vaporform
+git clone https://github.com/devgru0101/Vaporform.git
+cd Vaporform
+```
+
+### 2. Install Encore.ts (Backend Runtime)
+```bash
+# Install Encore CLI globally
+curl -L https://encore.dev/install.sh | bash
+
+# Verify installation
+encore version
+```
+
+### 3. Backend Setup
+```bash
+cd backend
+
+# Install dependencies
+npm install
+
+# Configure environment
 cp .env.example .env
-# Edit .env with your configuration
+# Edit .env with your configuration (see Configuration section)
+
+# Initialize database (if using PostgreSQL)
+encore run
 ```
 
-### 2. Install Dependencies
+### 4. Frontend Setup
 ```bash
-# Backend
-cd backend && npm install
+cd frontend
 
-# Frontend  
-cd ../frontend && npm install
+# Install dependencies
+npm install
 
-# Shared types
-cd ../shared && npm install
+# Start development server
+npm run dev
 ```
 
-### 3. Start Development Environment
-```bash
-# Start all services
-docker-compose up -d
-
-# Or start individually
-npm run dev:backend
-npm run dev:frontend
-```
-
-### 4. Access the Application
+### 5. Verify Installation
 - Frontend: http://localhost:3001
-- Files Server: http://localhost:3000  
-- Backend API: http://localhost:4000
-- Database: localhost:5432 (requires Docker)
-- Redis: localhost:6379 (requires Docker)
+- Backend API: http://192.168.1.235:4001 (or your configured IP)
+- File Server: http://localhost:3000
 
-## Project Structure
+## Configuration
 
-```
-vaporform/
-├── backend/                 # Encore.ts backend services
-│   ├── src/
-│   │   ├── services/       # API endpoints and business logic
-│   │   ├── middleware/     # Authentication, validation, etc.
-│   │   ├── types/          # TypeScript type definitions
-│   │   └── utils/          # Helper functions and utilities
-│   ├── tests/              # Backend test suites
-│   └── config/             # Configuration files
-├── frontend/               # Modified VSCode frontend
-│   ├── src/
-│   │   ├── components/     # React components
-│   │   ├── views/          # Page-level components
-│   │   ├── stores/         # State management
-│   │   ├── utils/          # Frontend utilities
-│   │   └── types/          # Frontend-specific types
-│   ├── public/             # Static assets
-│   └── assets/             # Build assets
-├── shared/                 # Shared types and utilities
-│   └── src/
-│       ├── types/          # Common type definitions
-│       └── utils/          # Shared utility functions
-├── infrastructure/         # Docker, Terraform, K8s configs
-│   ├── docker/             # Docker configurations
-│   ├── terraform/          # Infrastructure as code
-│   ├── kubernetes/         # K8s deployment configs
-│   └── nginx/              # Reverse proxy configuration
-├── docs/                   # Documentation
-├── scripts/                # Build and deployment scripts
-├── tests/                  # Integration and E2E tests
-└── .github/                # CI/CD workflows
-```
+### Backend Environment Variables
 
-## Development
-
-### Available Scripts
-
-#### Backend
-```bash
-npm run dev              # Start development server
-npm run build            # Build for production
-npm run test             # Run unit tests
-npm run test:coverage    # Run tests with coverage
-npm run lint             # Run ESLint
-npm run format           # Format code with Prettier
-```
-
-#### Frontend
-```bash
-npm run dev              # Start development server
-npm run build            # Build for production
-npm run test             # Run unit tests
-npm run lint             # Run ESLint
-npm run format           # Format code with Prettier
-```
-
-#### Docker Commands
-```bash
-docker-compose up -d              # Start all services
-docker-compose down               # Stop all services
-docker-compose logs -f backend    # View backend logs
-docker-compose exec backend sh    # Shell into backend container
-```
-
-### Environment Variables
-
-Create `.env` file from `.env.example`:
+Create `backend/.env` file:
 
 ```env
-# Application
+# Application Configuration
 NODE_ENV=development
-PORT=4000
+PORT=4001
+HOST=0.0.0.0
 
 # Security
-JWT_SECRET=your-super-secure-jwt-secret
+JWT_SECRET=your-super-secure-jwt-secret-minimum-32-characters
+JWT_EXPIRES_IN=24h
 CORS_ORIGIN=http://localhost:3001
 
 # AI Services
 ANTHROPIC_API_KEY=your-anthropic-api-key
 
-# Database
-DATABASE_URL=postgresql://vaporform:vaporform@localhost:5432/vaporform
-REDIS_URL=redis://localhost:6379
+# Database (Optional - Encore.ts can use built-in SQLite)
+DATABASE_URL=postgresql://username:password@localhost:5432/vaporform
+
+# File Storage
+UPLOAD_DIR=./uploads
+MAX_FILE_SIZE=10485760
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
 ```
 
-## API Documentation
+### Frontend Configuration
 
-### Authentication Endpoints
-- `POST /auth/login` - User login
+Create `frontend/.env` file:
+
+```env
+# API Configuration
+REACT_APP_API_URL=http://192.168.1.235:4001
+REACT_APP_WS_URL=ws://192.168.1.235:4001
+
+# Development
+REACT_APP_ENV=development
+REACT_APP_DEBUG=true
+
+# Build Configuration
+PUBLIC_URL=/
+GENERATE_SOURCEMAP=true
+```
+
+### Network Configuration
+
+For development across multiple devices:
+
+1. **Backend**: Configure to listen on all interfaces
+   ```bash
+   # In backend/.env
+   HOST=0.0.0.0
+   PORT=4001
+   ```
+
+2. **Frontend**: Update API endpoints to use your local IP
+   ```bash
+   # Find your local IP
+   ip addr show  # Linux
+   ifconfig      # macOS
+   ipconfig      # Windows
+   
+   # Update REACT_APP_API_URL in frontend/.env
+   REACT_APP_API_URL=http://YOUR_LOCAL_IP:4001
+   ```
+
+## Development Workflow
+
+### Starting Development Environment
+
+1. **Terminal 1** - Backend:
+   ```bash
+   cd backend
+   encore run
+   ```
+
+2. **Terminal 2** - Frontend:
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+3. **Terminal 3** - File Server (optional):
+   ```bash
+   # From project root
+   node file-server.js
+   ```
+
+### Application Flow
+
+1. **Authentication**:
+   - User accesses frontend at localhost:3001
+   - Login/register forms connect to backend auth service
+   - JWT tokens stored in localStorage for session persistence
+   - Demo credentials: `demo@vaporform.com` / `password123`
+
+2. **Project Management**:
+   - File explorer connects to backend file system
+   - Project wizard creates new projects via backend wizard service
+   - Real-time file operations through Redux state management
+
+3. **AI Integration**:
+   - AI assistant panel connects to backend AI service
+   - Claude API integration for code generation and analysis
+   - Conversation history stored in Redux state
+
+4. **Development Features**:
+   - Code editor with syntax highlighting
+   - Real-time collaboration (WebSocket)
+   - File system operations
+   - Project templates and scaffolding
+
+## API Endpoints
+
+### Authentication Service (/auth)
+- `POST /auth/login` - User authentication
 - `POST /auth/register` - User registration
-- `POST /auth/refresh` - Refresh access token
-- `POST /auth/logout` - User logout
-- `GET /auth/me` - Get current user
+- `GET /auth/verify` - Token verification
 
-### Project Management
-- `GET /projects` - List user projects
-- `POST /projects` - Create new project
+### Project Wizard Service (/wizard)
+- `POST /wizard/session` - Create project session
+- `GET /wizard/templates` - List project templates
+- `POST /wizard/analyze` - Analyze project requirements
+- `POST /wizard/generate` - Generate project structure
+
+### AI Service (/ai)
+- `POST /ai/chat` - AI conversation
+- `POST /ai/analyze` - Code analysis
+- `POST /ai/generate` - Code generation
+
+### Files Service (/files)
+- `GET /files/list` - List directory contents
+- `POST /files/create` - Create file/directory
+- `PUT /files/update` - Update file content
+- `DELETE /files/delete` - Delete file/directory
+
+### Projects Service (/projects)
+- `GET /projects/list` - List user projects
+- `POST /projects/create` - Create new project
 - `GET /projects/:id` - Get project details
-- `PUT /projects/:id` - Update project
-- `DELETE /projects/:id` - Delete project
-
-### AI Services
-- `POST /ai/generate` - Generate code
-- `POST /ai/review` - Review code
-- `POST /ai/debug` - Debug assistance
-- `POST /ai/tests` - Generate tests
-- `POST /ai/refactor` - Refactor code
-- `POST /ai/docs` - Generate documentation
 
 ## Testing
 
-### Running Tests
+### Backend Tests
 ```bash
-# Unit tests
+cd backend
+
+# Run all tests
 npm run test
 
-# Integration tests
-npm run test:integration
+# Run with coverage
+npm run test:coverage
 
-# E2E tests
+# Run in watch mode
+npm run test:watch
+```
+
+### Frontend Tests
+```bash
+cd frontend
+
+# Run unit tests
+npm run test
+
+# Run E2E tests
 npm run test:e2e
 
-# All tests with coverage
+# Run with coverage
 npm run test:coverage
 ```
 
 ### Test Structure
-- `**/*.test.ts` - Unit tests
-- `**/*.spec.ts` - Integration tests
-- `tests/e2e/` - End-to-end tests
+- Unit tests: `**/*.test.ts`, `**/*.test.tsx`
+- Integration tests: `**/*.integration.test.ts`
+- E2E tests: `src/__tests__/e2e/`
 
 ## Deployment
 
 ### Production Build
+
+1. **Backend**:
+   ```bash
+   cd backend
+   npm run build
+   encore build
+   ```
+
+2. **Frontend**:
+   ```bash
+   cd frontend
+   npm run build
+   ```
+
+### Docker Deployment
+
 ```bash
-# Build all services
-npm run build:all
+# Build images
+docker-compose build
 
-# Build Docker images
-docker-compose -f docker-compose.prod.yml build
-
-# Deploy to production
-npm run deploy:prod
+# Start production environment
+docker-compose -f docker-compose.prod.yml up -d
 ```
 
-### CI/CD Pipeline
-The project includes comprehensive CI/CD workflows:
-- **Lint & Type Check** - Code quality validation
-- **Unit Tests** - Automated testing with coverage
-- **Security Scanning** - Dependency and container security
-- **Build & Deploy** - Automated deployment to staging/production
+### Environment-Specific Configuration
+
+**Staging**:
+- Use staging API keys
+- Enable debug logging
+- Connect to staging database
+
+**Production**:
+- Use production API keys
+- Disable debug features
+- Enable performance monitoring
+- Use production database
+- Enable SSL/TLS
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Port Conflicts**:
+   ```bash
+   # Check port usage
+   netstat -tulpn | grep :3001
+   netstat -tulpn | grep :4001
+   
+   # Kill processes using ports
+   sudo fuser -k 3001/tcp
+   sudo fuser -k 4001/tcp
+   ```
+
+2. **Encore.ts Installation**:
+   ```bash
+   # Reinstall Encore CLI
+   curl -L https://encore.dev/install.sh | bash
+   
+   # Verify PATH
+   echo $PATH
+   which encore
+   ```
+
+3. **Database Connection**:
+   ```bash
+   # Check PostgreSQL status
+   sudo systemctl status postgresql
+   
+   # Test connection
+   psql -h localhost -U username -d vaporform
+   ```
+
+4. **Network Issues**:
+   ```bash
+   # Test API connectivity
+   curl http://192.168.1.235:4001/health
+   
+   # Check firewall rules
+   sudo ufw status
+   sudo firewall-cmd --list-all
+   ```
+
+### Development Tips
+
+- Use `npm run dev` for hot reloading
+- Check browser dev tools for frontend errors
+- Monitor backend logs with `encore logs`
+- Use Redux DevTools for state debugging
+- Enable verbose logging in development
+
+## Security Considerations
+
+- JWT tokens expire after 24 hours
+- API rate limiting prevents abuse
+- Input validation using Zod schemas
+- CORS configured for development domains
+- File upload restrictions by type and size
+- Environment variables for sensitive data
+
+## Performance Optimization
+
+- Redis caching for frequent API calls
+- Code splitting in React frontend
+- Lazy loading of components
+- Optimized bundle sizes
+- CDN for static assets
+- Database query optimization
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create feature branch: `git checkout -b feature/new-feature`
+3. Commit changes: `git commit -m 'Add new feature'`
+4. Push to branch: `git push origin feature/new-feature`
+5. Submit pull request
 
-### Development Guidelines
-- Follow TypeScript best practices
-- Write comprehensive tests
-- Use conventional commit messages
-- Ensure all CI checks pass
-- Update documentation as needed
-
-## Security
-
-- Authentication via JWT tokens
-- Role-based access control
-- Rate limiting on API endpoints
-- Input validation with Zod schemas
-- Security headers via Helmet
-- Regular dependency updates
-- Container security scanning
-
-## Performance
-
-- Redis caching for frequent queries
-- Database query optimization
-- CDN for static assets
-- Gzip compression
-- Connection pooling
-- Horizontal scaling support
+### Development Standards
+- TypeScript for type safety
+- ESLint and Prettier for code formatting
+- Unit tests for all new features
+- Documentation for API changes
+- Conventional commit messages
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see LICENSE file for details.
 
 ## Support
 
-- 📚 [Documentation](./docs/)
-- 🐛 [Issue Tracker](https://github.com/your-org/vaporform/issues)
-- 💬 [Discussions](https://github.com/your-org/vaporform/discussions)
-- 📧 Email: support@vaporform.dev
-
-## Roadmap
-
-### Phase 1 (Current)
-- ✅ Core AI integration
-- ✅ Project management
-- ✅ User authentication
-- ⏳ VSCode modifications
-
-### Phase 2
-- 🔄 Real-time collaboration
-- 🔄 Advanced AI features
-- 🔄 Plugin ecosystem
-- 🔄 Mobile companion app
-
-### Phase 3
-- 📋 Enterprise features
-- 📋 Advanced analytics
-- 📋 Custom AI models
-- 📋 Marketplace integration
+- GitHub Issues: https://github.com/devgru0101/Vaporform/issues
+- Documentation: ./docs/
+- Support Email: support@vaporform.dev
 
 ---
 
-**Built with ❤️ by the Vaporform Team**
+Built by the Vaporform development team using modern web technologies and AI integration.
