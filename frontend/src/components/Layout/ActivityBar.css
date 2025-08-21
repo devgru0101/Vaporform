@@ -1,0 +1,44 @@
+/* Left App Sidebar - Column 1 */
+.vf-app-sidebar {
+  background: var(--vf-bg-secondary);
+  border-right: 1px solid var(--vf-surface-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 0;
+  gap: 4px;
+  width: var(--vf-sidebar-width);
+}
+
+.vf-app-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vf-text-muted);
+  cursor: pointer;
+  transition: all var(--vf-transition-fast);
+  position: relative;
+  border-radius: 0;
+}
+
+.vf-app-icon:hover {
+  color: var(--vf-text-secondary);
+  background: var(--vf-bg-tertiary);
+}
+
+.vf-app-icon.active {
+  color: var(--vf-accent-active);
+}
+
+.vf-app-icon.active::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 20px;
+  background: var(--vf-accent-primary);
+}

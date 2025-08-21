@@ -1,0 +1,61 @@
+/* Top Navigation Bar */
+.vf-top-nav {
+  background: var(--vf-bg-primary);
+  border-bottom: 1px solid var(--vf-surface-border);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 24px;
+  height: var(--vf-nav-height);
+}
+
+.vf-nav-brand {
+  font-family: var(--vf-font-display);
+  font-weight: var(--vf-weight-bold);
+  font-size: var(--vf-text-md);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--vf-text-primary);
+}
+
+.vf-nav-tabs {
+  display: flex;
+  gap: 2px;
+  margin-left: 24px;
+}
+
+.vf-nav-tab {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  color: var(--vf-text-muted);
+  font-size: var(--vf-text-sm);
+  font-weight: var(--vf-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all var(--vf-transition-fast);
+  border-bottom: 2px solid transparent;
+  font-family: var(--vf-font-body);
+}
+
+.vf-nav-tab:hover {
+  color: var(--vf-text-secondary);
+}
+
+.vf-nav-tab.active {
+  color: var(--vf-text-primary);
+  border-bottom-color: var(--vf-accent-primary);
+}
+
+.vf-nav-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* User menu styles moved to UserMenu.css */

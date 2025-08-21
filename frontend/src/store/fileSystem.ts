@@ -3,7 +3,7 @@ import type { FileNode } from '@shared/types';
 
 interface FileSystemState {
   tree: FileNode | null;
-  expandedFolders: Set<string>;
+  expandedFolders: string[];
   selectedFile: string | null;
   clipboardFiles: string[];
   clipboardAction: 'copy' | 'cut' | null;
@@ -23,7 +23,7 @@ interface FileSystemState {
 
 const initialState: FileSystemState = {
   tree: null,
-  expandedFolders: new Set(),
+  expandedFolders: [],
   selectedFile: null,
   clipboardFiles: [],
   clipboardAction: null,
@@ -125,26 +125,27 @@ export const fileSystemSlice = createSlice({
     },
     toggleFolder: (state, action: PayloadAction<string>) => {
       const path = action.payload;
-      const newSet = new Set(state.expandedFolders);
+      const index = state.expandedFolders.indexOf(path);
       
-      if (newSet.has(path)) {
-        newSet.delete(path);
+      if (index !== -1) {
+        state.expandedFolders.splice(index, 1);
       } else {
-        newSet.add(path);
+        state.expandedFolders.push(path);
       }
-      
-      state.expandedFolders = newSet;
     },
     expandFolder: (state, action: PayloadAction<string>) => {
-      state.expandedFolders = new Set([...state.expandedFolders, action.payload]);
+      if (!state.expandedFolders.includes(action.payload)) {
+        state.expandedFolders.push(action.payload);
+      }
     },
     collapseFolder: (state, action: PayloadAction<string>) => {
-      const newSet = new Set(state.expandedFolders);
-      newSet.delete(action.payload);
-      state.expandedFolders = newSet;
+      const index = state.expandedFolders.indexOf(action.payload);
+      if (index !== -1) {
+        state.expandedFolders.splice(index, 1);
+      }
     },
     collapseAllFolders: (state) => {
-      state.expandedFolders = new Set();
+      state.expandedFolders = [];
     },
     setSelectedFile: (state, action: PayloadAction<string | null>) => {
       if (action.payload && action.payload !== state.selectedFile) {
@@ -206,7 +207,7 @@ export const fileSystemSlice = createSlice({
     },
     resetFileSystem: (state) => {
       state.tree = null;
-      state.expandedFolders = new Set();
+      state.expandedFolders = [];
       state.selectedFile = null;
       state.clipboardFiles = [];
       state.clipboardAction = null;

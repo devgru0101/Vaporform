@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { User } from '@shared/types';
 
-const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:4000';
+const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://192.168.1.235:4001';
 
 interface LoginCredentials {
   email: string;
@@ -20,24 +20,24 @@ interface AuthResponse {
 }
 
 class AuthService {
-  private baseURL = `${API_BASE}/api/auth`;
+  private baseURL = `${API_BASE}`;
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
-    const response = await axios.post(`${this.baseURL}/login`, credentials);
+    const response = await axios.post(`${this.baseURL}/auth/login`, credentials);
     return response.data;
   }
 
   async register(credentials: RegisterCredentials): Promise<AuthResponse> {
-    const response = await axios.post(`${this.baseURL}/register`, credentials);
+    const response = await axios.post(`${this.baseURL}/auth/register`, credentials);
     return response.data;
   }
 
   async validateToken(token: string): Promise<User | null> {
     try {
-      const response = await axios.get(`${this.baseURL}/validate`, {
+      const response = await axios.post(`${this.baseURL}/auth/verify`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      return response.data.user;
+      return response.data.valid ? response.data.user : null;
     } catch (error) {
       return null;
     }
@@ -45,7 +45,7 @@ class AuthService {
 
   async refreshToken(token: string): Promise<AuthResponse | null> {
     try {
-      const response = await axios.post(`${this.baseURL}/refresh`, {}, {
+      const response = await axios.post(`${this.baseURL}/auth/refresh`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       return response.data;
@@ -56,7 +56,7 @@ class AuthService {
 
   async logout(token: string): Promise<void> {
     try {
-      await axios.post(`${this.baseURL}/logout`, {}, {
+      await axios.post(`${this.baseURL}/auth/logout`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
     } catch (error) {
@@ -66,14 +66,14 @@ class AuthService {
   }
 
   async updateProfile(token: string, updates: Partial<User>): Promise<User> {
-    const response = await axios.patch(`${this.baseURL}/profile`, updates, {
+    const response = await axios.patch(`${this.baseURL}/auth/profile`, updates, {
       headers: { Authorization: `Bearer ${token}` }
     });
     return response.data.user;
   }
 
   async changePassword(token: string, oldPassword: string, newPassword: string): Promise<void> {
-    await axios.post(`${this.baseURL}/change-password`, {
+    await axios.post(`${this.baseURL}/auth/change-password`, {
       oldPassword,
       newPassword
     }, {
@@ -82,11 +82,11 @@ class AuthService {
   }
 
   async forgotPassword(email: string): Promise<void> {
-    await axios.post(`${this.baseURL}/forgot-password`, { email });
+    await axios.post(`${this.baseURL}/auth/forgot-password`, { email });
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
-    await axios.post(`${this.baseURL}/reset-password`, {
+    await axios.post(`${this.baseURL}/auth/reset-password`, {
       token,
       password: newPassword
     });

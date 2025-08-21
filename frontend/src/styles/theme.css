@@ -1,0 +1,351 @@
+/* Vaporform Dark Brutalist Theme - Complete CSS Custom Properties */
+
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+
+:root {
+  /* === Background Hierarchy === */
+  --vf-bg-primary: #000000;        /* Pure black - main backgrounds */
+  --vf-bg-secondary: #0A0A0A;      /* Near black - sidebars, headers */
+  --vf-bg-tertiary: #111111;       /* Dark gray - panels, cards */
+  --vf-bg-elevated: #1A1A1A;       /* Elevated surfaces - hover states */
+
+  /* === Border System === */
+  --vf-surface-border: #2A2A2A;       /* Primary borders */
+  --vf-surface-border-light: #3A3A3A; /* Secondary borders, hover */
+  --vf-surface-border-heavy: #4A4A4A; /* Emphasis borders */
+
+  /* === Text Hierarchy === */
+  --vf-text-primary: #F6EEE3;     /* Primary text - high contrast */
+  --vf-text-secondary: #CAC4B7;   /* Secondary text - readable */
+  --vf-text-muted: #737664;       /* Muted text - labels, hints */
+  --vf-text-disabled: #4A4A4A;    /* Disabled state */
+  --vf-text-inverse: #000000;     /* On light backgrounds */
+
+  /* === Interactive Accents === */
+  --vf-accent-primary: #CAC4B7;   /* Tan - primary actions, borders */
+  --vf-accent-active: #F6EEE3;    /* Bright tan - active states */
+  --vf-accent-success: #E1FF00;   /* Yellow-green - success */
+  --vf-accent-danger: #FF4200;    /* Orange-red - errors, warnings */
+  --vf-accent-info: #2B00FF;      /* Blue - information, loading only */
+
+  /* === Typography === */
+  --vf-font-display: 'Space Grotesk', 'Inter', sans-serif;  /* Headers */
+  --vf-font-body: 'Inter', system-ui, sans-serif;           /* UI text */
+  --vf-font-mono: 'JetBrains Mono', 'Fira Code', monospace; /* Code */
+
+  /* Font Weights */
+  --vf-weight-regular: 400;
+  --vf-weight-medium: 500;
+  --vf-weight-semibold: 600;
+  --vf-weight-bold: 700;
+  --vf-weight-black: 900;
+
+  /* Font Sizes */
+  --vf-text-2xs: 0.625rem;   /* 10px - micro labels */
+  --vf-text-xs: 0.6875rem;   /* 11px - status, labels */
+  --vf-text-sm: 0.75rem;     /* 12px - secondary UI */
+  --vf-text-base: 0.8125rem; /* 13px - body text */
+  --vf-text-md: 0.875rem;    /* 14px - emphasis */
+  --vf-text-lg: 1rem;        /* 16px - headers */
+  --vf-text-xl: 1.25rem;     /* 20px - section titles */
+  --vf-text-2xl: 1.5rem;     /* 24px - page titles */
+
+  /* === Spacing System === */
+  --vf-space-0: 0;
+  --vf-space-1: 0.25rem;   /* 4px */
+  --vf-space-2: 0.5rem;    /* 8px */
+  --vf-space-3: 0.75rem;   /* 12px */
+  --vf-space-4: 1rem;      /* 16px */
+  --vf-space-5: 1.25rem;   /* 20px */
+  --vf-space-6: 1.5rem;    /* 24px */
+  --vf-space-8: 2rem;      /* 32px */
+  --vf-space-10: 2.5rem;   /* 40px */
+  --vf-space-12: 3rem;     /* 48px */
+
+  /* === Layout Dimensions === */
+  --vf-nav-height: 48px;
+  --vf-statusbar-height: 24px;
+  --vf-sidebar-width: 48px;
+  --vf-assistant-width: 320px;  /* Chat panel */
+  --vf-explorer-width: 200px;   /* File explorer */
+  
+  /* Minimum Sizes */
+  --vf-assistant-min-width: 280px;
+  --vf-explorer-min-width: 160px;
+  --vf-editor-min-width: 400px;
+
+  /* Responsive Breakpoints */
+  --vf-screen-sm: 640px;
+  --vf-screen-md: 768px;
+  --vf-screen-lg: 1024px;
+  --vf-screen-xl: 1280px;
+  --vf-screen-2xl: 1536px;
+
+  /* === Animation & Interaction === */
+  --vf-transition-fast: 150ms ease-out;
+  --vf-transition-base: 250ms ease-out;
+  --vf-transition-slow: 350ms ease-out;
+
+  /* === Icon System === */
+  --vf-icon-size: 14px;
+  --vf-icon-size-sm: 12px;
+  --vf-icon-size-lg: 18px;
+  --vf-icon-stroke-width: 2;
+}
+
+/* === Base Component Styles === */
+
+/* Button Base */
+.vf-btn {
+  padding: 6px 16px;
+  font-size: var(--vf-text-xs);
+  font-weight: var(--vf-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 2px solid;
+  transition: all var(--vf-transition-fast);
+  cursor: pointer;
+  font-family: var(--vf-font-body);
+  background: transparent;
+  border-radius: 0;
+}
+
+/* Button Variants */
+.vf-btn-primary {
+  background: var(--vf-text-muted);
+  border-color: var(--vf-text-muted);
+  color: var(--vf-bg-primary);
+}
+
+.vf-btn-primary:hover {
+  background: var(--vf-accent-primary);
+  border-color: var(--vf-accent-primary);
+}
+
+.vf-btn-secondary {
+  background: transparent;
+  border-color: var(--vf-surface-border);
+  color: var(--vf-text-secondary);
+}
+
+.vf-btn-ghost {
+  background: transparent;
+  border: none;
+  color: var(--vf-text-muted);
+  padding: 6px 8px;
+}
+
+.vf-btn-ghost:hover {
+  color: var(--vf-text-secondary);
+  background: var(--vf-bg-elevated);
+}
+
+/* Input Base */
+.vf-input {
+  padding: 8px 12px;
+  background: var(--vf-bg-primary);
+  border: 1px solid var(--vf-surface-border);
+  color: var(--vf-text-primary);
+  font-family: var(--vf-font-mono);
+  font-size: var(--vf-text-base);
+  transition: border-color var(--vf-transition-fast);
+  border-radius: 0;
+}
+
+.vf-input:focus {
+  outline: none;
+  border-color: var(--vf-accent-primary);
+}
+
+.vf-input:disabled {
+  background: var(--vf-bg-tertiary);
+  color: var(--vf-text-disabled);
+  cursor: not-allowed;
+}
+
+.vf-input::placeholder {
+  color: var(--vf-text-muted);
+}
+
+/* Panel Base */
+.vf-panel {
+  background: var(--vf-bg-tertiary);
+  border: 1px solid var(--vf-surface-border);
+  padding: var(--vf-space-4);
+}
+
+/* Card Variant */
+.vf-card {
+  background: var(--vf-bg-secondary);
+  border: 1px solid var(--vf-surface-border);
+  transition: border-color var(--vf-transition-fast);
+  padding: var(--vf-space-4);
+}
+
+.vf-card:hover {
+  border-color: var(--vf-surface-border-light);
+}
+
+.vf-card.active {
+  border-color: var(--vf-accent-primary);
+  border-width: 2px;
+  padding: calc(var(--vf-space-4) - 1px); /* Compensate for border width */
+}
+
+/* Icon Styles */
+.vf-icon {
+  width: var(--vf-icon-size);
+  height: var(--vf-icon-size);
+  stroke: currentColor;
+  stroke-width: var(--vf-icon-stroke-width);
+  fill: none;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.vf-icon-sm {
+  width: var(--vf-icon-size-sm);
+  height: var(--vf-icon-size-sm);
+}
+
+.vf-icon-lg {
+  width: var(--vf-icon-size-lg);
+  height: var(--vf-icon-size-lg);
+}
+
+.vf-icon.active { 
+  color: var(--vf-accent-active); 
+}
+
+.vf-icon.muted { 
+  color: var(--vf-text-muted); 
+}
+
+.vf-icon.danger { 
+  color: var(--vf-accent-danger); 
+}
+
+/* Typography Utilities */
+.vf-text-primary { color: var(--vf-text-primary); }
+.vf-text-secondary { color: var(--vf-text-secondary); }
+.vf-text-muted { color: var(--vf-text-muted); }
+.vf-text-disabled { color: var(--vf-text-disabled); }
+
+.vf-text-2xs { font-size: var(--vf-text-2xs); }
+.vf-text-xs { font-size: var(--vf-text-xs); }
+.vf-text-sm { font-size: var(--vf-text-sm); }
+.vf-text-base { font-size: var(--vf-text-base); }
+.vf-text-md { font-size: var(--vf-text-md); }
+.vf-text-lg { font-size: var(--vf-text-lg); }
+.vf-text-xl { font-size: var(--vf-text-xl); }
+.vf-text-2xl { font-size: var(--vf-text-2xl); }
+
+.vf-font-display { font-family: var(--vf-font-display); }
+.vf-font-body { font-family: var(--vf-font-body); }
+.vf-font-mono { font-family: var(--vf-font-mono); }
+
+.vf-weight-regular { font-weight: var(--vf-weight-regular); }
+.vf-weight-medium { font-weight: var(--vf-weight-medium); }
+.vf-weight-semibold { font-weight: var(--vf-weight-semibold); }
+.vf-weight-bold { font-weight: var(--vf-weight-bold); }
+.vf-weight-black { font-weight: var(--vf-weight-black); }
+
+.vf-uppercase {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Spacing Utilities */
+.vf-space-0 { margin: var(--vf-space-0); }
+.vf-space-1 { margin: var(--vf-space-1); }
+.vf-space-2 { margin: var(--vf-space-2); }
+.vf-space-3 { margin: var(--vf-space-3); }
+.vf-space-4 { margin: var(--vf-space-4); }
+.vf-space-5 { margin: var(--vf-space-5); }
+.vf-space-6 { margin: var(--vf-space-6); }
+.vf-space-8 { margin: var(--vf-space-8); }
+.vf-space-10 { margin: var(--vf-space-10); }
+.vf-space-12 { margin: var(--vf-space-12); }
+
+/* Padding utilities with p- prefix */
+.vf-p-0 { padding: var(--vf-space-0); }
+.vf-p-1 { padding: var(--vf-space-1); }
+.vf-p-2 { padding: var(--vf-space-2); }
+.vf-p-3 { padding: var(--vf-space-3); }
+.vf-p-4 { padding: var(--vf-space-4); }
+.vf-p-5 { padding: var(--vf-space-5); }
+.vf-p-6 { padding: var(--vf-space-6); }
+.vf-p-8 { padding: var(--vf-space-8); }
+.vf-p-10 { padding: var(--vf-space-10); }
+.vf-p-12 { padding: var(--vf-space-12); }
+
+/* Layout Utilities */
+.vf-flex { display: flex; }
+.vf-flex-col { flex-direction: column; }
+.vf-flex-row { flex-direction: row; }
+.vf-items-center { align-items: center; }
+.vf-justify-center { justify-content: center; }
+.vf-justify-between { justify-content: space-between; }
+.vf-flex-1 { flex: 1; }
+
+.vf-grid { display: grid; }
+.vf-hidden { display: none; }
+.vf-block { display: block; }
+.vf-inline-block { display: inline-block; }
+
+/* Position Utilities */
+.vf-relative { position: relative; }
+.vf-absolute { position: absolute; }
+.vf-fixed { position: fixed; }
+
+/* Overflow Utilities */
+.vf-overflow-hidden { overflow: hidden; }
+.vf-overflow-auto { overflow: auto; }
+.vf-overflow-y-auto { overflow-y: auto; }
+.vf-overflow-x-auto { overflow-x: auto; }
+
+/* Width/Height Utilities */
+.vf-w-full { width: 100%; }
+.vf-h-full { height: 100%; }
+.vf-min-h-0 { min-height: 0; }
+
+/* Border Utilities */
+.vf-border { border: 1px solid var(--vf-surface-border); }
+.vf-border-t { border-top: 1px solid var(--vf-surface-border); }
+.vf-border-b { border-bottom: 1px solid var(--vf-surface-border); }
+.vf-border-l { border-left: 1px solid var(--vf-surface-border); }
+.vf-border-r { border-right: 1px solid var(--vf-surface-border); }
+
+/* Cursor Utilities */
+.vf-cursor-pointer { cursor: pointer; }
+.vf-cursor-default { cursor: default; }
+.vf-cursor-not-allowed { cursor: not-allowed; }
+
+/* Focus Utilities */
+.vf-focus-outline:focus {
+  outline: 2px solid var(--vf-accent-primary);
+  outline-offset: 2px;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--vf-bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vf-surface-border);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vf-surface-border-light);
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--vf-bg-primary);
+}

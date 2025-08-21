@@ -1,0 +1,76 @@
+/* Main Layout Grid - EXACT STRUCTURE FROM MOCKUP */
+.vf-app-container {
+  display: grid;
+  grid-template-rows: var(--vf-nav-height) 1fr var(--vf-statusbar-height);
+  grid-template-columns: var(--vf-sidebar-width) var(--vf-assistant-width) var(--vf-explorer-width) 1fr;
+  height: 100vh;
+  background: var(--vf-bg-primary);
+  overflow: hidden;
+}
+
+/* Grid Area Assignments */
+.vf-top-nav {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.vf-app-sidebar {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.vf-ai-assistant {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.vf-file-explorer {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.vf-main-content {
+  grid-column: 4;
+  grid-row: 2;
+}
+
+.vf-status-bar {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+/* Responsive Breakpoints */
+@media (max-width: 1024px) {
+  .vf-app-container {
+    grid-template-columns: var(--vf-sidebar-width) var(--vf-assistant-min-width) var(--vf-explorer-min-width) 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .vf-app-container {
+    grid-template-columns: var(--vf-sidebar-width) 1fr;
+  }
+  
+  .vf-ai-assistant,
+  .vf-file-explorer {
+    display: none;
+  }
+  
+  .vf-main-content {
+    grid-column: 2;
+  }
+}
+
+@media (max-width: 480px) {
+  .vf-app-container {
+    grid-template-columns: 1fr;
+  }
+  
+  .vf-app-sidebar {
+    display: none;
+  }
+  
+  .vf-main-content {
+    grid-column: 1;
+  }
+}

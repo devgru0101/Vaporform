@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { AiMessage } from '@/store/ai';
 
-const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:4000';
+const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://192.168.1.235:4001';
 
 interface SendMessageRequest {
   conversationId: string;

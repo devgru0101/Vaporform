@@ -1,167 +1,11 @@
 import React, { useState } from 'react';
-import styled from '@emotion/styled';
 import { useAppDispatch, useAppSelector } from '@/hooks/redux';
 import { authSlice } from '@/store/auth';
 import { useAuthService } from '@/services/auth';
 import { VaporformLogo } from '@/components/ui/Icons';
 import { Button } from '@/components/ui/Button';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
-
-const AuthContainer = styled.div`
-  display: flex;
-  height: 100vh;
-  background: linear-gradient(135deg, #1e1e1e 0%, #2d2d30 100%);
-`;
-
-const LeftPanel = styled.div`
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 40px;
-  color: #cccccc;
-`;
-
-const RightPanel = styled.div`
-  width: 480px;
-  background-color: #252526;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 40px;
-  border-left: 1px solid #3e3e42;
-`;
-
-const Logo = styled.div`
-  color: #007acc;
-  margin-bottom: 32px;
-`;
-
-const BrandTitle = styled.h1`
-  font-size: 48px;
-  font-weight: 300;
-  margin: 0 0 16px 0;
-  color: #ffffff;
-`;
-
-const BrandSubtitle = styled.p`
-  font-size: 20px;
-  margin: 0 0 40px 0;
-  color: #a0a0a0;
-  text-align: center;
-  line-height: 1.4;
-`;
-
-const FeatureList = styled.ul`
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.6;
-  
-  li {
-    margin: 12px 0;
-    padding-left: 24px;
-    position: relative;
-    
-    &::before {
-      content: '✓';
-      position: absolute;
-      left: 0;
-      color: #007acc;
-      font-weight: bold;
-    }
-  }
-`;
-
-const AuthForm = styled.form`
-  width: 100%;
-  max-width: 320px;
-`;
-
-const FormTitle = styled.h2`
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0 0 8px 0;
-  color: #ffffff;
-  text-align: center;
-`;
-
-const FormSubtitle = styled.p`
-  font-size: 14px;
-  margin: 0 0 32px 0;
-  color: #a0a0a0;
-  text-align: center;
-`;
-
-const FormGroup = styled.div`
-  margin-bottom: 20px;
-`;
-
-const Label = styled.label`
-  display: block;
-  font-size: 14px;
-  font-weight: 500;
-  margin-bottom: 6px;
-  color: #cccccc;
-`;
-
-const Input = styled.input`
-  width: 100%;
-  height: 40px;
-  padding: 0 12px;
-  border: 1px solid #3e3e42;
-  border-radius: 4px;
-  background-color: #1e1e1e;
-  color: #cccccc;
-  font-size: 14px;
-  transition: border-color 0.2s;
-  
-  &:focus {
-    outline: none;
-    border-color: #007acc;
-  }
-  
-  &::placeholder {
-    color: #6c6c6c;
-  }
-`;
-
-const SubmitButton = styled(Button)`
-  width: 100%;
-  margin-bottom: 16px;
-`;
-
-const SwitchMode = styled.div`
-  text-align: center;
-  font-size: 14px;
-  color: #a0a0a0;
-  
-  button {
-    background: none;
-    border: none;
-    color: #007acc;
-    cursor: pointer;
-    text-decoration: underline;
-    font-size: inherit;
-    
-    &:hover {
-      color: #4a9eff;
-    }
-  }
-`;
-
-const ErrorMessage = styled.div`
-  background-color: #f44336;
-  color: white;
-  padding: 12px;
-  border-radius: 4px;
-  margin-bottom: 20px;
-  font-size: 14px;
-  text-align: center;
-`;
+import './AuthPage.css';
 
 export const AuthPage: React.FC = () => {
   const dispatch = useAppDispatch();
@@ -200,7 +44,6 @@ export const AuthPage: React.FC = () => {
       }
       
       dispatch(authSlice.actions.loginSuccess(result));
-      localStorage.setItem('vaporform_token', result.token);
     } catch (error) {
       dispatch(authSlice.actions.loginFailure(
         error instanceof Error ? error.message : 'Authentication failed'
@@ -222,110 +65,121 @@ export const AuthPage: React.FC = () => {
   };
 
   return (
-    <AuthContainer>
-      <LeftPanel>
-        <Logo>
+    <div className="vf-auth-container">
+      <div className="vf-auth-left-panel">
+        <div className="vf-auth-logo">
           <VaporformLogo size={80} />
-        </Logo>
-        <BrandTitle>Vaporform</BrandTitle>
-        <BrandSubtitle>
-          The AI-powered development environment<br />
-          that brings your ideas to life
-        </BrandSubtitle>
+        </div>
+        <h1 className="vf-auth-brand-title">VAPORFORM</h1>
+        <p className="vf-auth-brand-subtitle">
+          AI-POWERED DEVELOPMENT ENVIRONMENT<br />
+          THAT BRINGS YOUR IDEAS TO LIFE
+        </p>
         
-        <FeatureList>
-          <li>AI-powered code assistance with Claude</li>
-          <li>Real-time collaborative editing</li>
-          <li>Integrated container management</li>
-          <li>Virtual file system with version control</li>
-          <li>Live project preview and monitoring</li>
-          <li>Comprehensive development tools</li>
-        </FeatureList>
-      </LeftPanel>
+        <ul className="vf-auth-feature-list">
+          <li>AI-POWERED CODE ASSISTANCE WITH CLAUDE</li>
+          <li>REAL-TIME COLLABORATIVE EDITING</li>
+          <li>INTEGRATED CONTAINER MANAGEMENT</li>
+          <li>VIRTUAL FILE SYSTEM WITH VERSION CONTROL</li>
+          <li>LIVE PROJECT PREVIEW AND MONITORING</li>
+          <li>COMPREHENSIVE DEVELOPMENT TOOLS</li>
+        </ul>
+      </div>
       
-      <RightPanel>
-        <AuthForm onSubmit={handleSubmit}>
-          <FormTitle>
-            {mode === 'login' ? 'Welcome back' : 'Create account'}
-          </FormTitle>
-          <FormSubtitle>
+      <div className="vf-auth-right-panel">
+        <form className="vf-auth-form" onSubmit={handleSubmit}>
+          <h2 className="vf-auth-form-title">
+            {mode === 'login' ? 'WELCOME BACK' : 'CREATE ACCOUNT'}
+          </h2>
+          <p className="vf-auth-form-subtitle">
             {mode === 'login' 
-              ? 'Sign in to your Vaporform account'
-              : 'Join the future of development'
+              ? 'SIGN IN TO YOUR VAPORFORM ACCOUNT'
+              : 'JOIN THE FUTURE OF DEVELOPMENT'
             }
-          </FormSubtitle>
+          </p>
           
-          {error && <ErrorMessage>{error}</ErrorMessage>}
+          {error && (
+            <div className="vf-auth-error">
+              {error}
+            </div>
+          )}
           
           {mode === 'register' && (
-            <FormGroup>
-              <Label htmlFor="name">Full Name</Label>
-              <Input
+            <div className="vf-auth-form-group">
+              <label htmlFor="name" className="vf-auth-label">FULL NAME</label>
+              <input
                 id="name"
                 name="name"
                 type="text"
-                placeholder="Enter your full name"
+                className="vf-input"
+                placeholder="ENTER YOUR FULL NAME"
                 value={formData.name}
                 onChange={handleInputChange}
+                autoComplete="name"
                 required
               />
-            </FormGroup>
+            </div>
           )}
           
-          <FormGroup>
-            <Label htmlFor="email">Email Address</Label>
-            <Input
+          <div className="vf-auth-form-group">
+            <label htmlFor="email" className="vf-auth-label">EMAIL ADDRESS</label>
+            <input
               id="email"
               name="email"
               type="email"
-              placeholder="Enter your email"
+              className="vf-input"
+              placeholder="ENTER YOUR EMAIL"
               value={formData.email}
               onChange={handleInputChange}
+              autoComplete="email"
               required
             />
-          </FormGroup>
+          </div>
           
-          <FormGroup>
-            <Label htmlFor="password">Password</Label>
-            <Input
+          <div className="vf-auth-form-group">
+            <label htmlFor="password" className="vf-auth-label">PASSWORD</label>
+            <input
               id="password"
               name="password"
               type="password"
-              placeholder="Enter your password"
+              className="vf-input"
+              placeholder="ENTER YOUR PASSWORD"
               value={formData.password}
               onChange={handleInputChange}
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               required
             />
-          </FormGroup>
+          </div>
           
-          <SubmitButton
+          <Button
             type="submit"
             variant="primary"
             size="lg"
             loading={isLoading}
+            className="vf-auth-submit-btn"
           >
-            {mode === 'login' ? 'Sign In' : 'Create Account'}
-          </SubmitButton>
+            {mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT'}
+          </Button>
           
-          <SwitchMode>
+          <div className="vf-auth-switch">
             {mode === 'login' ? (
               <>
                 Don't have an account?{' '}
-                <button type="button" onClick={toggleMode}>
-                  Sign up
+                <button type="button" onClick={toggleMode} className="vf-auth-switch-btn">
+                  SIGN UP
                 </button>
               </>
             ) : (
               <>
                 Already have an account?{' '}
-                <button type="button" onClick={toggleMode}>
-                  Sign in
+                <button type="button" onClick={toggleMode} className="vf-auth-switch-btn">
+                  SIGN IN
                 </button>
               </>
             )}
-          </SwitchMode>
-        </AuthForm>
-      </RightPanel>
-    </AuthContainer>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 };

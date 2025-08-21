@@ -1,231 +1,113 @@
-import React from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import styled from '@emotion/styled';
-import { useAppSelector, useAppDispatch } from '@/hooks/redux';
+import React, { useState } from 'react';
+import { useAppDispatch } from '@/hooks/redux';
 import { uiSlice } from '@/store/ui';
-import { 
-  FileExplorerIcon, 
-  SearchIcon, 
-  SourceControlIcon, 
-  DebugIcon,
-  ExtensionsIcon,
-  SettingsIcon,
-  AiChatIcon,
-  SparklesIcon
-} from '@/components/ui/Icons';
-import { Tooltip } from '@/components/ui/Tooltip';
-
-const ActivityBarContainer = styled.div<{ theme: string }>`
-  position: fixed;
-  left: 0;
-  top: 35px; /* Header height */
-  bottom: 22px; /* Status bar height */
-  width: 48px;
-  background-color: ${props => props.theme === 'dark' ? '#333333' : '#f0f0f0'};
-  border-right: 1px solid ${props => props.theme === 'dark' ? '#3e3e42' : '#e5e5e5'};
-  display: flex;
-  flex-direction: column;
-  z-index: 100;
-`;
-
-const ActivityBarItem = styled.button<{ 
-  isActive: boolean; 
-  theme: string;
-}>`
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: none;
-  cursor: pointer;
-  position: relative;
-  color: ${props => props.theme === 'dark' ? '#cccccc' : '#666666'};
-  
-  &:hover {
-    background-color: ${props => props.theme === 'dark' ? '#3e3e42' : '#e8e8e8'};
-    color: ${props => props.theme === 'dark' ? '#ffffff' : '#000000'};
-  }
-  
-  ${props => props.isActive && `
-    background-color: ${props.theme === 'dark' ? '#094771' : '#e1f5fe'};
-    color: ${props.theme === 'dark' ? '#ffffff' : '#0277bd'};
-    
-    &::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 2px;
-      background-color: ${props.theme === 'dark' ? '#007acc' : '#0277bd'};
-    }
-  `}
-`;
-
-const BadgeContainer = styled.div`
-  position: relative;
-`;
-
-const Badge = styled.span<{ theme: string }>`
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  background-color: #ff4444;
-  color: white;
-  border-radius: 8px;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
-  min-width: 16px;
-  text-align: center;
-  line-height: 1.2;
-`;
-
-const Spacer = styled.div`
-  flex: 1;
-`;
-
-interface ActivityBarItemProps {
-  icon: React.ReactNode;
-  label: string;
-  isActive: boolean;
-  badge?: number;
-  onClick: () => void;
-}
-
-const ActivityItem: React.FC<ActivityBarItemProps> = ({
-  icon,
-  label,
-  isActive,
-  badge,
-  onClick
-}) => {
-  const { theme } = useAppSelector(state => state.ui);
-
-  return (
-    <Tooltip content={label} side="right" delay={500}>
-      <ActivityBarItem
-        isActive={isActive}
-        theme={theme}
-        onClick={onClick}
-        title={label}
-      >
-        <BadgeContainer>
-          {icon}
-          {badge !== undefined && badge > 0 && (
-            <Badge theme={theme}>{badge > 99 ? '99+' : badge}</Badge>
-          )}
-        </BadgeContainer>
-      </ActivityBarItem>
-    </Tooltip>
-  );
-};
+import './ActivityBar.css';
 
 export const ActivityBar: React.FC = () => {
   const dispatch = useAppDispatch();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { theme, panels } = useAppSelector(state => state.ui);
-  const { unreadChatCount } = useAppSelector(state => state.collaboration);
-  const { searchResults } = useAppSelector(state => state.fileSystem);
+  const [activeIcon, setActiveIcon] = useState<string>('explorer');
 
-  const handlePanelToggle = (panel: keyof typeof panels) => {
-    dispatch(uiSlice.actions.togglePanel(panel));
-    
-    // Ensure sidebar is visible when toggling panels
-    if (panel === 'fileExplorer' || panel === 'search' || panel === 'sourceControl' || panel === 'extensions') {
-      dispatch(uiSlice.actions.updatePanelDimensions({
-        panel: 'leftSidebar',
-        dimensions: { isVisible: true }
-      }));
-    }
-    
-    if (panel === 'aiChat' || panel === 'projectPreview') {
-      dispatch(uiSlice.actions.updatePanelDimensions({
-        panel: 'rightSidebar',
-        dimensions: { isVisible: true }
-      }));
-    }
-    
-    if (panel === 'terminal' || panel === 'problems' || panel === 'output' || panel === 'debugConsole') {
-      dispatch(uiSlice.actions.updatePanelDimensions({
-        panel: 'bottomPanel',
-        dimensions: { isVisible: true }
-      }));
-    }
+  const handleIconClick = (iconName: string, action: () => void) => {
+    setActiveIcon(iconName);
+    action();
+  };
+
+  const handleExplorer = () => {
+    // Toggle file explorer visibility
+    dispatch(uiSlice.actions.togglePanel('fileExplorer'));
+  };
+
+  const handleSearch = () => {
+    dispatch(uiSlice.actions.openModal('globalSearch'));
+  };
+
+  const handleSourceControl = () => {
+    dispatch(uiSlice.actions.togglePanel('sourceControl'));
+  };
+
+  const handleDebug = () => {
+    dispatch(uiSlice.actions.togglePanel('debug'));
+  };
+
+  const handleExtensions = () => {
+    dispatch(uiSlice.actions.togglePanel('extensions'));
   };
 
   const handleSettings = () => {
     dispatch(uiSlice.actions.openModal('settings'));
   };
 
-  const handleWizard = () => {
-    navigate('/wizard');
-  };
-
   return (
-    <ActivityBarContainer theme={theme} className="activity-bar">
-      <ActivityItem
-        icon={<FileExplorerIcon size={24} />}
-        label="File Explorer"
-        isActive={panels.fileExplorer}
-        onClick={() => handlePanelToggle('fileExplorer')}
-      />
+    <aside className="vf-app-sidebar">
+      <div 
+        className={`vf-app-icon ${activeIcon === 'explorer' ? 'active' : ''}`} 
+        title="Explorer"
+        onClick={() => handleIconClick('explorer', handleExplorer)}
+      >
+        <svg className="vf-icon" viewBox="0 0 24 24">
+          <path d="M3 3v18h18V3H3zm16 2v2H5V5h14zm0 4v10H5V9h14z"/>
+          <path d="M7 11h2v2H7zm4 0h6v2h-6zm-4 4h2v2H7zm4 0h6v2h-6z"/>
+        </svg>
+      </div>
       
-      <ActivityItem
-        icon={<SearchIcon size={24} />}
-        label="Search"
-        isActive={panels.search}
-        badge={searchResults.length}
-        onClick={() => handlePanelToggle('search')}
-      />
+      <div 
+        className={`vf-app-icon ${activeIcon === 'search' ? 'active' : ''}`} 
+        title="Search"
+        onClick={() => handleIconClick('search', handleSearch)}
+      >
+        <svg className="vf-icon" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"/>
+          <path d="m21 21-4.35-4.35"/>
+        </svg>
+      </div>
       
-      <ActivityItem
-        icon={<SourceControlIcon size={24} />}
-        label="Source Control"
-        isActive={panels.sourceControl}
-        onClick={() => handlePanelToggle('sourceControl')}
-      />
+      <div 
+        className={`vf-app-icon ${activeIcon === 'source-control' ? 'active' : ''}`} 
+        title="Source Control"
+        onClick={() => handleIconClick('source-control', handleSourceControl)}
+      >
+        <svg className="vf-icon" viewBox="0 0 24 24">
+          <path d="M9 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM5 9.5a3 3 0 1 0 6 0 3 3 0 0 0-6 0zm14 0a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM9 13V9.5m6 0V16a3 3 0 0 0 3 3"/>
+        </svg>
+      </div>
       
-      <ActivityItem
-        icon={<DebugIcon size={24} />}
-        label="Debug Console"
-        isActive={panels.debugConsole}
-        onClick={() => handlePanelToggle('debugConsole')}
-      />
+      <div 
+        className={`vf-app-icon ${activeIcon === 'debug' ? 'active' : ''}`} 
+        title="Run and Debug"
+        onClick={() => handleIconClick('debug', handleDebug)}
+      >
+        <svg className="vf-icon" viewBox="0 0 24 24">
+          <path d="m5 12 14 0"/>
+          <path d="m5 12 6 6"/>
+          <path d="m5 12 6-6"/>
+          <circle cx="19" cy="12" r="2"/>
+        </svg>
+      </div>
       
-      <ActivityItem
-        icon={<ExtensionsIcon size={24} />}
-        label="Extensions"
-        isActive={panels.extensions}
-        onClick={() => handlePanelToggle('extensions')}
-      />
+      <div 
+        className={`vf-app-icon ${activeIcon === 'extensions' ? 'active' : ''}`} 
+        title="Extensions"
+        onClick={() => handleIconClick('extensions', handleExtensions)}
+      >
+        <svg className="vf-icon" viewBox="0 0 24 24">
+          <rect x="3" y="3" width="7" height="7"/>
+          <rect x="14" y="3" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/>
+          <rect x="3" y="14" width="7" height="7"/>
+        </svg>
+      </div>
       
-      <ActivityItem
-        icon={<AiChatIcon size={24} />}
-        label="AI Chat"
-        isActive={panels.aiChat}
-        badge={unreadChatCount}
-        onClick={() => handlePanelToggle('aiChat')}
-      />
-      
-      <ActivityItem
-        icon={<SparklesIcon size={24} />}
-        label="Project Wizard"
-        isActive={location.pathname.startsWith('/wizard')}
-        onClick={handleWizard}
-      />
-      
-      <Spacer />
-      
-      <ActivityItem
-        icon={<SettingsIcon size={24} />}
-        label="Settings"
-        isActive={false}
-        onClick={handleSettings}
-      />
-    </ActivityBarContainer>
+      <div 
+        className={`vf-app-icon ${activeIcon === 'settings' ? 'active' : ''}`} 
+        title="Settings" 
+        style={{ marginTop: 'auto' }}
+        onClick={() => handleIconClick('settings', handleSettings)}
+      >
+        <svg className="vf-icon" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 1v6m0 6v6m4.22-13.22l4.24 4.24M1.54 1.54l4.24 4.24M20.46 20.46l-4.24-4.24M1.54 20.46l4.24-4.24"/>
+        </svg>
+      </div>
+    </aside>
   );
 };

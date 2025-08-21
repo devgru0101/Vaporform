@@ -7,7 +7,7 @@ import { test, expect, Page, BrowserContext } from '@playwright/test';
 
 // Test configuration
 const BASE_URL = process.env.E2E_BASE_URL || 'http://localhost:3000';
-const API_BASE_URL = process.env.E2E_API_URL || 'http://localhost:4000';
+const API_BASE_URL = process.env.E2E_API_URL || 'http://192.168.1.235:4001';
 
 // Test user credentials
 const TEST_USER = {

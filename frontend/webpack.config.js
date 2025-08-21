@@ -101,22 +101,24 @@ module.exports = (env, argv) => {
       }),
     ],
     devServer: {
-      port: 3000,
+      port: 3001,
       hot: true,
       historyApiFallback: true,
       open: true,
-      proxy: {
-        '/api': {
-          target: 'http://localhost:4000',
+      proxy: [
+        {
+          context: ['/api'],
+          target: 'http://localhost:4001',
           changeOrigin: true,
           secure: false,
         },
-        '/socket.io': {
-          target: 'http://localhost:4000',
+        {
+          context: ['/socket.io'],
+          target: 'http://localhost:4001',
           changeOrigin: true,
           ws: true,
         },
-      },
+      ],
     },
     devtool: isProduction ? 'source-map' : 'eval-source-map',
     optimization: {

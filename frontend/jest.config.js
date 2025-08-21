@@ -2,7 +2,7 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
-  moduleNameMapping: {
+  moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^@shared/(.*)$': '<rootDir>/../shared/src/$1',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
@@ -21,7 +21,8 @@ module.exports = {
     '<rootDir>/src/**/*.(test|spec).(ts|tsx|js)',
   ],
   testPathIgnorePatterns: [
-    '<rootDir>/src/**/*.spec.ts', // Ignore Playwright tests
+    '/node_modules/',
+    '<rootDir>/src/.*/.*\\.spec\\.(ts|tsx|js)$', // Ignore Playwright tests
   ],
   collectCoverageFrom: [
     'src/**/*.(ts|tsx)',

@@ -49,6 +49,7 @@ export const localStorageMiddleware: Middleware<{}, RootState> = store => next =
     'ai/createConversation',
     'ai/updateConversation',
     'ai/deleteConversation',
+    'auth/updateUser',
   ];
 
   if (persistActions.some(actionType => action.type.startsWith(actionType))) {

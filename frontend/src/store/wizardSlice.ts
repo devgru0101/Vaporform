@@ -193,10 +193,14 @@ interface WizardState {
   integrationConfigurations: Record<string, any>;
   deploymentConfig: DeploymentConfig;
   
+  // Templates
+  availableTemplates: Template[];
+  
   // UI state
   isAnalyzing: boolean;
   isGeneratingPreview: boolean;
   isDeploying: boolean;
+  isLoadingTemplates: boolean;
   
   // Preview data
   projectStructure: Record<string, string> | null;
@@ -270,9 +274,11 @@ const initialState: WizardState = {
     ssl: true,
     environmentVariables: {}
   },
+  availableTemplates: [],
   isAnalyzing: false,
   isGeneratingPreview: false,
   isDeploying: false,
+  isLoadingTemplates: false,
   projectStructure: null,
   deploymentInstructions: [],
   resourceEstimate: {
@@ -287,15 +293,21 @@ const initialState: WizardState = {
   lastSaved: null,
 };
 
+// API Configuration
+const API_BASE_URL = 'http://192.168.1.235:4001';
+
 // Async thunks
 export const createWizardSession = createAsyncThunk(
   'wizard/createSession',
   async (userId: string) => {
-    const response = await fetch('/api/wizard/session', {
+    const response = await fetch(`${API_BASE_URL}/wizard/session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId }),
     });
+    if (!response.ok) {
+      throw new Error(`Failed to create wizard session: ${response.statusText}`);
+    }
     return response.json();
   }
 );
@@ -303,7 +315,7 @@ export const createWizardSession = createAsyncThunk(
 export const analyzeProject = createAsyncThunk(
   'wizard/analyzeProject',
   async (requirements: Partial<ProjectRequirements>) => {
-    const response = await fetch('/api/wizard/analyze', {
+    const response = await fetch(`${API_BASE_URL}/wizard/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -311,6 +323,9 @@ export const analyzeProject = createAsyncThunk(
         preferences: requirements,
       }),
     });
+    if (!response.ok) {
+      throw new Error(`Failed to analyze project: ${response.statusText}`);
+    }
     return response.json();
   }
 );
@@ -326,11 +341,14 @@ export const updateWizardStep = createAsyncThunk(
     stepId: string;
     data: any;
   }) => {
-    const response = await fetch(`/api/wizard/session/${sessionId}/step/${stepId}`, {
+    const response = await fetch(`${API_BASE_URL}/wizard/session/${sessionId}/step/${stepId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ data }),
     });
+    if (!response.ok) {
+      throw new Error(`Failed to update wizard step: ${response.statusText}`);
+    }
     return response.json();
   }
 );
@@ -344,7 +362,10 @@ export const generatePreview = createAsyncThunk(
     sessionId: string;
     stepId: string;
   }) => {
-    const response = await fetch(`/api/wizard/session/${sessionId}/preview/${stepId}`);
+    const response = await fetch(`${API_BASE_URL}/wizard/session/${sessionId}/preview/${stepId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to generate preview: ${response.statusText}`);
+    }
     return response.json();
   }
 );
@@ -352,9 +373,34 @@ export const generatePreview = createAsyncThunk(
 export const completeWizard = createAsyncThunk(
   'wizard/complete',
   async (sessionId: string) => {
-    const response = await fetch(`/api/wizard/session/${sessionId}/complete`, {
+    const response = await fetch(`${API_BASE_URL}/wizard/session/${sessionId}/complete`, {
       method: 'POST',
     });
+    if (!response.ok) {
+      throw new Error(`Failed to complete wizard: ${response.statusText}`);
+    }
+    return response.json();
+  }
+);
+
+export const getTemplates = createAsyncThunk(
+  'wizard/getTemplates',
+  async () => {
+    const response = await fetch(`${API_BASE_URL}/wizard/templates`);
+    if (!response.ok) {
+      throw new Error(`Failed to get templates: ${response.statusText}`);
+    }
+    return response.json();
+  }
+);
+
+export const getWizardSession = createAsyncThunk(
+  'wizard/getSession',
+  async (sessionId: string) => {
+    const response = await fetch(`${API_BASE_URL}/wizard/session/${sessionId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to get wizard session: ${response.statusText}`);
+    }
     return response.json();
   }
 );
@@ -570,6 +616,53 @@ const wizardSlice = createSlice({
     builder.addCase(completeWizard.rejected, (state, action) => {
       state.isDeploying = false;
       state.error = action.error.message || 'Failed to complete wizard';
+    });
+    
+    // Get templates
+    builder.addCase(getTemplates.pending, (state) => {
+      state.isLoadingTemplates = true;
+      state.error = null;
+    });
+    builder.addCase(getTemplates.fulfilled, (state, action) => {
+      state.isLoadingTemplates = false;
+      state.availableTemplates = action.payload.templates;
+    });
+    builder.addCase(getTemplates.rejected, (state, action) => {
+      state.isLoadingTemplates = false;
+      state.error = action.error.message || 'Failed to load templates';
+    });
+    
+    // Get wizard session
+    builder.addCase(getWizardSession.fulfilled, (state, action) => {
+      state.session = action.payload;
+      state.sessionId = action.payload.id;
+      state.currentStep = action.payload.currentStep;
+      state.steps = action.payload.steps;
+      if (action.payload.projectData) {
+        state.projectRequirements = action.payload.projectData;
+        if (action.payload.projectData.analysis) {
+          state.projectAnalysis = action.payload.projectData.analysis;
+        }
+        if (action.payload.projectData.selectedTemplate) {
+          // Find the selected template from available templates
+          const template = state.availableTemplates.find(t => t.id === action.payload.projectData.selectedTemplate);
+          if (template) {
+            state.selectedTemplate = template;
+          }
+        }
+        if (action.payload.projectData.customizations) {
+          state.templateConfiguration = action.payload.projectData.customizations;
+        }
+        if (action.payload.projectData.integrations) {
+          state.selectedIntegrations = action.payload.projectData.integrations;
+        }
+        if (action.payload.projectData.deploymentConfig) {
+          state.deploymentConfig = action.payload.projectData.deploymentConfig;
+        }
+      }
+    });
+    builder.addCase(getWizardSession.rejected, (state, action) => {
+      state.error = action.error.message || 'Failed to load wizard session';
     });
   },
 });

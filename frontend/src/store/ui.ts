@@ -48,7 +48,7 @@ interface UiState {
     type: 'info' | 'success' | 'warning' | 'error';
     title: string;
     message: string;
-    timestamp: Date;
+    timestamp: string;
     duration?: number;
     actions?: Array<{
       label: string;
@@ -202,7 +202,7 @@ export const uiSlice = createSlice({
       const notification = {
         ...action.payload,
         id: `notif-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        timestamp: new Date(),
+        timestamp: new Date().toISOString(),
       };
       state.notifications.push(notification);
     },

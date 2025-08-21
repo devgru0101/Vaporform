@@ -1,209 +1,163 @@
 import React, { useState, useRef, useEffect } from 'react';
-import styled from '@emotion/styled';
+import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/hooks/redux';
 import { authSlice } from '@/store/auth';
-import { useAuthService } from '@/services/auth';
 import type { User } from '@shared/types';
+import './UserMenu.css';
 
-const UserMenuContainer = styled.div`
-  position: relative;
-`;
-
-const UserButton = styled.button<{ theme: string }>`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  border-radius: 4px;
-  color: ${props => props.theme === 'dark' ? '#cccccc' : '#666666'};
-  font-size: 14px;
-  transition: background-color 0.2s;
-  
-  &:hover {
-    background-color: ${props => props.theme === 'dark' ? '#3e3e42' : '#e8e8e8'};
-  }
-`;
-
-const Avatar = styled.div<{ theme: string }>`
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background-color: ${props => props.theme === 'dark' ? '#007acc' : '#1976d2'};
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 600;
-`;
-
-const UserName = styled.span`
-  max-width: 100px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-`;
-
-const Dropdown = styled.div<{ theme: string; isOpen: boolean }>`
-  position: absolute;
-  top: 100%;
-  right: 0;
-  min-width: 200px;
-  background-color: ${props => props.theme === 'dark' ? '#2d2d30' : '#ffffff'};
-  border: 1px solid ${props => props.theme === 'dark' ? '#3e3e42' : '#e0e0e0'};
-  border-radius: 6px;
-  box-shadow: ${props => props.theme === 'dark' 
-    ? '0 4px 12px rgba(0, 0, 0, 0.4)'
-    : '0 4px 12px rgba(0, 0, 0, 0.15)'
-  };
-  padding: 8px 0;
-  margin-top: 4px;
-  z-index: 1000;
-  opacity: ${props => props.isOpen ? 1 : 0};
-  visibility: ${props => props.isOpen ? 'visible' : 'hidden'};
-  transform: ${props => props.isOpen ? 'translateY(0)' : 'translateY(-4px)'};
-  transition: all 0.2s ease;
-`;
-
-const DropdownItem = styled.button<{ theme: string }>`
-  width: 100%;
-  padding: 8px 16px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  font-size: 14px;
-  color: ${props => props.theme === 'dark' ? '#cccccc' : '#333333'};
-  transition: background-color 0.2s;
-  
-  &:hover {
-    background-color: ${props => props.theme === 'dark' ? '#3e3e42' : '#f0f0f0'};
-  }
-  
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-`;
-
-const DropdownSeparator = styled.div<{ theme: string }>`
-  height: 1px;
-  background-color: ${props => props.theme === 'dark' ? '#3e3e42' : '#e0e0e0'};
-  margin: 4px 0;
-`;
-
-const UserInfo = styled.div<{ theme: string }>`
-  padding: 8px 16px;
-  border-bottom: 1px solid ${props => props.theme === 'dark' ? '#3e3e42' : '#e0e0e0'};
-  margin-bottom: 4px;
-`;
-
-const UserInfoName = styled.div<{ theme: string }>`
-  font-size: 14px;
-  font-weight: 600;
-  color: ${props => props.theme === 'dark' ? '#ffffff' : '#000000'};
-  margin-bottom: 2px;
-`;
-
-const UserInfoEmail = styled.div<{ theme: string }>`
-  font-size: 12px;
-  color: ${props => props.theme === 'dark' ? '#a0a0a0' : '#666666'};
-`;
-
-interface UserMenuProps {
-  user: User | null;
+export interface UserMenuProps {
+  className?: string;
 }
 
-export const UserMenu: React.FC<UserMenuProps> = ({ user }) => {
+export const UserMenu: React.FC<UserMenuProps> = ({ className = '' }) => {
   const dispatch = useAppDispatch();
-  const authService = useAuthService();
-  const { theme } = useAppSelector(state => state.ui);
-  
+  const navigate = useNavigate();
+  const { user } = useAppSelector(state => state.auth);
   const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
-  // Close menu when clicking outside
+  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleLogout = async () => {
-    const token = localStorage.getItem('vaporform_token');
-    if (token) {
-      await authService.logout(token);
-      localStorage.removeItem('vaporform_token');
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-    dispatch(authSlice.actions.logout());
-    setIsOpen(false);
+  }, [isOpen]);
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isOpen) {
+        setIsOpen(false);
+        buttonRef.current?.focus();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isOpen]);
+
+  const handleToggleDropdown = () => {
+    setIsOpen(!isOpen);
   };
 
   const handleSettings = () => {
-    // TODO: Navigate to settings
-    console.log('Open settings');
     setIsOpen(false);
+    navigate('/settings');
   };
 
-  const handleProfile = () => {
-    // TODO: Navigate to profile
-    console.log('Open profile');
+  const handleLogout = () => {
     setIsOpen(false);
+    dispatch(authSlice.actions.logout());
+    navigate('/');
+  };
+
+  const getInitials = (name: string): string => {
+    return name
+      .split(' ')
+      .map(part => part.charAt(0))
+      .join('')
+      .substring(0, 2)
+      .toUpperCase();
   };
 
   if (!user) {
     return null;
   }
 
-  const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(part => part.charAt(0).toUpperCase())
-      .slice(0, 2)
-      .join('');
-  };
-
   return (
-    <UserMenuContainer ref={menuRef}>
-      <UserButton
-        theme={theme}
-        onClick={() => setIsOpen(!isOpen)}
-        title={`${user.name} (${user.email})`}
+    <div className={`vf-user-menu ${className}`}>
+      <button
+        ref={buttonRef}
+        className="vf-user-menu-trigger"
+        onClick={handleToggleDropdown}
+        aria-haspopup="true"
+        aria-expanded={isOpen}
+        aria-label="User account menu"
       >
-        <Avatar theme={theme}>
-          {getInitials(user.name)}
-        </Avatar>
-        <UserName>{user.name}</UserName>
-      </UserButton>
+        <div className="vf-user-avatar">
+          {user?.avatar ? (
+            <img src={user.avatar} alt={user.name} className="vf-user-avatar-image" />
+          ) : (
+            <span className="vf-user-avatar-initials">
+              {getInitials(user?.name || 'User')}
+            </span>
+          )}
+        </div>
+        <span className="vf-user-name">
+          {user?.name || 'User'}
+        </span>
+        <svg
+          className={`vf-user-menu-chevron ${isOpen ? 'open' : ''}`}
+          viewBox="0 0 24 24"
+          width="12"
+          height="12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
 
-      <Dropdown theme={theme} isOpen={isOpen}>
-        <UserInfo theme={theme}>
-          <UserInfoName theme={theme}>{user.name}</UserInfoName>
-          <UserInfoEmail theme={theme}>{user.email}</UserInfoEmail>
-        </UserInfo>
+      {isOpen && (
+        <div
+          ref={dropdownRef}
+          className="vf-user-menu-dropdown"
+          role="menu"
+          aria-labelledby="user-menu-button"
+        >
+          <div className="vf-user-menu-header">
+            <div className="vf-user-info-expanded">
+              <div className="vf-user-name-large">{user?.name || 'User'}</div>
+              <div className="vf-user-email">{user?.email || ''}</div>
+            </div>
+          </div>
 
-        <DropdownItem theme={theme} onClick={handleProfile}>
-          Profile
-        </DropdownItem>
-        
-        <DropdownItem theme={theme} onClick={handleSettings}>
-          Settings
-        </DropdownItem>
-        
-        <DropdownSeparator theme={theme} />
-        
-        <DropdownItem theme={theme} onClick={handleLogout}>
-          Sign Out
-        </DropdownItem>
-      </Dropdown>
-    </UserMenuContainer>
+          <div className="vf-user-menu-divider" />
+
+          <div className="vf-user-menu-items">
+            <button
+              className="vf-user-menu-item"
+              onClick={handleSettings}
+              role="menuitem"
+            >
+              <svg className="vf-icon" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v6m0 6v6m4.22-13.22l4.24 4.24M1.54 1.54l4.24 4.24M20.46 20.46l-4.24-4.24M1.54 20.46l4.24-4.24"/>
+              </svg>
+              Settings
+            </button>
+
+            <button
+              className="vf-user-menu-item vf-user-menu-item-danger"
+              onClick={handleLogout}
+              role="menuitem"
+            >
+              <svg className="vf-icon" viewBox="0 0 24 24">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16,17 21,12 16,7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
+              Logout
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };

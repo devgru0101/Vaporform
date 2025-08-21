@@ -7,28 +7,46 @@ import { aiSlice } from '../ai';
 import { uiSlice } from '../ui';
 import type { RootState } from '../index';
 
-const WS_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://localhost:4000';
+const WS_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://192.168.1.235:4001';
+
+// WebSocket feature flag - disable in development until backend WebSocket server is implemented
+const ENABLE_WEBSOCKET = process.env.NODE_ENV === 'production' && process.env.REACT_APP_ENABLE_WEBSOCKET === 'true';
 
 interface WebSocketState {
   socket: Socket | null;
   isConnected: boolean;
   reconnectAttempts: number;
+  maxRetries: number;
+  retryBackoff: number;
 }
 
 const wsState: WebSocketState = {
   socket: null,
   isConnected: false,
-  reconnectAttempts: 0
+  reconnectAttempts: 0,
+  maxRetries: 3,
+  retryBackoff: 1000
 };
 
 export const websocketMiddleware: Middleware<{}, RootState> = store => next => action => {
   const result = next(action);
   const state = store.getState();
 
-  // Initialize WebSocket connection when user logs in
-  if (action.type === 'auth/loginSuccess') {
+  // Initialize WebSocket connection when user logs in (only if enabled)
+  if (action.type === 'auth/loginSuccess' && ENABLE_WEBSOCKET) {
     const token = action.payload.token;
     initializeWebSocket(token, store);
+  } else if (action.type === 'auth/loginSuccess' && !ENABLE_WEBSOCKET) {
+    // Show status that WebSocket is disabled in development
+    store.dispatch(uiSlice.actions.updateStatusBarItem({
+      side: 'right',
+      item: {
+        id: 'ws-status',
+        text: 'Offline Mode',
+        tooltip: 'WebSocket disabled in development',
+        priority: 10
+      }
+    }));
   }
 
   // Close WebSocket connection when user logs out
@@ -36,10 +54,10 @@ export const websocketMiddleware: Middleware<{}, RootState> = store => next => a
     closeWebSocket();
   }
 
-  // Handle project changes
-  if (action.type === 'projects/setCurrentProject') {
+  // Handle project changes (only if WebSocket is enabled and connected)
+  if (action.type === 'projects/setCurrentProject' && ENABLE_WEBSOCKET) {
     const project = action.payload;
-    if (wsState.socket && project) {
+    if (wsState.socket && wsState.isConnected && project) {
       wsState.socket.emit('join-project', { projectId: project.id });
     }
   }
@@ -52,13 +70,17 @@ function initializeWebSocket(token: string, store: any) {
     wsState.socket.disconnect();
   }
 
+  // Reset connection state
+  wsState.reconnectAttempts = 0;
+
   wsState.socket = io(WS_BASE, {
     auth: { token },
     transports: ['websocket', 'polling'],
     reconnection: true,
-    reconnectionAttempts: 5,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
+    reconnectionAttempts: wsState.maxRetries,
+    reconnectionDelay: wsState.retryBackoff,
+    reconnectionDelayMax: wsState.retryBackoff * 5,
+    timeout: 5000, // 5 second connection timeout
   });
 
   // Connection events
@@ -90,16 +112,48 @@ function initializeWebSocket(token: string, store: any) {
   });
 
   wsState.socket.on('connect_error', (error) => {
-    console.error('WebSocket connection error:', error);
     wsState.reconnectAttempts++;
     
-    if (wsState.reconnectAttempts >= 5) {
+    // Only log errors in development mode for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`WebSocket connection attempt ${wsState.reconnectAttempts}/${wsState.maxRetries} failed:`, error.message);
+    }
+    
+    // Update status bar to show connection issues
+    store.dispatch(uiSlice.actions.updateStatusBarItem({
+      side: 'right',
+      item: {
+        id: 'ws-status',
+        text: `Connecting... (${wsState.reconnectAttempts}/${wsState.maxRetries})`,
+        tooltip: 'Attempting to connect to real-time server',
+        priority: 10
+      }
+    }));
+    
+    // After max retries, show notification and stop trying
+    if (wsState.reconnectAttempts >= wsState.maxRetries) {
+      store.dispatch(uiSlice.actions.updateStatusBarItem({
+        side: 'right',
+        item: {
+          id: 'ws-status',
+          text: 'Offline Mode',
+          tooltip: 'Real-time features unavailable - server not reachable',
+          priority: 10
+        }
+      }));
+      
       store.dispatch(uiSlice.actions.addNotification({
-        type: 'error',
-        title: 'Connection Failed',
-        message: 'Unable to connect to the server. Please check your connection.',
+        type: 'warning',
+        title: 'Real-time Features Unavailable',
+        message: 'Working in offline mode. Some collaborative features may be limited.',
         duration: 5000
       }));
+      
+      // Disconnect to prevent further attempts
+      if (wsState.socket) {
+        wsState.socket.disconnect();
+        wsState.socket = null;
+      }
     }
   });
 
@@ -231,42 +285,43 @@ function closeWebSocket() {
 
 // Export functions for components to use
 export const emitCursorUpdate = (data: { file: string; cursor: { line: number; column: number } }) => {
-  if (wsState.socket && wsState.isConnected) {
+  if (ENABLE_WEBSOCKET && wsState.socket && wsState.isConnected) {
     wsState.socket.emit('cursor-update', data);
   }
 };
 
 export const emitSelectionUpdate = (data: { file: string; selection: any }) => {
-  if (wsState.socket && wsState.isConnected) {
+  if (ENABLE_WEBSOCKET && wsState.socket && wsState.isConnected) {
     wsState.socket.emit('selection-update', data);
   }
 };
 
 export const emitOperation = (data: { operation: any; file: string }) => {
-  if (wsState.socket && wsState.isConnected) {
+  if (ENABLE_WEBSOCKET && wsState.socket && wsState.isConnected) {
     wsState.socket.emit('operation', data);
   }
 };
 
 export const emitChatMessage = (data: { message: string; type?: string }) => {
-  if (wsState.socket && wsState.isConnected) {
+  if (ENABLE_WEBSOCKET && wsState.socket && wsState.isConnected) {
     wsState.socket.emit('chat-message', data);
   }
 };
 
 export const joinProject = (projectId: string) => {
-  if (wsState.socket && wsState.isConnected) {
+  if (ENABLE_WEBSOCKET && wsState.socket && wsState.isConnected) {
     wsState.socket.emit('join-project', { projectId });
   }
 };
 
 export const leaveProject = (projectId: string) => {
-  if (wsState.socket && wsState.isConnected) {
+  if (ENABLE_WEBSOCKET && wsState.socket && wsState.isConnected) {
     wsState.socket.emit('leave-project', { projectId });
   }
 };
 
 export const getWebSocketStatus = () => ({
   isConnected: wsState.isConnected,
-  reconnectAttempts: wsState.reconnectAttempts
+  reconnectAttempts: wsState.reconnectAttempts,
+  isEnabled: ENABLE_WEBSOCKET
 });

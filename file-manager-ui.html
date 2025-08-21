@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vaporform File Manager</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .path-bar {
+            background: rgba(255,255,255,0.2);
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            word-break: break-all;
+        }
+
+        .toolbar {
+            background: white;
+            padding: 15px 20px;
+            border-bottom: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5a67d8;
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+
+        .container {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .file-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+        }
+
+        .file-item {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+            position: relative;
+        }
+
+        .file-item:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .file-item.selected {
+            border-color: #764ba2;
+            background: #f8f9ff;
+        }
+
+        .file-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .file-name {
+            font-size: 14px;
+            word-break: break-all;
+            color: #333;
+        }
+
+        .file-size {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .drop-zone {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(102, 126, 234, 0.95);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .drop-zone.active {
+            display: flex;
+        }
+
+        .drop-zone-content {
+            background: white;
+            padding: 60px;
+            border-radius: 20px;
+            text-align: center;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            max-width: 80%;
+            max-height: 80%;
+            overflow: auto;
+            min-width: 400px;
+        }
+
+        .file-preview {
+            white-space: pre-wrap;
+            font-family: monospace;
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 500px;
+            overflow: auto;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .status-message {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            display: none;
+            z-index: 2000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .status-message.success {
+            background: #48bb78;
+        }
+
+        .status-message.error {
+            background: #f56565;
+        }
+
+        .status-message.info {
+            background: #667eea;
+        }
+
+        .status-message.show {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .upload-progress {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            display: none;
+            z-index: 2001;
+        }
+
+        .upload-progress.show {
+            display: block;
+        }
+
+        .progress-bar {
+            width: 300px;
+            height: 30px;
+            background: #e0e0e0;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-top: 20px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📁 Vaporform File Manager</h1>
+        <div class="path-bar" id="currentPath">/home/scott-sitzer</div>
+    </div>
+
+    <div class="toolbar">
+        <button class="btn btn-primary" id="upBtn">⬆️ Up</button>
+        <button class="btn btn-primary" id="refreshBtn">🔄 Refresh</button>
+        <button class="btn btn-primary" id="uploadBtn">📤 Upload Files</button>
+        <button class="btn btn-primary" id="createFolderBtn">📁 New Folder</button>
+        <button class="btn btn-danger" id="deleteBtn">🗑️ Delete Selected</button>
+        <input type="file" id="fileInput" multiple>
+    </div>
+
+    <div class="container">
+        <div class="file-grid" id="fileGrid">
+            <div class="loading">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Drop Zone Overlay -->
+    <div class="drop-zone" id="dropZone">
+        <div class="drop-zone-content">
+            <div style="font-size: 72px; margin-bottom: 20px;">📤</div>
+            <h2>Drop files here to upload</h2>
+            <p style="margin-top: 10px; color: #666;">Files will be uploaded to current directory</p>
+        </div>
+    </div>
+
+    <!-- File Preview Modal -->
+    <div class="modal" id="previewModal">
+        <div class="modal-content">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                <h3 id="previewTitle">File Preview</h3>
+                <button class="btn btn-secondary" id="closePreviewBtn">Close</button>
+            </div>
+            <div id="previewContent" class="file-preview"></div>
+        </div>
+    </div>
+
+    <!-- Upload Progress -->
+    <div class="upload-progress" id="uploadProgress">
+        <h3>Uploading File...</h3>
+        <div id="uploadFileName" style="margin-top: 10px; color: #666;"></div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+        </div>
+    </div>
+
+    <!-- Status Messages -->
+    <div class="status-message" id="statusMessage"></div>
+
+    <script>
+        // Configuration
+        const API_BASE = window.location.origin;
+        let currentPath = '/home/scott-sitzer';
+        let selectedItem = null;
+
+        // DOM Elements
+        const elements = {
+            currentPath: document.getElementById('currentPath'),
+            fileGrid: document.getElementById('fileGrid'),
+            dropZone: document.getElementById('dropZone'),
+            fileInput: document.getElementById('fileInput'),
+            previewModal: document.getElementById('previewModal'),
+            previewTitle: document.getElementById('previewTitle'),
+            previewContent: document.getElementById('previewContent'),
+            statusMessage: document.getElementById('statusMessage'),
+            uploadProgress: document.getElementById('uploadProgress'),
+            uploadFileName: document.getElementById('uploadFileName'),
+            progressFill: document.getElementById('progressFill')
+        };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('File Manager initialized');
+            setupEventListeners();
+            browse(currentPath);
+        });
+
+        // Setup all event listeners
+        function setupEventListeners() {
+            // Button clicks
+            document.getElementById('upBtn').addEventListener('click', goUp);
+            document.getElementById('refreshBtn').addEventListener('click', refresh);
+            document.getElementById('uploadBtn').addEventListener('click', () => {
+                console.log('Upload button clicked');
+                elements.fileInput.click();
+            });
+            document.getElementById('createFolderBtn').addEventListener('click', createFolder);
+            document.getElementById('deleteBtn').addEventListener('click', deleteSelected);
+            document.getElementById('closePreviewBtn').addEventListener('click', closePreview);
+
+            // File input change
+            elements.fileInput.addEventListener('change', (e) => {
+                console.log('File input changed:', e.target.files);
+                handleFileSelect(e.target.files);
+            });
+
+            // Drag and drop
+            document.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                elements.dropZone.classList.add('active');
+            });
+
+            document.addEventListener('dragleave', (e) => {
+                if (e.clientX === 0 && e.clientY === 0) {
+                    elements.dropZone.classList.remove('active');
+                }
+            });
+
+            document.addEventListener('drop', (e) => {
+                e.preventDefault();
+                elements.dropZone.classList.remove('active');
+                console.log('Files dropped:', e.dataTransfer.files);
+                handleFileSelect(e.dataTransfer.files);
+            });
+
+            // Prevent default drag behaviors
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                document.addEventListener(eventName, preventDefaults, false);
+            });
+        }
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // Browse directory
+        async function browse(path) {
+            currentPath = path;
+            elements.currentPath.textContent = path;
+            elements.fileGrid.innerHTML = '<div class="loading">Loading...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/browse?path=${encodeURIComponent(path)}`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                displayItems(data.items, data.parentPath);
+            } catch (error) {
+                console.error('Browse error:', error);
+                showStatus('Error loading directory: ' + error.message, 'error');
+                elements.fileGrid.innerHTML = '<div class="loading">Error loading directory</div>';
+            }
+        }
+
+        // Display file/folder items
+        function displayItems(items, parentPath) {
+            let html = '';
+
+            if (parentPath) {
+                html += `
+                    <div class="file-item" data-path="${parentPath}" data-is-directory="true">
+                        <div class="file-icon">⬆️</div>
+                        <div class="file-name">..</div>
+                    </div>
+                `;
+            }
+
+            items.forEach(item => {
+                const icon = item.isDirectory ? '📁' : getFileIcon(item.extension);
+                const size = item.isDirectory ? '' : formatSize(item.size);
+                
+                html += `
+                    <div class="file-item" data-path="${item.path}" data-is-directory="${item.isDirectory}">
+                        <div class="file-icon">${icon}</div>
+                        <div class="file-name">${item.name}</div>
+                        <div class="file-size">${size}</div>
+                    </div>
+                `;
+            });
+
+            elements.fileGrid.innerHTML = html;
+
+            // Add click handlers to items
+            document.querySelectorAll('.file-item').forEach(item => {
+                item.addEventListener('click', handleItemClick);
+                item.addEventListener('dblclick', handleItemDblClick);
+            });
+        }
+
+        // Handle single click on item
+        function handleItemClick(e) {
+            e.stopPropagation();
+            document.querySelectorAll('.file-item').forEach(el => el.classList.remove('selected'));
+            e.currentTarget.classList.add('selected');
+            selectedItem = {
+                path: e.currentTarget.dataset.path,
+                isDirectory: e.currentTarget.dataset.isDirectory === 'true'
+            };
+            console.log('Selected:', selectedItem);
+        }
+
+        // Handle double click on item
+        function handleItemDblClick(e) {
+            e.stopPropagation();
+            const path = e.currentTarget.dataset.path;
+            const isDirectory = e.currentTarget.dataset.isDirectory === 'true';
+            
+            if (isDirectory) {
+                browse(path);
+            } else {
+                previewFile(path);
+            }
+        }
+
+        // Handle file selection
+        async function handleFileSelect(files) {
+            console.log('Handling file selection:', files.length, 'files');
+            
+            if (!files || files.length === 0) {
+                console.log('No files selected');
+                return;
+            }
+
+            for (let i = 0; i < files.length; i++) {
+                await uploadFile(files[i]);
+            }
+            
+            // Clear file input
+            elements.fileInput.value = '';
+            
+            // Refresh the file list
+            refresh();
+        }
+
+        // Upload single file
+        async function uploadFile(file) {
+            console.log('Uploading file:', file.name, 'to', currentPath);
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('path', currentPath);
+
+            // Show progress
+            elements.uploadProgress.classList.add('show');
+            elements.uploadFileName.textContent = file.name;
+            elements.progressFill.style.width = '0%';
+            elements.progressFill.textContent = '0%';
+
+            try {
+                // Use XMLHttpRequest for progress tracking
+                const xhr = new XMLHttpRequest();
+                
+                // Track upload progress
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const percentComplete = Math.round((e.loaded / e.total) * 100);
+                        elements.progressFill.style.width = percentComplete + '%';
+                        elements.progressFill.textContent = percentComplete + '%';
+                    }
+                });
+
+                // Handle completion
+                xhr.addEventListener('load', () => {
+                    elements.uploadProgress.classList.remove('show');
+                    if (xhr.status === 200) {
+                        console.log('Upload successful:', file.name);
+                        showStatus(`Uploaded: ${file.name}`, 'success');
+                    } else {
+                        console.error('Upload failed:', xhr.status, xhr.responseText);
+                        showStatus(`Failed to upload: ${file.name}`, 'error');
+                    }
+                });
+
+                // Handle errors
+                xhr.addEventListener('error', () => {
+                    elements.uploadProgress.classList.remove('show');
+                    console.error('Upload error:', file.name);
+                    showStatus(`Error uploading: ${file.name}`, 'error');
+                });
+
+                // Send request
+                xhr.open('POST', `${API_BASE}/api/upload`);
+                xhr.send(formData);
+
+            } catch (error) {
+                elements.uploadProgress.classList.remove('show');
+                console.error('Upload exception:', error);
+                showStatus('Upload failed: ' + error.message, 'error');
+            }
+        }
+
+        // Preview file
+        async function previewFile(path) {
+            try {
+                const response = await fetch(`${API_BASE}/api/file?path=${encodeURIComponent(path)}`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                
+                elements.previewTitle.textContent = path.split('/').pop();
+                
+                if (data.isBinary) {
+                    elements.previewContent.innerHTML = `
+                        <div style="text-align: center; padding: 40px;">
+                            <div style="font-size: 48px; margin-bottom: 20px;">📄</div>
+                            <div>Binary file (${formatSize(data.size)})</div>
+                            <div style="margin-top: 20px;">
+                                <a href="${data.downloadUrl}" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Download</a>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    elements.previewContent.textContent = data.content;
+                }
+                
+                elements.previewModal.classList.add('active');
+            } catch (error) {
+                console.error('Preview error:', error);
+                showStatus('Error previewing file: ' + error.message, 'error');
+            }
+        }
+
+        // Close preview
+        function closePreview() {
+            elements.previewModal.classList.remove('active');
+        }
+
+        // Navigation functions
+        function goUp() {
+            const parent = currentPath.split('/').slice(0, -1).join('/') || '/';
+            if (parent.startsWith('/home/scott-sitzer')) {
+                browse(parent);
+            }
+        }
+
+        function refresh() {
+            console.log('Refreshing current directory');
+            browse(currentPath);
+        }
+
+        // Create folder
+        async function createFolder() {
+            const name = prompt('Enter folder name:');
+            if (!name) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/mkdir`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: currentPath, name })
+                });
+                
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                showStatus(`Created folder: ${name}`, 'success');
+                refresh();
+            } catch (error) {
+                console.error('Create folder error:', error);
+                showStatus('Error creating folder: ' + error.message, 'error');
+            }
+        }
+
+        // Delete selected item
+        async function deleteSelected() {
+            if (!selectedItem) {
+                showStatus('Please select a file or folder to delete', 'info');
+                return;
+            }
+
+            const itemName = selectedItem.path.split('/').pop();
+            if (!confirm(`Delete ${itemName}?`)) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/delete`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: selectedItem.path })
+                });
+                
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                showStatus(`Deleted: ${itemName}`, 'success');
+                selectedItem = null;
+                refresh();
+            } catch (error) {
+                console.error('Delete error:', error);
+                showStatus('Error deleting: ' + error.message, 'error');
+            }
+        }
+
+        // Show status message
+        function showStatus(message, type = 'info') {
+            console.log(`Status [${type}]: ${message}`);
+            elements.statusMessage.textContent = message;
+            elements.statusMessage.className = `status-message ${type} show`;
+            
+            setTimeout(() => {
+                elements.statusMessage.classList.remove('show');
+            }, 3000);
+        }
+
+        // Helper functions
+        function getFileIcon(ext) {
+            const icons = {
+                '.txt': '📝', '.md': '📝', '.doc': '📝', '.docx': '📝',
+                '.pdf': '📕', '.jpg': '🖼️', '.jpeg': '🖼️', '.png': '🖼️',
+                '.gif': '🖼️', '.svg': '🖼️', '.mp4': '🎥', '.avi': '🎥',
+                '.mp3': '🎵', '.wav': '🎵', '.zip': '📦', '.rar': '📦',
+                '.js': '📜', '.ts': '📜', '.jsx': '📜', '.tsx': '📜',
+                '.html': '🌐', '.css': '🎨', '.json': '📋', '.xml': '📋',
+                '.py': '🐍', '.java': '☕', '.cpp': '🔧', '.c': '🔧'
+            };
+            return icons[ext] || '📄';
+        }
+
+        function formatSize(bytes) {
+            if (!bytes) return '';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let i = 0;
+            while (bytes >= 1024 && i < units.length - 1) {
+                bytes /= 1024;
+                i++;
+            }
+            return Math.round(bytes * 100) / 100 + ' ' + units[i];
+        }
+    </script>
+</body>
+</html>

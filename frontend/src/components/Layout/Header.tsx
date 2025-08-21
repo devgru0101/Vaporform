@@ -1,187 +1,73 @@
-import React from 'react';
-import styled from '@emotion/styled';
+import React, { useState } from 'react';
 import { useAppSelector, useAppDispatch } from '@/hooks/redux';
 import { uiSlice } from '@/store/ui';
-import { VaporformLogo } from '@/components/ui/Icons';
-import { Button } from '@/components/ui/Button';
-import { Breadcrumbs } from './Breadcrumbs';
 import { UserMenu } from './UserMenu';
-
-const HeaderContainer = styled.header<{ height: number; theme: string }>`
-  display: flex;
-  align-items: center;
-  height: ${props => props.height}px;
-  background-color: ${props => props.theme === 'dark' ? '#2d2d30' : '#f3f3f3'};
-  border-bottom: 1px solid ${props => props.theme === 'dark' ? '#3e3e42' : '#e5e5e5'};
-  padding: 0 12px;
-  flex-shrink: 0;
-  user-select: none;
-  -webkit-app-region: drag;
-  z-index: 1000;
-`;
-
-const LogoSection = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-right: 24px;
-  -webkit-app-region: no-drag;
-`;
-
-const LogoText = styled.span<{ theme: string }>`
-  font-size: 16px;
-  font-weight: 600;
-  color: ${props => props.theme === 'dark' ? '#ffffff' : '#000000'};
-`;
-
-const NavigationButtons = styled.div`
-  display: flex;
-  gap: 8px;
-  margin-right: 24px;
-  -webkit-app-region: no-drag;
-`;
-
-const CenterSection = styled.div`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  -webkit-app-region: no-drag;
-`;
-
-const RightSection = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  -webkit-app-region: no-drag;
-`;
-
-const ConnectionStatus = styled.div<{ isConnected: boolean; theme: string }>`
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: ${props => props.theme === 'dark' ? '#cccccc' : '#666666'};
-  
-  &::before {
-    content: '';
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: ${props => props.isConnected ? '#4CAF50' : '#f44336'};
-  }
-`;
-
-const QuickActions = styled.div`
-  display: flex;
-  gap: 4px;
-`;
+import './Header.css';
 
 export const Header: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { theme, layout, breadcrumbs } = useAppSelector(state => state.ui);
-  const { currentProject } = useAppSelector(state => state.projects);
-  const { isConnected } = useAppSelector(state => state.collaboration);
-  const { user } = useAppSelector(state => state.auth);
+  const [activeTab, setActiveTab] = useState<'terminal' | 'infrastructure' | 'encore'>('terminal');
 
-  const handleProjectTerminal = () => {
-    dispatch(uiSlice.actions.showPanel('terminal'));
-    dispatch(uiSlice.actions.updatePanelDimensions({
-      panel: 'bottomPanel',
-      dimensions: { isVisible: true }
-    }));
+  const handleTabClick = (tab: 'terminal' | 'infrastructure' | 'encore') => {
+    setActiveTab(tab);
+    
+    switch (tab) {
+      case 'terminal':
+        dispatch(uiSlice.actions.showPanel('terminal'));
+        break;
+      case 'infrastructure':
+        dispatch(uiSlice.actions.openModal('containerSettings'));
+        break;
+      case 'encore':
+        window.open('http://192.168.1.235:4001/encore/dashboard', '_blank');
+        break;
+    }
   };
 
-  const handleInfrastructure = () => {
-    dispatch(uiSlice.actions.openModal('containerSettings'));
-  };
-
-  const handleEncoreDashboard = () => {
-    // Open Encore.ts dashboard in new tab
-    window.open('http://localhost:4000/encore/dashboard', '_blank');
-  };
-
-  const handleCommandPalette = () => {
-    dispatch(uiSlice.actions.openModal('commandPalette'));
+  const handleSettings = () => {
+    dispatch(uiSlice.actions.openModal('settings'));
   };
 
   return (
-    <HeaderContainer height={layout.headerHeight} theme={theme}>
-      {/* Logo Section */}
-      <LogoSection>
-        <VaporformLogo size={20} />
-        <LogoText theme={theme}>Vaporform</LogoText>
-      </LogoSection>
-
-      {/* Navigation Buttons */}
-      <NavigationButtons>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleProjectTerminal}
-          title="Project Terminal"
+    <nav className="vf-top-nav">
+      <div className="vf-nav-brand">
+        <svg className="vf-icon vf-icon-lg" viewBox="0 0 24 24">
+          <path d="M13 2L3 14l9 9L22 11z" strokeLinejoin="round"/>
+        </svg>
+        VAPORFORM
+      </div>
+      
+      <div className="vf-nav-tabs">
+        <button 
+          className={`vf-nav-tab ${activeTab === 'terminal' ? 'active' : ''}`}
+          onClick={() => handleTabClick('terminal')}
         >
           Terminal
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleInfrastructure}
-          title="Infrastructure Management"
+        </button>
+        <button 
+          className={`vf-nav-tab ${activeTab === 'infrastructure' ? 'active' : ''}`}
+          onClick={() => handleTabClick('infrastructure')}
         >
           Infrastructure
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleEncoreDashboard}
-          title="Encore Dashboard"
+        </button>
+        <button 
+          className={`vf-nav-tab ${activeTab === 'encore' ? 'active' : ''}`}
+          onClick={() => handleTabClick('encore')}
         >
           Encore Dashboard
-        </Button>
-      </NavigationButtons>
-
-      {/* Center Section - Breadcrumbs */}
-      <CenterSection>
-        <Breadcrumbs items={breadcrumbs} />
-      </CenterSection>
-
-      {/* Right Section */}
-      <RightSection>
-        {/* Quick Actions */}
-        <QuickActions>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCommandPalette}
-            title="Command Palette (Ctrl+Shift+P)"
-          >
-            ⌘
-          </Button>
-        </QuickActions>
-
-        {/* Connection Status */}
-        <ConnectionStatus isConnected={isConnected} theme={theme}>
-          {isConnected ? 'Connected' : 'Disconnected'}
-        </ConnectionStatus>
-
-        {/* Project Info */}
-        {currentProject && (
-          <div style={{ 
-            fontSize: '12px', 
-            color: theme === 'dark' ? '#cccccc' : '#666666',
-            maxWidth: '200px',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}>
-            {currentProject.name}
-          </div>
-        )}
-
-        {/* User Menu */}
-        <UserMenu user={user} />
-      </RightSection>
-    </HeaderContainer>
+        </button>
+      </div>
+      
+      <div className="vf-nav-actions">
+        <button className="vf-btn vf-btn-ghost" onClick={handleSettings}>
+          <svg className="vf-icon" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v6m0 6v6m4.22-13.22l4.24 4.24M1.54 1.54l4.24 4.24M20.46 20.46l-4.24-4.24M1.54 20.46l4.24-4.24"/>
+          </svg>
+        </button>
+        
+        <UserMenu />
+      </div>
+    </nav>
   );
 };

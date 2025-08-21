@@ -1,5 +1,32 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { AiMessage, AiConversation } from '@shared/types';
+
+// AI types for frontend - these mirror the shared types
+interface AiMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string; // ISO string format for Redux serialization
+  metadata?: {
+    tokens?: number;
+    model?: string;
+    context?: string[];
+    codeBlocks?: Array<{
+      language: string;
+      code: string;
+      fileName?: string;
+    }>;
+  };
+}
+
+interface AiConversation {
+  id: string;
+  title: string;
+  messages: AiMessage[];
+  createdAt: string; // ISO string format for Redux serialization
+  updatedAt: string; // ISO string format for Redux serialization
+  projectId: string | undefined;
+  tags: string[];
+}
 
 interface AiState {
   conversations: AiConversation[];
@@ -20,7 +47,7 @@ interface AiState {
   usage: {
     tokensUsed: number;
     requestsCount: number;
-    lastResetDate: Date;
+    lastResetDate: string; // ISO string format for Redux serialization
     monthlyLimit: number;
   };
   suggestions: Array<{
@@ -53,7 +80,7 @@ const initialState: AiState = {
   usage: {
     tokensUsed: 0,
     requestsCount: 0,
-    lastResetDate: new Date(),
+    lastResetDate: new Date().toISOString(),
     monthlyLimit: 100000,
   },
   suggestions: [],
@@ -77,12 +104,13 @@ export const aiSlice = createSlice({
       state.conversations = action.payload;
     },
     createConversation: (state, action: PayloadAction<{ title?: string; projectId?: string }>) => {
+      const now = new Date().toISOString();
       const newConversation: AiConversation = {
         id: `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         title: action.payload.title || 'New Conversation',
         messages: [],
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: now,
+        updatedAt: now,
         projectId: action.payload.projectId,
         tags: [],
       };
@@ -94,7 +122,7 @@ export const aiSlice = createSlice({
       const conversation = state.conversations.find(c => c.id === action.payload.id);
       if (conversation) {
         Object.assign(conversation, action.payload.updates);
-        conversation.updatedAt = new Date();
+        conversation.updatedAt = new Date().toISOString();
       }
     },
     deleteConversation: (state, action: PayloadAction<string>) => {
@@ -109,14 +137,15 @@ export const aiSlice = createSlice({
     addMessage: (state, action: PayloadAction<{ conversationId: string; message: Omit<AiMessage, 'id' | 'timestamp'> }>) => {
       const conversation = state.conversations.find(c => c.id === action.payload.conversationId);
       if (conversation) {
+        const now = new Date().toISOString();
         const newMessage: AiMessage = {
           ...action.payload.message,
           id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          timestamp: new Date(),
+          timestamp: now,
         };
         
         conversation.messages.push(newMessage);
-        conversation.updatedAt = new Date();
+        conversation.updatedAt = now;
         
         // Auto-generate title from first user message
         if (conversation.messages.length === 1 && newMessage.role === 'user') {
@@ -130,7 +159,7 @@ export const aiSlice = createSlice({
         const message = conversation.messages.find(m => m.id === action.payload.messageId);
         if (message) {
           Object.assign(message, action.payload.updates);
-          conversation.updatedAt = new Date();
+          conversation.updatedAt = new Date().toISOString();
         }
       }
     },
@@ -138,7 +167,7 @@ export const aiSlice = createSlice({
       const conversation = state.conversations.find(c => c.id === action.payload.conversationId);
       if (conversation) {
         conversation.messages = conversation.messages.filter(m => m.id !== action.payload.messageId);
-        conversation.updatedAt = new Date();
+        conversation.updatedAt = new Date().toISOString();
       }
     },
     updateSettings: (state, action: PayloadAction<Partial<typeof initialState.settings>>) => {
@@ -157,7 +186,7 @@ export const aiSlice = createSlice({
         ...state.usage,
         tokensUsed: 0,
         requestsCount: 0,
-        lastResetDate: new Date(),
+        lastResetDate: new Date().toISOString(),
       };
     },
     setSuggestions: (state, action: PayloadAction<typeof initialState.suggestions>) => {

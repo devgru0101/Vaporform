@@ -8,7 +8,7 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { WizardPage } from '@/pages/WizardPage';
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
-import { authSlice } from '@/store/auth';
+import { authSlice, restoreSession } from '@/store/auth';
 import { useAuthService } from '@/services/auth';
 import { ThemeProvider } from '@/components/ThemeProvider';
 
@@ -21,22 +21,19 @@ export const App: React.FC = () => {
   useEffect(() => {
     const initAuth = async () => {
       try {
-        const token = localStorage.getItem('vaporform_token');
-        if (token) {
-          dispatch(authSlice.actions.setLoading(true));
-          const user = await authService.validateToken(token);
-          if (user) {
-            dispatch(authSlice.actions.loginSuccess({ user, token }));
-          } else {
-            localStorage.removeItem('vaporform_token');
+        // First try to restore from localStorage
+        const result = await dispatch(restoreSession()).unwrap();
+        
+        // If restore succeeds, validate the token with the backend
+        if (result.token) {
+          const user = await authService.validateToken(result.token);
+          if (!user) {
+            // Token is invalid, clear session
             dispatch(authSlice.actions.logout());
           }
         }
       } catch (error) {
-        console.error('Auth initialization failed:', error);
-        localStorage.removeItem('vaporform_token');
-        dispatch(authSlice.actions.logout());
-      } finally {
+        // No stored session or restoration failed
         dispatch(authSlice.actions.setLoading(false));
       }
     };
@@ -57,17 +54,15 @@ export const App: React.FC = () => {
               <Route path="*" element={<AuthPage />} />
             </Routes>
           ) : (
-            <Layout>
-              <Routes>
-                <Route path="/" element={<WorkspacePage />} />
-                <Route path="/workspace" element={<WorkspacePage />} />
-                <Route path="/workspace/:projectId" element={<WorkspacePage />} />
-                <Route path="/wizard" element={<WizardPage />} />
-                <Route path="/wizard/:step" element={<WizardPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="*" element={<WorkspacePage />} />
-              </Routes>
-            </Layout>
+            <Routes>
+              <Route path="/" element={<Layout />} />
+              <Route path="/workspace" element={<Layout />} />
+              <Route path="/workspace/:projectId" element={<Layout />} />
+              <Route path="/wizard" element={<WizardPage />} />
+              <Route path="/wizard/:step" element={<WizardPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="*" element={<Layout />} />
+            </Routes>
           )}
         </div>
       </ErrorBoundary>

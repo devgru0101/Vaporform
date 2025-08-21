@@ -1,0 +1,118 @@
+/* File Explorer - Column 3 */
+.vf-file-explorer {
+  background: var(--vf-bg-tertiary);
+  border-right: 1px solid var(--vf-surface-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: var(--vf-explorer-width);
+}
+
+.vf-explorer-header {
+  padding: 12px;
+  border-bottom: 1px solid var(--vf-surface-border);
+  font-size: var(--vf-text-xs);
+  font-weight: var(--vf-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--vf-text-muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--vf-font-body);
+}
+
+.vf-explorer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.vf-explorer-actions .vf-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vf-text-muted);
+  cursor: pointer;
+  transition: color var(--vf-transition-fast);
+}
+
+.vf-explorer-actions .vf-btn:hover {
+  color: var(--vf-text-primary);
+}
+
+.vf-file-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.vf-file-item {
+  padding: 6px 8px;
+  font-size: var(--vf-text-sm);
+  color: var(--vf-text-secondary);
+  cursor: pointer;
+  transition: all var(--vf-transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--vf-font-mono);
+}
+
+.vf-file-item:hover {
+  background: var(--vf-bg-elevated);
+  color: var(--vf-text-primary);
+}
+
+.vf-file-item.selected {
+  background: var(--vf-bg-elevated);
+  color: var(--vf-accent-active);
+  border-left: 2px solid var(--vf-accent-primary);
+  padding-left: 6px;
+}
+
+.vf-file-item.folder-item {
+  font-weight: var(--vf-weight-semibold);
+  color: var(--vf-text-secondary);
+}
+
+.vf-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--vf-space-8);
+  color: var(--vf-text-muted);
+  font-family: var(--vf-font-body);
+  text-align: center;
+  height: 200px;
+}
+
+.vf-empty-state p {
+  margin: 0 0 var(--vf-space-4) 0;
+  font-size: var(--vf-text-sm);
+  font-weight: var(--vf-weight-medium);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.vf-empty-state .vf-btn {
+  padding: var(--vf-space-2) var(--vf-space-4);
+  background: var(--vf-accent-primary);
+  color: var(--vf-bg-primary);
+  border: none;
+  font-size: var(--vf-text-xs);
+  font-weight: var(--vf-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all var(--vf-transition-fast);
+  font-family: var(--vf-font-body);
+}
+
+.vf-empty-state .vf-btn:hover {
+  background: var(--vf-accent-active);
+  transform: translateY(-1px);
+}
