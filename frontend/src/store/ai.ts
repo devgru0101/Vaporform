@@ -1,31 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-
-interface AiMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: Date;
-  metadata?: {
-    tokens?: number;
-    model?: string;
-    context?: string[];
-    codeBlocks?: Array<{
-      language: string;
-      code: string;
-      fileName?: string;
-    }>;
-  };
-}
-
-interface AiConversation {
-  id: string;
-  title: string;
-  messages: AiMessage[];
-  createdAt: Date;
-  updatedAt: Date;
-  projectId?: string;
-  tags: string[];
-}
+import { AiMessage, AiConversation } from '@shared/types';
 
 interface AiState {
   conversations: AiConversation[];
@@ -262,3 +236,7 @@ export const {
   clearError,
   resetAi,
 } = aiSlice.actions;
+export default aiSlice.reducer;
+
+// Re-export types for components
+export { AiMessage, AiConversation };

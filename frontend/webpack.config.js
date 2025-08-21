@@ -95,6 +95,7 @@ module.exports = (env, argv) => {
           {
             from: 'node_modules/monaco-editor/min/vs',
             to: 'vs',
+            noErrorOnMissing: true,
           },
         ],
       }),

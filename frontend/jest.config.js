@@ -1,4 +1,5 @@
 module.exports = {
+  preset: 'ts-jest',
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   moduleNameMapping: {
@@ -7,12 +8,20 @@ module.exports = {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
   },
   transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest',
+    '^.+\\.(ts|tsx)$': ['ts-jest', {
+      tsconfig: {
+        jsx: 'react-jsx',
+        isolatedModules: true,
+      },
+    }],
     '^.+\\.(js|jsx)$': 'babel-jest',
   },
   testMatch: [
     '<rootDir>/src/**/__tests__/**/*.(ts|tsx|js)',
     '<rootDir>/src/**/*.(test|spec).(ts|tsx|js)',
+  ],
+  testPathIgnorePatterns: [
+    '<rootDir>/src/**/*.spec.ts', // Ignore Playwright tests
   ],
   collectCoverageFrom: [
     'src/**/*.(ts|tsx)',
@@ -20,6 +29,7 @@ module.exports = {
     '!src/index.tsx',
     '!src/setupTests.ts',
     '!src/**/*.stories.*',
+    '!src/**/*.spec.ts', // Ignore Playwright tests
   ],
   coverageThreshold: {
     global: {

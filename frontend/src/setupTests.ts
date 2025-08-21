@@ -8,12 +8,23 @@ Object.defineProperty(window, 'MonacoEnvironment', {
 });
 
 // Mock WebSocket
-global.WebSocket = jest.fn().mockImplementation(() => ({
+const MockWebSocket = jest.fn().mockImplementation(() => ({
   addEventListener: jest.fn(),
   removeEventListener: jest.fn(),
   close: jest.fn(),
   send: jest.fn(),
+  CLOSED: 3,
+  CLOSING: 2,
+  CONNECTING: 0,
+  OPEN: 1,
 }));
+
+MockWebSocket.CLOSED = 3;
+MockWebSocket.CLOSING = 2;
+MockWebSocket.CONNECTING = 0;
+MockWebSocket.OPEN = 1;
+
+global.WebSocket = MockWebSocket as any;
 
 // Mock localStorage
 const localStorageMock = {
@@ -21,8 +32,10 @@ const localStorageMock = {
   setItem: jest.fn(),
   removeItem: jest.fn(),
   clear: jest.fn(),
+  length: 0,
+  key: jest.fn(),
 };
-global.localStorage = localStorageMock;
+global.localStorage = localStorageMock as any;
 
 // Mock ResizeObserver
 global.ResizeObserver = jest.fn().mockImplementation(() => ({

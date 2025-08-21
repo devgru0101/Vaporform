@@ -595,3 +595,4 @@ export const {
 } = wizardSlice.actions;
 
 export default wizardSlice.reducer;
+export { wizardSlice };

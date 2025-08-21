@@ -11,7 +11,7 @@ import wizardReducer from './wizardSlice';
 import { websocketMiddleware } from './middleware/websocket';
 import { localStorageMiddleware } from './middleware/localStorage';
 
-export const store = configureStore({
+const store = configureStore({
   reducer: {
     auth: authSlice.reducer,
     projects: projectsSlice.reducer,
@@ -45,6 +45,7 @@ export const store = configureStore({
 });
 
 export type RootState = ReturnType<typeof store.getState>;
+export { store };
 export type AppDispatch = typeof store.dispatch;
 
 // Export all actions for easy access
