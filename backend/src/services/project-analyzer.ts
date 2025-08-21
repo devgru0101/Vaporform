@@ -354,7 +354,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
     const integrations = this.recommendIntegrations(features);
 
     // Deployment recommendation
-    const deployment = this.recommendDeployment(scalability, budget: requirements.budget);
+    const deployment = this.recommendDeployment(scalability, requirements.budget);
 
     return {
       frontend: {
