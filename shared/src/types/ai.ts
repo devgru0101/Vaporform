@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { UUIDSchema, TimestampSchema, EntityId } from './common';
+import { TimestampSchema, EntityId } from './common';
 
 // AI service types
 export type AIServiceType = 'code_generation' | 'code_review' | 'debugging' | 'testing' | 'refactoring' | 'documentation';
@@ -302,3 +302,31 @@ export const DocumentationRequestSchema = z.object({
   audience: z.enum(['developers', 'end-users', 'both']),
   includeExamples: z.boolean().default(true),
 });
+
+// Frontend AI types for backwards compatibility
+export interface AiMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: Date;
+  metadata?: {
+    tokens?: number;
+    model?: string;
+    context?: string[];
+    codeBlocks?: Array<{
+      language: string;
+      code: string;
+      fileName?: string;
+    }>;
+  };
+}
+
+export interface AiConversation {
+  id: string;
+  title: string;
+  messages: AiMessage[];
+  createdAt: Date;
+  updatedAt: Date;
+  projectId: string | undefined;
+  tags: string[];
+}

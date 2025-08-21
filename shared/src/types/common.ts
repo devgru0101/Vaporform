@@ -87,7 +87,7 @@ export const ApiResponseSchema = <T extends z.ZodTypeAny>(dataSchema: T) =>
   });
 
 // File types
-export interface FileMetadata {
+export interface BasicFileMetadata {
   id: EntityId;
   name: string;
   size: number;
@@ -98,7 +98,7 @@ export interface FileMetadata {
   updatedAt: Date;
 }
 
-export const FileMetadataSchema = z.object({
+export const BasicFileMetadataSchema = z.object({
   id: UUIDSchema,
   name: z.string().min(1).max(255),
   size: z.number().int().min(0),

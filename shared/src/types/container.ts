@@ -141,3 +141,7 @@ export interface ContainerStatsResponse {
   stats: ContainerStats;
   history?: ContainerStats[];
 }
+
+// Export aliases for backwards compatibility
+export interface ContainerInfo extends Container {}
+export interface ContainerLog extends ContainerLogs {}

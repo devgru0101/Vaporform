@@ -110,6 +110,9 @@ export interface FileTree {
   isLoading?: boolean;
 }
 
+// Export aliases for backwards compatibility
+export interface FileNode extends FileTree {}
+
 // Request/Response types
 export interface CreateFileRequest {
   projectId: string;

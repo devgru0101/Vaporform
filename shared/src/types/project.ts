@@ -140,6 +140,17 @@ export interface ProjectTemplate {
   tags: string[];
 }
 
+// Additional types for frontend compatibility
+export interface ProjectSettings {
+  name: string;
+  description: string;
+  language: string;
+  framework?: string;
+  aiFeatures: AIFeatures;
+  environment: Record<string, string>;
+  dependencies: string[];
+}
+
 // Zod schemas
 export const ProjectTypeSchema = z.enum(['web', 'mobile', 'desktop', 'api', 'ai', 'other']);
 export const ProjectStatusSchema = z.enum(['active', 'paused', 'completed', 'archived']);
