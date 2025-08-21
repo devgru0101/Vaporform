@@ -61,7 +61,7 @@ jest.mock('encore.dev/log', () => ({
 }));
 
 jest.mock('encore.dev/api', () => ({
-  api: jest.fn((config, handler) => handler),
+  api: jest.fn((_config, handler) => handler),
   APICallMeta: jest.fn(),
 }));
 

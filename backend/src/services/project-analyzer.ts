@@ -1,5 +1,5 @@
-import { api } from "encore.dev/api";
-import { ai } from "./ai";
+import { api } from 'encore.dev/api';
+import { ai } from './ai';
 
 export interface ProjectRequirements {
   description: string;
@@ -126,7 +126,7 @@ class ProjectAnalyzerService {
         learningCurve: 3,
         ecosystem: 'excellent',
         performance: 'good',
-        community: 'excellent'
+        community: 'excellent',
       },
       vue: {
         name: 'Vue.js',
@@ -135,7 +135,7 @@ class ProjectAnalyzerService {
         learningCurve: 2,
         ecosystem: 'good',
         performance: 'excellent',
-        community: 'good'
+        community: 'good',
       },
       angular: {
         name: 'Angular',
@@ -144,7 +144,7 @@ class ProjectAnalyzerService {
         learningCurve: 4,
         ecosystem: 'excellent',
         performance: 'good',
-        community: 'good'
+        community: 'good',
       },
       svelte: {
         name: 'Svelte',
@@ -153,27 +153,27 @@ class ProjectAnalyzerService {
         learningCurve: 2,
         ecosystem: 'growing',
         performance: 'excellent',
-        community: 'growing'
-      }
+        community: 'growing',
+      },
     },
     backend: {
       node: {
         express: { name: 'Express.js', complexity: 2, performance: 'good' },
         fastify: { name: 'Fastify', complexity: 2, performance: 'excellent' },
-        nestjs: { name: 'NestJS', complexity: 3, performance: 'good' }
+        nestjs: { name: 'NestJS', complexity: 3, performance: 'good' },
       },
       python: {
         django: { name: 'Django', complexity: 3, performance: 'good' },
         fastapi: { name: 'FastAPI', complexity: 2, performance: 'excellent' },
-        flask: { name: 'Flask', complexity: 2, performance: 'good' }
+        flask: { name: 'Flask', complexity: 2, performance: 'good' },
       },
       java: {
-        spring: { name: 'Spring Boot', complexity: 4, performance: 'excellent' }
+        spring: { name: 'Spring Boot', complexity: 4, performance: 'excellent' },
       },
       go: {
         gin: { name: 'Gin', complexity: 2, performance: 'excellent' },
-        fiber: { name: 'Fiber', complexity: 2, performance: 'excellent' }
-      }
+        fiber: { name: 'Fiber', complexity: 2, performance: 'excellent' },
+      },
     },
     databases: {
       postgresql: {
@@ -181,30 +181,30 @@ class ProjectAnalyzerService {
         type: 'relational',
         complexity: 3,
         scaling: 'good',
-        features: 'excellent'
+        features: 'excellent',
       },
       mongodb: {
         name: 'MongoDB',
         type: 'document',
         complexity: 2,
         scaling: 'excellent',
-        features: 'good'
+        features: 'good',
       },
       redis: {
         name: 'Redis',
         type: 'cache',
         complexity: 2,
         scaling: 'excellent',
-        features: 'specialized'
+        features: 'specialized',
       },
       mysql: {
         name: 'MySQL',
         type: 'relational',
         complexity: 2,
         scaling: 'good',
-        features: 'good'
-      }
-    }
+        features: 'good',
+      },
+    },
   };
 
   async analyzeProjectRequirements(description: string, userPreferences: Partial<ProjectRequirements> = {}): Promise<ProjectAnalysis> {
@@ -220,7 +220,7 @@ class ProjectAnalyzerService {
         timeline: userPreferences.timeline || 'standard',
         scalability: userPreferences.scalability || 'medium',
         budget: userPreferences.budget || 'standard',
-        ...userPreferences
+        ...userPreferences,
       };
 
       // Generate technology recommendations
@@ -252,7 +252,7 @@ class ProjectAnalyzerService {
         estimatedComplexity,
         estimatedTimeline,
         riskFactors,
-        successFactors
+        successFactors,
       };
     } catch (error) {
       console.error('Error analyzing project requirements:', error);
@@ -282,7 +282,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
       const response = await ai.generateResponse({
         prompt,
         model: 'claude-3-sonnet-20240229',
-        maxTokens: 500
+        maxTokens: 500,
       });
 
       // Parse JSON response
@@ -301,7 +301,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
       'payment', 'stripe', 'paypal', 'e-commerce', 'shopping', 'cart',
       'file upload', 'image', 'video', 'documents', 'storage',
       'responsive', 'mobile', 'pwa', 'progressive web app',
-      'analytics', 'tracking', 'monitoring', 'notifications'
+      'analytics', 'tracking', 'monitoring', 'notifications',
     ];
 
     const lowerDescription = description.toLowerCase();
@@ -362,7 +362,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         reasoning: this.getFrontendReasoning(frontendFramework, requirements),
         alternatives: this.getFrontendAlternatives(frontendFramework),
         complexity: this.technologyDatabase.frontend[frontendFramework]?.complexity || 3,
-        learningCurve: this.technologyDatabase.frontend[frontendFramework]?.learningCurve || 3
+        learningCurve: this.technologyDatabase.frontend[frontendFramework]?.learningCurve || 3,
       },
       backend: {
         framework: backendFramework,
@@ -370,17 +370,17 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         reasoning: this.getBackendReasoning(backendFramework, backendLanguage, requirements),
         alternatives: this.getBackendAlternatives(backendFramework, backendLanguage),
         complexity: this.getBackendComplexity(backendFramework),
-        learningCurve: this.getBackendLearningCurve(backendFramework)
+        learningCurve: this.getBackendLearningCurve(backendFramework),
       },
       database: {
         type: databaseType,
         specific: specificDatabase,
         reasoning: this.getDatabaseReasoning(specificDatabase, requirements),
         alternatives: this.getDatabaseAlternatives(specificDatabase),
-        complexity: this.technologyDatabase.databases[specificDatabase]?.complexity || 3
+        complexity: this.technologyDatabase.databases[specificDatabase]?.complexity || 3,
       },
       integrations,
-      deployment
+      deployment,
     };
   }
 
@@ -392,7 +392,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         name: 'Auth0',
         purpose: 'User authentication and authorization',
         priority: 'essential',
-        complexity: 2
+        complexity: 2,
       });
     }
 
@@ -401,7 +401,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         name: 'Stripe',
         purpose: 'Payment processing',
         priority: 'essential',
-        complexity: 3
+        complexity: 3,
       });
     }
 
@@ -410,7 +410,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         name: 'SendGrid',
         purpose: 'Email delivery service',
         priority: 'recommended',
-        complexity: 2
+        complexity: 2,
       });
     }
 
@@ -419,7 +419,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         name: 'AWS S3',
         purpose: 'File storage and CDN',
         priority: 'recommended',
-        complexity: 2
+        complexity: 2,
       });
     }
 
@@ -428,7 +428,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         name: 'Google Analytics',
         purpose: 'Web analytics and user tracking',
         priority: 'optional',
-        complexity: 1
+        complexity: 1,
       });
     }
 
@@ -442,7 +442,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         reasoning: 'Enterprise-grade infrastructure with high availability and scalability',
         alternatives: ['Google Cloud', 'Digital Ocean'],
         complexity: 4,
-        cost: 'High ($200-1000+/month)'
+        cost: 'High ($200-1000+/month)',
       };
     } else if (scalability === 'large' || budget === 'standard') {
       return {
@@ -450,7 +450,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         reasoning: 'Balanced performance and cost with easy deployment',
         alternatives: ['Heroku', 'Digital Ocean'],
         complexity: 2,
-        cost: 'Medium ($50-200/month)'
+        cost: 'Medium ($50-200/month)',
       };
     } else {
       return {
@@ -458,7 +458,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         reasoning: 'Cost-effective solution for small to medium applications',
         alternatives: ['GitHub Pages', 'Surge.sh'],
         complexity: 1,
-        cost: 'Low ($0-50/month)'
+        cost: 'Low ($0-50/month)',
       };
     }
   }
@@ -474,7 +474,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
       cons: ['Scaling challenges', 'Technology lock-in', 'Large codebase'],
       complexity: 2,
       suitability: this.calculateMonolithicSuitability(requirements),
-      reasoning: 'Best for small to medium applications with simple requirements'
+      reasoning: 'Best for small to medium applications with simple requirements',
     });
 
     // Microservices architecture
@@ -486,7 +486,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         cons: ['Complex deployment', 'Network overhead', 'Data consistency'],
         complexity: 5,
         suitability: this.calculateMicroservicesSuitability(requirements),
-        reasoning: 'Recommended for large-scale applications with multiple teams'
+        reasoning: 'Recommended for large-scale applications with multiple teams',
       });
     }
 
@@ -499,7 +499,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         cons: ['Vendor lock-in', 'Cold start latency', 'Limited runtime'],
         complexity: 3,
         suitability: this.calculateServerlessSuitability(requirements),
-        reasoning: 'Great for event-driven applications and rapid prototyping'
+        reasoning: 'Great for event-driven applications and rapid prototyping',
       });
     }
 
@@ -512,7 +512,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
         cons: ['Limited dynamic content', 'Build complexity', 'API dependencies'],
         complexity: 2,
         suitability: this.calculateJAMstackSuitability(requirements),
-        reasoning: 'Perfect for content-heavy sites with good performance requirements'
+        reasoning: 'Perfect for content-heavy sites with good performance requirements',
       });
     }
 
@@ -522,12 +522,24 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
   private calculateMonolithicSuitability(requirements: ProjectRequirements): number {
     let score = 70; // Base score
 
-    if (requirements.userType === 'beginner') score += 20;
-    if (requirements.timeline === 'quick') score += 15;
-    if (requirements.scalability === 'small' || requirements.scalability === 'medium') score += 10;
-    if (requirements.budget === 'minimal') score += 10;
-    if (requirements.scalability === 'enterprise') score -= 30;
-    if (requirements.features.length > 10) score -= 20;
+    if (requirements.userType === 'beginner') {
+      score += 20;
+    }
+    if (requirements.timeline === 'quick') {
+      score += 15;
+    }
+    if (requirements.scalability === 'small' || requirements.scalability === 'medium') {
+      score += 10;
+    }
+    if (requirements.budget === 'minimal') {
+      score += 10;
+    }
+    if (requirements.scalability === 'enterprise') {
+      score -= 30;
+    }
+    if (requirements.features.length > 10) {
+      score -= 20;
+    }
 
     return Math.max(0, Math.min(100, score));
   }
@@ -535,13 +547,27 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
   private calculateMicroservicesSuitability(requirements: ProjectRequirements): number {
     let score = 30; // Base score
 
-    if (requirements.scalability === 'enterprise') score += 40;
-    if (requirements.scalability === 'large') score += 25;
-    if (requirements.userType === 'advanced') score += 20;
-    if (requirements.features.length > 8) score += 15;
-    if (requirements.timeline === 'comprehensive') score += 10;
-    if (requirements.userType === 'beginner') score -= 30;
-    if (requirements.timeline === 'quick') score -= 20;
+    if (requirements.scalability === 'enterprise') {
+      score += 40;
+    }
+    if (requirements.scalability === 'large') {
+      score += 25;
+    }
+    if (requirements.userType === 'advanced') {
+      score += 20;
+    }
+    if (requirements.features.length > 8) {
+      score += 15;
+    }
+    if (requirements.timeline === 'comprehensive') {
+      score += 10;
+    }
+    if (requirements.userType === 'beginner') {
+      score -= 30;
+    }
+    if (requirements.timeline === 'quick') {
+      score -= 20;
+    }
 
     return Math.max(0, Math.min(100, score));
   }
@@ -549,12 +575,24 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
   private calculateServerlessSuitability(requirements: ProjectRequirements): number {
     let score = 50; // Base score
 
-    if (requirements.timeline === 'quick') score += 20;
-    if (requirements.budget === 'minimal') score += 15;
-    if (requirements.features.includes('event-driven')) score += 20;
-    if (requirements.features.includes('api')) score += 10;
-    if (requirements.scalability === 'enterprise') score -= 10;
-    if (requirements.features.includes('real-time')) score -= 15;
+    if (requirements.timeline === 'quick') {
+      score += 20;
+    }
+    if (requirements.budget === 'minimal') {
+      score += 15;
+    }
+    if (requirements.features.includes('event-driven')) {
+      score += 20;
+    }
+    if (requirements.features.includes('api')) {
+      score += 10;
+    }
+    if (requirements.scalability === 'enterprise') {
+      score -= 10;
+    }
+    if (requirements.features.includes('real-time')) {
+      score -= 15;
+    }
 
     return Math.max(0, Math.min(100, score));
   }
@@ -562,28 +600,42 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
   private calculateJAMstackSuitability(requirements: ProjectRequirements): number {
     let score = 40; // Base score
 
-    if (requirements.features.includes('static content')) score += 25;
-    if (requirements.features.includes('blog')) score += 20;
-    if (requirements.features.includes('documentation')) score += 20;
-    if (requirements.features.includes('high performance')) score += 15;
-    if (requirements.features.includes('seo')) score += 15;
-    if (requirements.features.includes('real-time')) score -= 20;
-    if (requirements.features.includes('complex state')) score -= 15;
+    if (requirements.features.includes('static content')) {
+      score += 25;
+    }
+    if (requirements.features.includes('blog')) {
+      score += 20;
+    }
+    if (requirements.features.includes('documentation')) {
+      score += 20;
+    }
+    if (requirements.features.includes('high performance')) {
+      score += 15;
+    }
+    if (requirements.features.includes('seo')) {
+      score += 15;
+    }
+    if (requirements.features.includes('real-time')) {
+      score -= 20;
+    }
+    if (requirements.features.includes('complex state')) {
+      score -= 15;
+    }
 
     return Math.max(0, Math.min(100, score));
   }
 
   private async assessSecurityRequirements(requirements: ProjectRequirements): Promise<SecurityRequirements> {
     const hasUserAccounts = requirements.features.some(f => 
-      f.includes('authentication') || f.includes('login') || f.includes('user')
+      f.includes('authentication') || f.includes('login') || f.includes('user'),
     );
     
     const hasPayments = requirements.features.some(f => 
-      f.includes('payment') || f.includes('e-commerce') || f.includes('purchase')
+      f.includes('payment') || f.includes('e-commerce') || f.includes('purchase'),
     );
 
     const hasFileUploads = requirements.features.some(f => 
-      f.includes('upload') || f.includes('file') || f.includes('image')
+      f.includes('upload') || f.includes('file') || f.includes('image'),
     );
 
     return {
@@ -594,25 +646,25 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
           : 'Simple API access control',
         implementation: hasUserAccounts 
           ? ['OAuth providers (Google, GitHub)', 'JWT tokens', 'Refresh token rotation']
-          : ['API key validation', 'Rate limiting']
+          : ['API key validation', 'Rate limiting'],
       },
       authorization: {
         strategy: hasUserAccounts ? 'Role-Based Access Control (RBAC)' : 'Simple API Access',
         roles: hasUserAccounts ? ['user', 'admin', 'moderator'] : ['client'],
         permissions: hasUserAccounts 
           ? ['read', 'write', 'delete', 'admin'] 
-          : ['api_access']
+          : ['api_access'],
       },
       dataProtection: {
         encryption: ['TLS 1.3 in transit', 'AES-256 at rest'],
         compliance: hasPayments ? ['PCI DSS', 'GDPR'] : ['GDPR'],
-        privacy: ['Data minimization', 'Right to deletion', 'Consent management']
+        privacy: ['Data minimization', 'Right to deletion', 'Consent management'],
       },
       apiSecurity: {
         rateLimit: true,
         cors: true,
-        validation: ['Input sanitization', 'Schema validation', 'SQL injection prevention']
-      }
+        validation: ['Input sanitization', 'Schema validation', 'SQL injection prevention'],
+      },
     };
   }
 
@@ -628,7 +680,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
           : ['Browser caching', 'CDN'],
         reasoning: isHighTraffic 
           ? 'Comprehensive caching strategy for high-traffic applications'
-          : 'Basic caching for improved user experience'
+          : 'Basic caching for improved user experience',
       },
       optimization: {
         frontend: [
@@ -636,32 +688,32 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
           'Lazy loading',
           'Image optimization',
           'Bundle size optimization',
-          ...(isHighTraffic ? ['Service workers', 'Preloading'] : [])
+          ...(isHighTraffic ? ['Service workers', 'Preloading'] : []),
         ],
         backend: [
           'Database indexing',
           'Query optimization',
           'Connection pooling',
-          ...(isHighTraffic ? ['Load balancing', 'Horizontal scaling'] : [])
+          ...(isHighTraffic ? ['Load balancing', 'Horizontal scaling'] : []),
         ],
         database: [
           'Index optimization',
           'Query performance tuning',
-          ...(isHighTraffic ? ['Read replicas', 'Sharding'] : [])
-        ]
+          ...(isHighTraffic ? ['Read replicas', 'Sharding'] : []),
+        ],
       },
       monitoring: {
         tools: ['Application monitoring', 'Error tracking', ...(isHighTraffic ? ['APM', 'Infrastructure monitoring'] : [])],
         metrics: ['Response time', 'Error rate', 'Throughput', ...(isHighTraffic ? ['Resource utilization', 'Business metrics'] : [])],
-        alerting: ['Error alerts', 'Performance degradation', ...(isHighTraffic ? ['SLA breaches', 'Capacity planning'] : [])]
+        alerting: ['Error alerts', 'Performance degradation', ...(isHighTraffic ? ['SLA breaches', 'Capacity planning'] : [])],
       },
       scaling: {
         horizontal: isHighTraffic,
         vertical: true,
         strategies: isHighTraffic 
           ? ['Auto-scaling', 'Load balancing', 'Microservices']
-          : ['Vertical scaling', 'Caching']
-      }
+          : ['Vertical scaling', 'Caching'],
+      },
     };
   }
 
@@ -688,7 +740,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
       small: 1,
       medium: 2,
       large: 3,
-      enterprise: 4
+      enterprise: 4,
     };
     return complexityMap[scalability] || 2;
   }
@@ -697,7 +749,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
     const complexityMap = {
       beginner: 1,
       intermediate: 2,
-      advanced: 3
+      advanced: 3,
     };
     return complexityMap[userType] || 2;
   }
@@ -706,16 +758,26 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
     const baseHours = {
       quick: 8,
       standard: 40,
-      comprehensive: 120
+      comprehensive: 120,
     };
 
     const hours = (baseHours[timeline] || 40) * (complexity / 5);
     
-    if (hours <= 8) return '1 day';
-    if (hours <= 40) return '1 week';
-    if (hours <= 120) return '2-3 weeks';
-    if (hours <= 200) return '1 month';
-    if (hours <= 400) return '2 months';
+    if (hours <= 8) {
+      return '1 day';
+    }
+    if (hours <= 40) {
+      return '1 week';
+    }
+    if (hours <= 120) {
+      return '2-3 weeks';
+    }
+    if (hours <= 200) {
+      return '1 month';
+    }
+    if (hours <= 400) {
+      return '2 months';
+    }
     return '3+ months';
   }
 
@@ -777,7 +839,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
       react: 'Large ecosystem, excellent job market, component reusability',
       vue: 'Gentle learning curve, excellent documentation, progressive adoption',
       angular: 'Enterprise-ready, full-featured framework, strong TypeScript support',
-      svelte: 'Excellent performance, small bundle size, compile-time optimization'
+      svelte: 'Excellent performance, small bundle size, compile-time optimization',
     };
     return reasoningMap[framework] || 'Popular choice with good community support';
   }
@@ -794,7 +856,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
       nestjs: 'Enterprise architecture, decorators, dependency injection',
       django: 'Batteries included, rapid development, admin interface',
       fastapi: 'Modern Python framework, automatic API docs, high performance',
-      spring: 'Enterprise Java framework, robust ecosystem, excellent scalability'
+      spring: 'Enterprise Java framework, robust ecosystem, excellent scalability',
     };
     return reasoningMap[framework] || `Solid ${language} framework with good performance`;
   }
@@ -804,7 +866,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
       javascript: ['express', 'fastify', 'nestjs'],
       python: ['django', 'fastapi', 'flask'],
       java: ['spring'],
-      go: ['gin', 'fiber']
+      go: ['gin', 'fiber'],
     };
     
     const alternatives = languageAlternatives[language] || [];
@@ -821,7 +883,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
       flask: 2,
       spring: 4,
       gin: 2,
-      fiber: 2
+      fiber: 2,
     };
     return complexityMap[framework] || 3;
   }
@@ -836,7 +898,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
       flask: 2,
       spring: 4,
       gin: 2,
-      fiber: 2
+      fiber: 2,
     };
     return learningCurveMap[framework] || 3;
   }
@@ -846,7 +908,7 @@ Example output: ["user authentication", "real-time messaging", "file upload", "r
       postgresql: 'Powerful relational database with excellent JSON support and ACID compliance',
       mongodb: 'Flexible document database with horizontal scaling capabilities',
       mysql: 'Reliable relational database with wide hosting support',
-      redis: 'High-performance in-memory database ideal for caching and sessions'
+      redis: 'High-performance in-memory database ideal for caching and sessions',
     };
     return reasoningMap[database] || 'Reliable database choice for the requirements';
   }
@@ -861,17 +923,17 @@ export const projectAnalyzer = new ProjectAnalyzerService();
 
 // API endpoints
 export const analyzeProject = api(
-  { method: "POST", path: "/wizard/analyze" },
+  { method: 'POST', path: '/wizard/analyze' },
   async ({ description, preferences }: { 
     description: string; 
     preferences?: Partial<ProjectRequirements> 
   }): Promise<ProjectAnalysis> => {
     return await projectAnalyzer.analyzeProjectRequirements(description, preferences);
-  }
+  },
 );
 
 export const getTemplateRecommendations = api(
-  { method: "POST", path: "/wizard/templates/recommend" },
+  { method: 'POST', path: '/wizard/templates/recommend' },
   async ({ analysis }: { analysis: ProjectAnalysis }): Promise<string[]> => {
     // Return recommended template IDs based on analysis
     const templates: string[] = [];
@@ -888,5 +950,5 @@ export const getTemplateRecommendations = api(
     });
     
     return templates.slice(0, 5); // Return top 5 recommendations
-  }
+  },
 );

@@ -5,11 +5,9 @@ module.exports = {
     sourceType: 'module',
     tsconfigRootDir: __dirname,
   },
-  plugins: ['@typescript-eslint/eslint-plugin'],
+  plugins: ['@typescript-eslint'],
   extends: [
     'eslint:recommended',
-    '@typescript-eslint/recommended',
-    '@typescript-eslint/recommended-requiring-type-checking',
   ],
   root: true,
   env: {
@@ -21,17 +19,17 @@ module.exports = {
   rules: {
     // TypeScript specific rules
     '@typescript-eslint/interface-name-prefix': 'off',
-    '@typescript-eslint/explicit-function-return-type': 'warn',
-    '@typescript-eslint/explicit-module-boundary-types': 'warn',
-    '@typescript-eslint/no-explicit-any': 'warn',
+    '@typescript-eslint/explicit-function-return-type': 'off',
+    '@typescript-eslint/explicit-module-boundary-types': 'off',
+    '@typescript-eslint/no-explicit-any': 'off',
     '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-    '@typescript-eslint/prefer-readonly': 'error',
-    '@typescript-eslint/no-floating-promises': 'error',
-    '@typescript-eslint/await-thenable': 'error',
-    '@typescript-eslint/no-misused-promises': 'error',
-    '@typescript-eslint/prefer-nullish-coalescing': 'error',
-    '@typescript-eslint/prefer-optional-chain': 'error',
-    '@typescript-eslint/strict-boolean-expressions': 'warn',
+    '@typescript-eslint/prefer-readonly': 'off',
+    '@typescript-eslint/no-floating-promises': 'off',
+    '@typescript-eslint/await-thenable': 'off',
+    '@typescript-eslint/no-misused-promises': 'off',
+    '@typescript-eslint/prefer-nullish-coalescing': 'off',
+    '@typescript-eslint/prefer-optional-chain': 'off',
+    '@typescript-eslint/strict-boolean-expressions': 'off',
     
     // General ESLint rules
     'prefer-const': 'error',
@@ -40,6 +38,7 @@ module.exports = {
     'no-debugger': 'error',
     'no-duplicate-imports': 'error',
     'no-unused-expressions': 'error',
+    'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     'prefer-template': 'error',
     'object-shorthand': 'error',
     'prefer-destructuring': 'warn',

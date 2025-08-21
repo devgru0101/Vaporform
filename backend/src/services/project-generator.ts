@@ -1,8 +1,8 @@
-import { api, APICallMeta } from "encore.dev/api";
-import log from "encore.dev/log";
-import { z } from "zod";
-import { AuthData } from "./auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { api, APICallMeta } from 'encore.dev/api';
+import log from 'encore.dev/log';
+import { z } from 'zod';
+import { AuthData } from './auth';
+import Anthropic from '@anthropic-ai/sdk';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { exec } from 'child_process';
@@ -12,14 +12,14 @@ const execAsync = promisify(exec);
 
 // AI service configuration
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || "",
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
 
 // Project generation schemas
 const ProjectGenerationRequest = z.object({
   name: z.string().min(1).max(100),
   description: z.string().min(10).max(1000),
-  type: z.enum(["web", "mobile", "desktop", "api", "fullstack", "microservice", "library"]),
+  type: z.enum(['web', 'mobile', 'desktop', 'api', 'fullstack', 'microservice', 'library']),
   technology: z.object({
     frontend: z.string().optional(),
     backend: z.string().optional(),
@@ -28,7 +28,7 @@ const ProjectGenerationRequest = z.object({
     deployment: z.string().optional(),
   }).optional(),
   features: z.array(z.string()).optional(),
-  complexity: z.enum(["simple", "moderate", "complex"]).default("moderate"),
+  complexity: z.enum(['simple', 'moderate', 'complex']).default('moderate'),
   includeAuth: z.boolean().default(false),
   includeDatabase: z.boolean().default(false),
   includeTesting: z.boolean().default(true),
@@ -41,10 +41,10 @@ const TechnologyRecommendationRequest = z.object({
   projectType: z.string(),
   requirements: z.array(z.string()),
   constraints: z.object({
-    budget: z.enum(["low", "medium", "high"]).optional(),
-    timeline: z.enum(["weeks", "months", "long-term"]).optional(),
-    teamSize: z.enum(["solo", "small", "medium", "large"]).optional(),
-    experience: z.enum(["beginner", "intermediate", "expert"]).optional(),
+    budget: z.enum(['low', 'medium', 'high']).optional(),
+    timeline: z.enum(['weeks', 'months', 'long-term']).optional(),
+    teamSize: z.enum(['solo', 'small', 'medium', 'large']).optional(),
+    experience: z.enum(['beginner', 'intermediate', 'expert']).optional(),
   }).optional(),
   existingStack: z.array(z.string()).optional(),
 });
@@ -61,7 +61,7 @@ const ProjectStructureResponse = z.object({
   files: z.array(z.object({
     path: z.string(),
     content: z.string(),
-    type: z.enum(["config", "source", "test", "documentation", "build"]),
+    type: z.enum(['config', 'source', 'test', 'documentation', 'build']),
   })),
   commands: z.array(z.object({
     description: z.string(),
@@ -112,7 +112,7 @@ const TechnologyStackResponse = z.object({
 
 // AI-powered project generation endpoint
 export const generateProject = api<typeof ProjectGenerationRequest, typeof ProjectStructureResponse>(
-  { method: "POST", path: "/ai/generate-project", auth: true, expose: true },
+  { method: 'POST', path: '/ai/generate-project', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof ProjectStructureResponse>> => {
     const { userID } = meta.auth;
     const { 
@@ -127,15 +127,15 @@ export const generateProject = api<typeof ProjectGenerationRequest, typeof Proje
       includeTesting, 
       includeDocker, 
       includeCI,
-      targetPath 
+      targetPath, 
     } = req;
     
-    log.info("AI project generation request", { 
+    log.info('AI project generation request', { 
       userID, 
       name, 
       type, 
       complexity, 
-      features: features?.length || 0 
+      features: features?.length || 0, 
     });
     
     try {
@@ -192,13 +192,13 @@ Please provide:
 Focus on ${complexity} complexity level and include all requested features and integrations.`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 8000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const generationResult = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -215,10 +215,10 @@ Focus on ${complexity} complexity level and include all requested features and i
       // Generate setup commands
       const setupCommands = generateSetupCommands(req, recommendedTech);
       
-      log.info("AI project generation completed", { 
+      log.info('AI project generation completed', { 
         userID, 
         filesGenerated: allFiles.length,
-        commandsGenerated: setupCommands.length 
+        commandsGenerated: setupCommands.length, 
       });
 
       return {
@@ -226,12 +226,12 @@ Focus on ${complexity} complexity level and include all requested features and i
         files: allFiles,
         commands: setupCommands,
         recommendations: [
-          "Review generated code and customize according to your specific needs",
-          "Install dependencies using the provided commands",
-          "Configure environment variables for your deployment",
-          "Set up version control and push to your repository",
-          "Configure CI/CD pipeline if included",
-          "Review security configurations and update as needed"
+          'Review generated code and customize according to your specific needs',
+          'Install dependencies using the provided commands',
+          'Configure environment variables for your deployment',
+          'Set up version control and push to your repository',
+          'Configure CI/CD pipeline if included',
+          'Review security configurations and update as needed',
         ],
         metadata: {
           generatedAt: new Date().toISOString(),
@@ -239,27 +239,27 @@ Focus on ${complexity} complexity level and include all requested features and i
           complexity,
           totalFiles: allFiles.length,
           estimatedSetupTime: complexity === 'simple' ? '15-30 minutes' : 
-                             complexity === 'moderate' ? '30-60 minutes' : '1-2 hours',
+            complexity === 'moderate' ? '30-60 minutes' : '1-2 hours',
           technologyStack: recommendedTech,
-          aiModel: "claude-3-5-sonnet-20241022"
-        }
+          aiModel: 'claude-3-5-sonnet-20241022',
+        },
       };
 
     } catch (error) {
-      log.error("AI project generation failed", { error: error.message, userID });
-      throw new Error("Failed to generate project");
+      log.error('AI project generation failed', { error: error.message, userID });
+      throw new Error('Failed to generate project');
     }
-  }
+  },
 );
 
 // Technology stack recommendation endpoint
 export const recommendTechnologyStack = api<typeof TechnologyRecommendationRequest, typeof TechnologyStackResponse>(
-  { method: "POST", path: "/ai/recommend-stack", auth: true, expose: true },
+  { method: 'POST', path: '/ai/recommend-stack', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof TechnologyStackResponse>> => {
     const { userID } = meta.auth;
     const { projectType, requirements, constraints, existingStack } = req;
     
-    log.info("Technology recommendation request", { userID, projectType, requirementsCount: requirements.length });
+    log.info('Technology recommendation request', { userID, projectType, requirementsCount: requirements.length });
     
     try {
       const systemPrompt = `You are a technology consultant and software architect expert. Analyze the project requirements and provide comprehensive technology stack recommendations.
@@ -296,13 +296,13 @@ Please provide:
 5. Confidence scores for each recommendation`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 6000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const recommendation = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -310,25 +310,25 @@ Please provide:
       // Parse AI recommendation into structured data
       const structuredRecommendation = parseStackRecommendation(recommendation);
       
-      log.info("Technology recommendation completed", { userID, recommendationLength: recommendation.length });
+      log.info('Technology recommendation completed', { userID, recommendationLength: recommendation.length });
 
       return structuredRecommendation;
 
     } catch (error) {
-      log.error("Technology recommendation failed", { error: error.message, userID });
-      throw new Error("Failed to recommend technology stack");
+      log.error('Technology recommendation failed', { error: error.message, userID });
+      throw new Error('Failed to recommend technology stack');
     }
-  }
+  },
 );
 
 // Template customization endpoint
 export const customizeTemplate = api<typeof TemplateCustomizationRequest, typeof ProjectStructureResponse>(
-  { method: "POST", path: "/ai/customize-template", auth: true, expose: true },
+  { method: 'POST', path: '/ai/customize-template', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof ProjectStructureResponse>> => {
     const { userID } = meta.auth;
     const { templateType, customizations, integrations, optimizations } = req;
     
-    log.info("Template customization request", { userID, templateType, customizationsCount: Object.keys(customizations).length });
+    log.info('Template customization request', { userID, templateType, customizationsCount: Object.keys(customizations).length });
     
     try {
       const systemPrompt = `You are a template customization expert. Take an existing project template and apply intelligent customizations based on user requirements.
@@ -365,13 +365,13 @@ Please provide:
 6. Updated documentation`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 7000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const customizationResult = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -379,15 +379,15 @@ Please provide:
       // Parse customization result
       const customizedProject = await parseTemplateCustomization(customizationResult, req);
       
-      log.info("Template customization completed", { userID, filesCustomized: customizedProject.files.length });
+      log.info('Template customization completed', { userID, filesCustomized: customizedProject.files.length });
 
       return customizedProject;
 
     } catch (error) {
-      log.error("Template customization failed", { error: error.message, userID });
-      throw new Error("Failed to customize template");
+      log.error('Template customization failed', { error: error.message, userID });
+      throw new Error('Failed to customize template');
     }
-  }
+  },
 );
 
 // Utility functions
@@ -397,27 +397,27 @@ async function generateTechnologyRecommendations(type: string, description: stri
   const recommendations: any = {};
   
   switch (type) {
-    case "web":
-    case "fullstack":
-      recommendations.frontend = "React";
-      recommendations.backend = "Node.js";
-      recommendations.database = "PostgreSQL";
+    case 'web':
+    case 'fullstack':
+      recommendations.frontend = 'React';
+      recommendations.backend = 'Node.js';
+      recommendations.database = 'PostgreSQL';
       break;
-    case "api":
-    case "microservice":
-      recommendations.backend = "Node.js";
-      recommendations.database = "PostgreSQL";
+    case 'api':
+    case 'microservice':
+      recommendations.backend = 'Node.js';
+      recommendations.database = 'PostgreSQL';
       break;
-    case "mobile":
-      recommendations.frontend = "React Native";
-      recommendations.backend = "Node.js";
+    case 'mobile':
+      recommendations.frontend = 'React Native';
+      recommendations.backend = 'Node.js';
       break;
     default:
-      recommendations.backend = "Node.js";
+      recommendations.backend = 'Node.js';
   }
   
-  recommendations.testing = "Jest";
-  recommendations.deployment = "Docker";
+  recommendations.testing = 'Jest';
+  recommendations.deployment = 'Docker';
   
   return recommendations;
 }
@@ -428,53 +428,53 @@ async function parseProjectGeneration(aiResponse: string, request: any): Promise
     name: request.name,
     type: request.type,
     directories: [
-      "src",
-      "tests",
-      "docs",
-      "config",
-      request.includeDocker ? "docker" : null,
-      request.includeCI ? ".github/workflows" : null
+      'src',
+      'tests',
+      'docs',
+      'config',
+      request.includeDocker ? 'docker' : null,
+      request.includeCI ? '.github/workflows' : null,
     ].filter(Boolean),
-    files: []
+    files: [],
   };
 
   const files = [];
   
   // Generate basic files based on project type
-  if (request.type === "web" || request.type === "fullstack") {
+  if (request.type === 'web' || request.type === 'fullstack') {
     files.push({
-      path: "package.json",
+      path: 'package.json',
       content: generatePackageJson(request),
-      type: "config"
+      type: 'config',
     });
     
     files.push({
-      path: "src/index.tsx",
+      path: 'src/index.tsx',
       content: generateReactIndex(),
-      type: "source"
+      type: 'source',
     });
     
     if (request.includeTesting) {
       files.push({
-        path: "src/__tests__/App.test.tsx",
+        path: 'src/__tests__/App.test.tsx',
         content: generateReactTest(),
-        type: "test"
+        type: 'test',
       });
     }
   }
   
   if (request.includeDocker) {
     files.push({
-      path: "Dockerfile",
+      path: 'Dockerfile',
       content: generateDockerfile(request),
-      type: "build"
+      type: 'build',
     });
   }
   
   files.push({
-    path: "README.md",
+    path: 'README.md',
     content: generateReadme(request),
-    type: "documentation"
+    type: 'documentation',
   });
 
   return { structure, files };
@@ -485,25 +485,25 @@ async function generateAdditionalFiles(request: any, technology: any): Promise<a
   
   if (request.includeAuth) {
     additionalFiles.push({
-      path: "src/auth/AuthService.ts",
+      path: 'src/auth/AuthService.ts',
       content: generateAuthService(),
-      type: "source"
+      type: 'source',
     });
   }
   
   if (request.includeDatabase) {
     additionalFiles.push({
-      path: "src/database/schema.sql",
+      path: 'src/database/schema.sql',
       content: generateDatabaseSchema(),
-      type: "config"
+      type: 'config',
     });
   }
   
   if (request.includeCI) {
     additionalFiles.push({
-      path: ".github/workflows/ci.yml",
+      path: '.github/workflows/ci.yml',
       content: generateCIWorkflow(),
-      type: "build"
+      type: 'build',
     });
   }
   
@@ -514,38 +514,38 @@ function generateSetupCommands(request: any, technology: any): any[] {
   const commands = [];
   
   commands.push({
-    description: "Install dependencies",
-    command: "npm install",
-    order: 1
+    description: 'Install dependencies',
+    command: 'npm install',
+    order: 1,
   });
   
   if (request.includeDatabase) {
     commands.push({
-      description: "Setup database",
-      command: "npm run db:setup",
-      order: 2
+      description: 'Setup database',
+      command: 'npm run db:setup',
+      order: 2,
     });
   }
   
   if (request.includeDocker) {
     commands.push({
-      description: "Build Docker image",
-      command: "docker build -t " + request.name + " .",
-      order: 3
+      description: 'Build Docker image',
+      command: `docker build -t ${  request.name  } .`,
+      order: 3,
     });
   }
   
   commands.push({
-    description: "Start development server",
-    command: "npm run dev",
-    order: 4
+    description: 'Start development server',
+    command: 'npm run dev',
+    order: 4,
   });
   
   if (request.includeTesting) {
     commands.push({
-      description: "Run tests",
-      command: "npm test",
-      order: 5
+      description: 'Run tests',
+      command: 'npm test',
+      order: 5,
     });
   }
   
@@ -558,57 +558,57 @@ function parseStackRecommendation(aiResponse: string): any {
     recommended: {
       frontend: [
         {
-          name: "React",
-          reason: "Industry standard with excellent ecosystem",
-          pros: ["Large community", "Excellent tooling", "Flexible"],
-          cons: ["Learning curve", "Frequent updates"],
-          confidence: 0.9
-        }
+          name: 'React',
+          reason: 'Industry standard with excellent ecosystem',
+          pros: ['Large community', 'Excellent tooling', 'Flexible'],
+          cons: ['Learning curve', 'Frequent updates'],
+          confidence: 0.9,
+        },
       ],
       backend: [
         {
-          name: "Node.js",
-          reason: "JavaScript everywhere, excellent performance",
-          pros: ["Same language as frontend", "Great performance", "Large ecosystem"],
-          cons: ["Single-threaded", "Callback complexity"],
-          confidence: 0.85
-        }
+          name: 'Node.js',
+          reason: 'JavaScript everywhere, excellent performance',
+          pros: ['Same language as frontend', 'Great performance', 'Large ecosystem'],
+          cons: ['Single-threaded', 'Callback complexity'],
+          confidence: 0.85,
+        },
       ],
       database: [
         {
-          name: "PostgreSQL",
-          reason: "Robust, scalable, excellent features",
-          pros: ["ACID compliance", "Advanced features", "Reliable"],
-          cons: ["More complex than NoSQL", "Resource intensive"],
-          confidence: 0.8
-        }
+          name: 'PostgreSQL',
+          reason: 'Robust, scalable, excellent features',
+          pros: ['ACID compliance', 'Advanced features', 'Reliable'],
+          cons: ['More complex than NoSQL', 'Resource intensive'],
+          confidence: 0.8,
+        },
       ],
       tools: [
         {
-          name: "TypeScript",
-          category: "Language",
-          reason: "Type safety and better development experience"
+          name: 'TypeScript',
+          category: 'Language',
+          reason: 'Type safety and better development experience',
         },
         {
-          name: "Jest",
-          category: "Testing",
-          reason: "Comprehensive testing framework"
-        }
-      ]
+          name: 'Jest',
+          category: 'Testing',
+          reason: 'Comprehensive testing framework',
+        },
+      ],
     },
     alternatives: [
       {
-        stack: { frontend: "Vue.js", backend: "Python", database: "MongoDB" },
-        scenario: "Rapid prototyping",
-        tradeoffs: "Faster development but less ecosystem support"
-      }
+        stack: { frontend: 'Vue.js', backend: 'Python', database: 'MongoDB' },
+        scenario: 'Rapid prototyping',
+        tradeoffs: 'Faster development but less ecosystem support',
+      },
     ],
     integrationSuggestions: [
-      "Use REST APIs for communication",
-      "Implement proper authentication flow",
-      "Set up monitoring and logging"
+      'Use REST APIs for communication',
+      'Implement proper authentication flow',
+      'Set up monitoring and logging',
     ],
-    migrationPath: "Start with core functionality, then add advanced features"
+    migrationPath: 'Start with core functionality, then add advanced features',
   };
 }
 
@@ -618,26 +618,26 @@ async function parseTemplateCustomization(aiResponse: string, request: any): Pro
     structure: { customized: true },
     files: [
       {
-        path: "src/customized.ts",
-        content: "// Customized implementation based on requirements",
-        type: "source"
-      }
+        path: 'src/customized.ts',
+        content: '// Customized implementation based on requirements',
+        type: 'source',
+      },
     ],
     commands: [
       {
-        description: "Setup customized template",
-        command: "npm run setup:custom",
-        order: 1
-      }
+        description: 'Setup customized template',
+        command: 'npm run setup:custom',
+        order: 1,
+      },
     ],
     recommendations: [
-      "Review customized code for your specific needs",
-      "Test all customizations thoroughly"
+      'Review customized code for your specific needs',
+      'Test all customizations thoroughly',
     ],
     metadata: {
       customizedAt: new Date().toISOString(),
-      templateType: request.templateType
-    }
+      templateType: request.templateType,
+    },
   };
 }
 
@@ -645,26 +645,26 @@ async function parseTemplateCustomization(aiResponse: string, request: any): Pro
 function generatePackageJson(request: any): string {
   const packageJson = {
     name: request.name,
-    version: "1.0.0",
+    version: '1.0.0',
     description: request.description,
-    main: "src/index.tsx",
+    main: 'src/index.tsx',
     scripts: {
-      dev: "vite",
-      build: "vite build",
-      test: "jest",
-      lint: "eslint src/**/*.{ts,tsx}"
+      dev: 'vite',
+      build: 'vite build',
+      test: 'jest',
+      lint: 'eslint src/**/*.{ts,tsx}',
     },
     dependencies: {
-      react: "^18.0.0",
-      "react-dom": "^18.0.0"
+      react: '^18.0.0',
+      'react-dom': '^18.0.0',
     },
     devDependencies: {
-      "@types/react": "^18.0.0",
-      "@types/react-dom": "^18.0.0",
-      typescript: "^5.0.0",
-      vite: "^4.0.0",
-      jest: "^29.0.0"
-    }
+      '@types/react': '^18.0.0',
+      '@types/react-dom': '^18.0.0',
+      typescript: '^5.0.0',
+      vite: '^4.0.0',
+      jest: '^29.0.0',
+    },
   };
   
   return JSON.stringify(packageJson, null, 2);

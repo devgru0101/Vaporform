@@ -1,5 +1,5 @@
-import { api } from "encore.dev/api";
-import { ProjectFiles } from "./project-templates";
+import { api } from 'encore.dev/api';
+import { ProjectFiles } from './project-templates';
 
 export interface IntegrationConfig {
   name: string;
@@ -36,7 +36,7 @@ export interface Integration {
 }
 
 class IntegrationSetupService {
-  private integrations: Map<string, Integration> = new Map();
+  private readonly integrations: Map<string, Integration> = new Map();
 
   constructor() {
     this.initializeIntegrations();
@@ -57,34 +57,34 @@ class IntegrationSetupService {
         'Configure callback URLs',
         'Set up social connections',
         'Configure JWT settings',
-        'Test authentication flow'
+        'Test authentication flow',
       ],
       configFields: [
         {
           name: 'domain',
           type: 'string',
           description: 'Auth0 domain',
-          required: true
+          required: true,
         },
         {
           name: 'clientId',
           type: 'secret',
           description: 'Auth0 client ID',
-          required: true
+          required: true,
         },
         {
           name: 'clientSecret',
           type: 'secret',
           description: 'Auth0 client secret',
-          required: true
+          required: true,
         },
         {
           name: 'scope',
           type: 'string',
           description: 'OAuth scope',
           required: false,
-          default: 'openid profile email'
-        }
+          default: 'openid profile email',
+        },
       ],
       dependencies: ['@auth0/auth0-react', '@auth0/nextjs-auth0'],
       codeSnippets: {
@@ -109,9 +109,9 @@ app.use('/api/protected', auth.authenticate(), (req, res) => {
         config: `AUTH0_DOMAIN={{domain}}
 AUTH0_CLIENT_ID={{clientId}}
 AUTH0_CLIENT_SECRET={{clientSecret}}
-AUTH0_SCOPE={{scope}}`
+AUTH0_SCOPE={{scope}}`,
       },
-      envVariables: ['AUTH0_DOMAIN', 'AUTH0_CLIENT_ID', 'AUTH0_CLIENT_SECRET', 'AUTH0_SCOPE']
+      envVariables: ['AUTH0_DOMAIN', 'AUTH0_CLIENT_ID', 'AUTH0_CLIENT_SECRET', 'AUTH0_SCOPE'],
     });
 
     this.addIntegration({
@@ -127,27 +127,27 @@ AUTH0_SCOPE={{scope}}`
         'Enable Authentication',
         'Configure sign-in methods',
         'Download service account key',
-        'Initialize Firebase SDK'
+        'Initialize Firebase SDK',
       ],
       configFields: [
         {
           name: 'apiKey',
           type: 'secret',
           description: 'Firebase API key',
-          required: true
+          required: true,
         },
         {
           name: 'authDomain',
           type: 'string',
           description: 'Firebase auth domain',
-          required: true
+          required: true,
         },
         {
           name: 'projectId',
           type: 'string',
           description: 'Firebase project ID',
-          required: true
-        }
+          required: true,
+        },
       ],
       dependencies: ['firebase', 'firebase-admin'],
       codeSnippets: {
@@ -170,9 +170,9 @@ admin.initializeApp({
 
 export const verifyToken = async (token: string) => {
   return await admin.auth().verifyIdToken(token);
-};`
+};`,
       },
-      envVariables: ['FIREBASE_API_KEY', 'FIREBASE_AUTH_DOMAIN', 'FIREBASE_PROJECT_ID']
+      envVariables: ['FIREBASE_API_KEY', 'FIREBASE_AUTH_DOMAIN', 'FIREBASE_PROJECT_ID'],
     });
 
     // Payment Integrations
@@ -189,26 +189,26 @@ export const verifyToken = async (token: string) => {
         'Get API keys',
         'Set up webhooks',
         'Configure payment methods',
-        'Test with test keys'
+        'Test with test keys',
       ],
       configFields: [
         {
           name: 'publishableKey',
           type: 'secret',
           description: 'Stripe publishable key',
-          required: true
+          required: true,
         },
         {
           name: 'secretKey',
           type: 'secret',
           description: 'Stripe secret key',
-          required: true
+          required: true,
         },
         {
           name: 'webhookSecret',
           type: 'secret',
           description: 'Webhook endpoint secret',
-          required: false
+          required: false,
         },
         {
           name: 'currency',
@@ -216,8 +216,8 @@ export const verifyToken = async (token: string) => {
           description: 'Default currency',
           required: true,
           default: 'usd',
-          options: ['usd', 'eur', 'gbp', 'cad', 'aud']
-        }
+          options: ['usd', 'eur', 'gbp', 'cad', 'aud'],
+        },
       ],
       dependencies: ['stripe', '@stripe/stripe-js', '@stripe/react-stripe-js'],
       codeSnippets: {
@@ -248,9 +248,9 @@ app.post('/api/create-payment-intent', async (req, res) => {
   });
   
   res.json({ clientSecret: paymentIntent.client_secret });
-});`
+});`,
       },
-      envVariables: ['STRIPE_PUBLISHABLE_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']
+      envVariables: ['STRIPE_PUBLISHABLE_KEY', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'],
     });
 
     // Email Service Integrations
@@ -267,27 +267,27 @@ app.post('/api/create-payment-intent', async (req, res) => {
         'Verify sender identity',
         'Generate API key',
         'Configure domain authentication',
-        'Test email sending'
+        'Test email sending',
       ],
       configFields: [
         {
           name: 'apiKey',
           type: 'secret',
           description: 'SendGrid API key',
-          required: true
+          required: true,
         },
         {
           name: 'fromEmail',
           type: 'string',
           description: 'Default sender email',
-          required: true
+          required: true,
         },
         {
           name: 'fromName',
           type: 'string',
           description: 'Default sender name',
-          required: false
-        }
+          required: false,
+        },
       ],
       dependencies: ['@sendgrid/mail'],
       codeSnippets: {
@@ -307,9 +307,9 @@ export const sendEmail = async (to: string, subject: string, content: string) =>
   };
   
   await sgMail.send(msg);
-};`
+};`,
       },
-      envVariables: ['SENDGRID_API_KEY', 'SENDGRID_FROM_EMAIL', 'SENDGRID_FROM_NAME']
+      envVariables: ['SENDGRID_API_KEY', 'SENDGRID_FROM_EMAIL', 'SENDGRID_FROM_NAME'],
     });
 
     // Cloud Storage Integrations
@@ -326,20 +326,20 @@ export const sendEmail = async (to: string, subject: string, content: string) =>
         'Create S3 bucket',
         'Set up IAM user with S3 permissions',
         'Configure CORS policy',
-        'Test file upload/download'
+        'Test file upload/download',
       ],
       configFields: [
         {
           name: 'accessKeyId',
           type: 'secret',
           description: 'AWS access key ID',
-          required: true
+          required: true,
         },
         {
           name: 'secretAccessKey',
           type: 'secret',
           description: 'AWS secret access key',
-          required: true
+          required: true,
         },
         {
           name: 'region',
@@ -347,14 +347,14 @@ export const sendEmail = async (to: string, subject: string, content: string) =>
           description: 'AWS region',
           required: true,
           default: 'us-east-1',
-          options: ['us-east-1', 'us-west-2', 'eu-west-1', 'ap-southeast-1']
+          options: ['us-east-1', 'us-west-2', 'eu-west-1', 'ap-southeast-1'],
         },
         {
           name: 'bucketName',
           type: 'string',
           description: 'S3 bucket name',
-          required: true
-        }
+          required: true,
+        },
       ],
       dependencies: ['aws-sdk', '@aws-sdk/client-s3'],
       codeSnippets: {
@@ -377,9 +377,9 @@ export const uploadFile = async (key: string, body: Buffer, contentType: string)
   });
   
   return await s3Client.send(command);
-};`
+};`,
       },
-      envVariables: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION', 'AWS_BUCKET_NAME']
+      envVariables: ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_REGION', 'AWS_BUCKET_NAME'],
     });
 
     // Analytics Integrations
@@ -396,22 +396,22 @@ export const uploadFile = async (key: string, body: Buffer, contentType: string)
         'Set up property',
         'Get tracking ID',
         'Install tracking code',
-        'Verify tracking'
+        'Verify tracking',
       ],
       configFields: [
         {
           name: 'trackingId',
           type: 'string',
           description: 'Google Analytics tracking ID',
-          required: true
+          required: true,
         },
         {
           name: 'enableDebugging',
           type: 'boolean',
           description: 'Enable debug mode',
           required: false,
-          default: false
-        }
+          default: false,
+        },
       ],
       dependencies: ['gtag'],
       codeSnippets: {
@@ -439,9 +439,9 @@ export const useGoogleAnalytics = () => {
     gtag('js', new Date());
     gtag('config', process.env.REACT_APP_GA_TRACKING_ID);
   }, []);
-};`
+};`,
       },
-      envVariables: ['GA_TRACKING_ID']
+      envVariables: ['GA_TRACKING_ID'],
     });
 
     // Database Integrations
@@ -458,27 +458,27 @@ export const useGoogleAnalytics = () => {
         'Set up database schema',
         'Configure authentication',
         'Generate API keys',
-        'Set up row level security'
+        'Set up row level security',
       ],
       configFields: [
         {
           name: 'url',
           type: 'string',
           description: 'Supabase project URL',
-          required: true
+          required: true,
         },
         {
           name: 'anonKey',
           type: 'secret',
           description: 'Supabase anon key',
-          required: true
+          required: true,
         },
         {
           name: 'serviceRoleKey',
           type: 'secret',
           description: 'Supabase service role key',
-          required: false
-        }
+          required: false,
+        },
       ],
       dependencies: ['@supabase/supabase-js'],
       codeSnippets: {
@@ -493,9 +493,9 @@ export const supabase = createClient(supabaseUrl, supabaseKey);`,
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-export const supabase = createClient(supabaseUrl, supabaseKey);`
+export const supabase = createClient(supabaseUrl, supabaseKey);`,
       },
-      envVariables: ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY']
+      envVariables: ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'],
     });
 
     // Monitoring Integrations
@@ -512,14 +512,14 @@ export const supabase = createClient(supabaseUrl, supabaseKey);`
         'Create new project',
         'Get DSN key',
         'Install SDK',
-        'Configure error reporting'
+        'Configure error reporting',
       ],
       configFields: [
         {
           name: 'dsn',
           type: 'secret',
           description: 'Sentry DSN',
-          required: true
+          required: true,
         },
         {
           name: 'environment',
@@ -527,15 +527,15 @@ export const supabase = createClient(supabaseUrl, supabaseKey);`
           description: 'Environment',
           required: true,
           default: 'production',
-          options: ['development', 'staging', 'production']
+          options: ['development', 'staging', 'production'],
         },
         {
           name: 'tracesSampleRate',
           type: 'number',
           description: 'Performance monitoring sample rate',
           required: false,
-          default: 0.1
-        }
+          default: 0.1,
+        },
       ],
       dependencies: ['@sentry/react', '@sentry/node'],
       codeSnippets: {
@@ -559,9 +559,9 @@ Sentry.init({
 });
 
 app.use(Sentry.Handlers.requestHandler());
-app.use(Sentry.Handlers.errorHandler());`
+app.use(Sentry.Handlers.errorHandler());`,
       },
-      envVariables: ['SENTRY_DSN']
+      envVariables: ['SENTRY_DSN'],
     });
   }
 
@@ -584,13 +584,15 @@ app.use(Sentry.Handlers.errorHandler());`
 
   async generateIntegrationFiles(
     integrationIds: string[],
-    configurations: Record<string, any>
+    configurations: Record<string, any>,
   ): Promise<ProjectFiles> {
     const files: ProjectFiles = {};
 
     for (const integrationId of integrationIds) {
       const integration = await this.getIntegration(integrationId);
-      if (!integration) continue;
+      if (!integration) {
+        continue;
+      }
 
       const config = configurations[integrationId] || {};
 
@@ -604,7 +606,7 @@ app.use(Sentry.Handlers.errorHandler());`
       if (integration.codeSnippets.config) {
         files[`config/${integrationId}.ts`] = this.processTemplate(
           integration.codeSnippets.config,
-          config
+          config,
         );
       }
 
@@ -612,7 +614,7 @@ app.use(Sentry.Handlers.errorHandler());`
       if (integration.codeSnippets.backend) {
         files[`src/services/${integrationId}.ts`] = this.processTemplate(
           integration.codeSnippets.backend,
-          config
+          config,
         );
       }
 
@@ -620,7 +622,7 @@ app.use(Sentry.Handlers.errorHandler());`
       if (integration.codeSnippets.frontend) {
         files[`src/hooks/use${this.capitalize(integrationId)}.ts`] = this.processTemplate(
           integration.codeSnippets.frontend,
-          config
+          config,
         );
       }
 
@@ -628,7 +630,7 @@ app.use(Sentry.Handlers.errorHandler());`
       if (integration.codeSnippets.types) {
         files[`src/types/${integrationId}.ts`] = this.processTemplate(
           integration.codeSnippets.types,
-          config
+          config,
         );
       }
 
@@ -651,7 +653,7 @@ app.use(Sentry.Handlers.errorHandler());`
 
     for (const envVar of integration.envVariables) {
       const configField = integration.configFields.find(field => 
-        envVar.toLowerCase().includes(field.name.toLowerCase())
+        envVar.toLowerCase().includes(field.name.toLowerCase()),
       );
       
       if (configField) {
@@ -693,8 +695,8 @@ ${integration.setupSteps.map((step, index) => `${index + 1}. ${step}`).join('\n'
 ## Configuration
 
 ${integration.configFields.map(field => 
-  `- **${field.name}** (${field.type}): ${field.description}${field.required ? ' *Required*' : ''}`
-).join('\n')}
+    `- **${field.name}** (${field.type}): ${field.description}${field.required ? ' *Required*' : ''}`,
+  ).join('\n')}
 
 ## Environment Variables
 
@@ -715,7 +717,7 @@ For more information, visit: ${integration.documentation}
 
   private generateIntegrationsIndex(integrationIds: string[]): string {
     const imports = integrationIds.map(id => 
-      `export * from './${id}';`
+      `export * from './${id}';`,
     ).join('\n');
 
     return `// Auto-generated integrations index
@@ -729,7 +731,7 @@ ${integrationIds.map(id => `  '${id}'`).join(',\n')}
 
   async validateIntegrationConfig(
     integrationId: string, 
-    config: Record<string, any>
+    config: Record<string, any>,
   ): Promise<{ isValid: boolean; errors: string[] }> {
     const integration = await this.getIntegration(integrationId);
     if (!integration) {
@@ -769,7 +771,7 @@ ${integrationIds.map(id => `  '${id}'`).join(',\n')}
 
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   }
 
@@ -780,29 +782,34 @@ ${integrationIds.map(id => `  '${id}'`).join(',\n')}
     dependencies: string[];
   }> {
     const integrations = await Promise.all(
-      integrationIds.map(id => this.getIntegration(id))
+      integrationIds.map(id => this.getIntegration(id)),
     );
 
     const validIntegrations = integrations.filter(Boolean) as Integration[];
 
     const totalComplexity = validIntegrations.reduce((sum, integration) => 
-      sum + integration.complexity, 0
+      sum + integration.complexity, 0,
     );
 
     const dependencies = Array.from(new Set(
-      validIntegrations.flatMap(integration => integration.dependencies)
+      validIntegrations.flatMap(integration => integration.dependencies),
     ));
 
     // Estimate setup time based on complexity
     const estimatedHours = validIntegrations.reduce((sum, integration) => 
-      sum + (integration.complexity * 2), 0
+      sum + (integration.complexity * 2), 0,
     );
 
     let estimatedSetupTime: string;
-    if (estimatedHours <= 4) estimatedSetupTime = '2-4 hours';
-    else if (estimatedHours <= 8) estimatedSetupTime = '4-8 hours';
-    else if (estimatedHours <= 16) estimatedSetupTime = '1-2 days';
-    else estimatedSetupTime = '3+ days';
+    if (estimatedHours <= 4) {
+      estimatedSetupTime = '2-4 hours';
+    } else if (estimatedHours <= 8) {
+      estimatedSetupTime = '4-8 hours';
+    } else if (estimatedHours <= 16) {
+      estimatedSetupTime = '1-2 days';
+    } else {
+      estimatedSetupTime = '3+ days';
+    }
 
     // Estimate monthly costs
     const paidServices = validIntegrations.filter(i => i.pricing === 'paid').length;
@@ -823,7 +830,7 @@ ${integrationIds.map(id => `  '${id}'`).join(',\n')}
       totalComplexity,
       estimatedSetupTime,
       monthlyCosting,
-      dependencies
+      dependencies,
     };
   }
 }
@@ -832,55 +839,55 @@ export const integrationSetup = new IntegrationSetupService();
 
 // API endpoints
 export const getAllIntegrations = api(
-  { method: "GET", path: "/integrations" },
+  { method: 'GET', path: '/integrations' },
   async (): Promise<Integration[]> => {
     return await integrationSetup.getAllIntegrations();
-  }
+  },
 );
 
 export const getIntegration = api(
-  { method: "GET", path: "/integrations/:integrationId" },
+  { method: 'GET', path: '/integrations/:integrationId' },
   async ({ integrationId }: { integrationId: string }): Promise<Integration | null> => {
     return await integrationSetup.getIntegration(integrationId);
-  }
+  },
 );
 
 export const getIntegrationsByCategory = api(
-  { method: "GET", path: "/integrations/category/:category" },
+  { method: 'GET', path: '/integrations/category/:category' },
   async ({ category }: { category: string }): Promise<Integration[]> => {
     return await integrationSetup.getIntegrationsByCategory(category);
-  }
+  },
 );
 
 export const validateIntegrationConfig = api(
-  { method: "POST", path: "/integrations/:integrationId/validate" },
+  { method: 'POST', path: '/integrations/:integrationId/validate' },
   async ({ 
     integrationId, 
-    config 
+    config, 
   }: { 
     integrationId: string; 
     config: Record<string, any> 
   }) => {
     return await integrationSetup.validateIntegrationConfig(integrationId, config);
-  }
+  },
 );
 
 export const getIntegrationEstimation = api(
-  { method: "POST", path: "/integrations/estimate" },
+  { method: 'POST', path: '/integrations/estimate' },
   async ({ integrationIds }: { integrationIds: string[] }) => {
     return await integrationSetup.getIntegrationEstimation(integrationIds);
-  }
+  },
 );
 
 export const generateIntegrationFiles = api(
-  { method: "POST", path: "/integrations/generate" },
+  { method: 'POST', path: '/integrations/generate' },
   async ({ 
     integrationIds, 
-    configurations 
+    configurations, 
   }: { 
     integrationIds: string[]; 
     configurations: Record<string, any> 
   }): Promise<ProjectFiles> => {
     return await integrationSetup.generateIntegrationFiles(integrationIds, configurations);
-  }
+  },
 );

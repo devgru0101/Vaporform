@@ -1,10 +1,11 @@
-import { api, APICallMeta } from "encore.dev/api";
-import log from "encore.dev/log";
-import { z } from "zod";
-import { AuthData } from "./auth";
-import { v4 as uuidv4 } from "uuid";
-import { WebSocket, WebSocketServer } from "ws";
-import { IncomingMessage } from "http";
+import { api } from 'encore.dev/api';
+import { APICallMeta } from 'encore.dev';
+import log from 'encore.dev/log';
+import { z } from 'zod';
+import { AuthData } from './auth';
+import { v4 as uuidv4 } from 'uuid';
+import { WebSocket, WebSocketServer } from 'ws';
+import { IncomingMessage } from 'http';
 
 // WebSocket interfaces
 export interface WebSocketConnection {
@@ -22,7 +23,7 @@ export interface WebSocketConnection {
 export interface ConnectionMetadata {
   userAgent?: string;
   ipAddress?: string;
-  clientType: "vscode" | "web" | "mobile" | "api";
+  clientType: 'vscode' | 'web' | 'mobile' | 'api';
   clientVersion?: string;
   capabilities: string[];
 }
@@ -43,7 +44,7 @@ export interface CollaborationSession {
 export interface SessionParticipant {
   userId: string;
   userName: string;
-  role: "owner" | "collaborator" | "viewer";
+  role: 'owner' | 'collaborator' | 'viewer';
   color: string;
   joinedAt: Date;
   lastSeen: Date;
@@ -70,7 +71,7 @@ export interface SelectionRange {
 
 export interface OperationalTransform {
   id: string;
-  type: "insert" | "delete" | "retain";
+  type: 'insert' | 'delete' | 'retain';
   position: number;
   content?: string;
   length?: number;
@@ -89,19 +90,19 @@ export interface WebSocketMessage {
 }
 
 export type MessageType = 
-  | "cursor_move"
-  | "text_change"
-  | "selection_change"
-  | "file_open"
-  | "file_close"
-  | "chat_message"
-  | "user_join"
-  | "user_leave"
-  | "ping"
-  | "pong"
-  | "error"
-  | "sync_request"
-  | "sync_response";
+  | 'cursor_move'
+  | 'text_change'
+  | 'selection_change'
+  | 'file_open'
+  | 'file_close'
+  | 'chat_message'
+  | 'user_join'
+  | 'user_leave'
+  | 'ping'
+  | 'pong'
+  | 'error'
+  | 'sync_request'
+  | 'sync_response';
 
 export interface ChatMessage {
   id: string;
@@ -109,7 +110,7 @@ export interface ChatMessage {
   userId: string;
   userName: string;
   content: string;
-  type: "text" | "system" | "code_share";
+  type: 'text' | 'system' | 'code_share';
   mentions: string[];
   timestamp: Date;
   metadata?: Record<string, any>;
@@ -124,7 +125,7 @@ const CreateSessionRequest = z.object({
 
 const JoinSessionRequest = z.object({
   sessionId: z.string(),
-  clientType: z.enum(["vscode", "web", "mobile", "api"]).default("web"),
+  clientType: z.enum(['vscode', 'web', 'mobile', 'api']).default('web'),
   clientVersion: z.string().optional(),
   capabilities: z.array(z.string()).default([]),
 });
@@ -132,8 +133,8 @@ const JoinSessionRequest = z.object({
 const SendMessageRequest = z.object({
   sessionId: z.string(),
   type: z.enum([
-    "cursor_move", "text_change", "selection_change", 
-    "file_open", "file_close", "chat_message", "ping"
+    'cursor_move', 'text_change', 'selection_change', 
+    'file_open', 'file_close', 'chat_message', 'ping',
   ]),
   payload: z.any(),
 });
@@ -147,7 +148,7 @@ const CursorMovePayload = z.object({
 const TextChangePayload = z.object({
   fileId: z.string(),
   operation: z.object({
-    type: z.enum(["insert", "delete", "retain"]),
+    type: z.enum(['insert', 'delete', 'retain']),
     position: z.number(),
     content: z.string().optional(),
     length: z.number().optional(),
@@ -156,7 +157,7 @@ const TextChangePayload = z.object({
 
 const ChatMessagePayload = z.object({
   content: z.string().min(1).max(2000),
-  type: z.enum(["text", "code_share"]).default("text"),
+  type: z.enum(['text', 'code_share']).default('text'),
   mentions: z.array(z.string()).default([]),
   metadata: z.record(z.any()).optional(),
 });
@@ -173,8 +174,8 @@ let wsServer: WebSocketServer | null = null;
 
 // Color palette for user cursors
 const USER_COLORS = [
-  "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4", "#FFEAA7",
-  "#DDA0DD", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E9"
+  '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+  '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
 ];
 
 // Helper functions
@@ -188,10 +189,14 @@ function generateUserColor(userId: string): string {
 
 function broadcastToSession(sessionId: string, message: WebSocketMessage, excludeUserId?: string): void {
   const session = sessions.get(sessionId);
-  if (!session) return;
+  if (!session) {
+    return;
+  }
   
   session.participants.forEach(participant => {
-    if (excludeUserId && participant.userId === excludeUserId) return;
+    if (excludeUserId && participant.userId === excludeUserId) {
+      return;
+    }
     
     const userConnections = Array.from(connections.values())
       .filter(conn => conn.userId === participant.userId && conn.sessionId === sessionId);
@@ -201,10 +206,10 @@ function broadcastToSession(sessionId: string, message: WebSocketMessage, exclud
         try {
           conn.socket.send(JSON.stringify(message));
         } catch (error) {
-          log.error("Failed to send message to client", { 
+          log.error('Failed to send message to client', { 
             error: error.message,
             connectionId: conn.id,
-            userId: participant.userId
+            userId: participant.userId,
           });
         }
       }
@@ -214,7 +219,9 @@ function broadcastToSession(sessionId: string, message: WebSocketMessage, exclud
 
 function applyOperationalTransform(sessionId: string, operation: OperationalTransform): void {
   const session = sessions.get(sessionId);
-  if (!session) return;
+  if (!session) {
+    return;
+  }
   
   // Add operation to session history
   session.operations.push(operation);
@@ -222,7 +229,7 @@ function applyOperationalTransform(sessionId: string, operation: OperationalTran
   // Broadcast operation to all participants
   const message: WebSocketMessage = {
     id: uuidv4(),
-    type: "text_change",
+    type: 'text_change',
     payload: operation,
     timestamp: new Date(),
     userId: operation.userId,
@@ -238,10 +245,14 @@ function applyOperationalTransform(sessionId: string, operation: OperationalTran
 
 function handleCursorMove(connectionId: string, payload: any): void {
   const connection = connections.get(connectionId);
-  if (!connection) return;
+  if (!connection) {
+    return;
+  }
   
   const session = sessions.get(connection.sessionId);
-  if (!session) return;
+  if (!session) {
+    return;
+  }
   
   const cursorPosition: CursorPosition = {
     userId: connection.userId,
@@ -255,7 +266,7 @@ function handleCursorMove(connectionId: string, payload: any): void {
   
   const message: WebSocketMessage = {
     id: uuidv4(),
-    type: "cursor_move",
+    type: 'cursor_move',
     payload: cursorPosition,
     timestamp: new Date(),
     userId: connection.userId,
@@ -267,7 +278,9 @@ function handleCursorMove(connectionId: string, payload: any): void {
 
 function handleTextChange(connectionId: string, payload: any): void {
   const connection = connections.get(connectionId);
-  if (!connection) return;
+  if (!connection) {
+    return;
+  }
   
   const operation: OperationalTransform = {
     id: uuidv4(),
@@ -285,13 +298,19 @@ function handleTextChange(connectionId: string, payload: any): void {
 
 function handleChatMessage(connectionId: string, payload: any): void {
   const connection = connections.get(connectionId);
-  if (!connection) return;
+  if (!connection) {
+    return;
+  }
   
   const session = sessions.get(connection.sessionId);
-  if (!session) return;
+  if (!session) {
+    return;
+  }
   
   const participant = session.participants.find(p => p.userId === connection.userId);
-  if (!participant) return;
+  if (!participant) {
+    return;
+  }
   
   const chatMessage: ChatMessage = {
     id: uuidv4(),
@@ -299,7 +318,7 @@ function handleChatMessage(connectionId: string, payload: any): void {
     userId: connection.userId,
     userName: participant.userName,
     content: payload.content,
-    type: payload.type || "text",
+    type: payload.type || 'text',
     mentions: payload.mentions || [],
     timestamp: new Date(),
     metadata: payload.metadata,
@@ -314,7 +333,7 @@ function handleChatMessage(connectionId: string, payload: any): void {
   // Broadcast to session
   const message: WebSocketMessage = {
     id: uuidv4(),
-    type: "chat_message",
+    type: 'chat_message',
     payload: chatMessage,
     timestamp: new Date(),
     userId: connection.userId,
@@ -326,12 +345,12 @@ function handleChatMessage(connectionId: string, payload: any): void {
 
 // Create collaboration session endpoint
 export const createSession = api<typeof CreateSessionRequest>(
-  { method: "POST", path: "/ws/sessions", auth: true, expose: true },
+  { method: 'POST', path: '/ws/sessions', auth: true, expose: true },
   async (req: z.infer<typeof CreateSessionRequest>, meta: APICallMeta<AuthData>): Promise<{ sessionId: string; wsUrl: string }> => {
     const { userID } = meta.auth;
     const { projectId, documentId, sessionName } = req;
     
-    log.info("Creating collaboration session", { projectId, documentId, userID });
+    log.info('Creating collaboration session', { projectId, documentId, userID });
     
     const sessionId = uuidv4();
     const now = new Date();
@@ -342,7 +361,7 @@ export const createSession = api<typeof CreateSessionRequest>(
     const participant: SessionParticipant = {
       userId: userID,
       userName,
-      role: "owner",
+      role: 'owner',
       color: generateUserColor(userID),
       joinedAt: now,
       lastSeen: now,
@@ -380,22 +399,22 @@ export const createSession = api<typeof CreateSessionRequest>(
     
     const wsUrl = `ws://localhost:4000/ws/connect?sessionId=${sessionId}&token=${meta.auth}`;
     
-    log.info("Collaboration session created", { sessionId, projectId });
+    log.info('Collaboration session created', { sessionId, projectId });
     
     return { sessionId, wsUrl };
-  }
+  },
 );
 
 // Join collaboration session endpoint
 export const joinSession = api<typeof JoinSessionRequest>(
-  { method: "POST", path: "/ws/sessions/:sessionId/join", auth: true, expose: true },
+  { method: 'POST', path: '/ws/sessions/:sessionId/join', auth: true, expose: true },
   async (req: z.infer<typeof JoinSessionRequest> & { sessionId: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean; wsUrl: string }> => {
     const { userID } = meta.auth;
     const { sessionId, clientType, clientVersion, capabilities } = req;
     
     const session = sessions.get(sessionId);
     if (!session) {
-      throw new Error("Session not found");
+      throw new Error('Session not found');
     }
     
     // TODO: Check if user has permission to join this project
@@ -409,7 +428,7 @@ export const joinSession = api<typeof JoinSessionRequest>(
       participant = {
         userId: userID,
         userName,
-        role: "collaborator",
+        role: 'collaborator',
         color: generateUserColor(userID),
         joinedAt: new Date(),
         lastSeen: new Date(),
@@ -431,28 +450,29 @@ export const joinSession = api<typeof JoinSessionRequest>(
     
     const wsUrl = `ws://localhost:4000/ws/connect?sessionId=${sessionId}&token=${meta.auth}`;
     
-    log.info("User joined collaboration session", { sessionId, userID });
+    log.info('User joined collaboration session', { sessionId, userID });
     
     return { success: true, wsUrl };
-  }
+  },
 );
 
 // Get session info endpoint
 export const getSession = api(
-  { method: "GET", path: "/ws/sessions/:sessionId", auth: true, expose: true },
-  async (req: { sessionId: string }, meta: APICallMeta<AuthData>): Promise<CollaborationSession> => {
-    const { userID } = meta.auth;
+  { method: 'GET', path: '/ws/sessions/:sessionId', auth: true, expose: true },
+  async (req: { sessionId: string }): Promise<CollaborationSession> => {
+    // TODO: Get auth data from currentRequest() when auth handler is implemented
+    const userID = 'placeholder-user-id';
     const { sessionId } = req;
     
     const session = sessions.get(sessionId);
     if (!session) {
-      throw new Error("Session not found");
+      throw new Error('Session not found');
     }
     
     // Check if user is a participant
     const isParticipant = session.participants.some(p => p.userId === userID);
     if (!isParticipant) {
-      throw new Error("Access denied");
+      throw new Error('Access denied');
     }
     
     return {
@@ -466,25 +486,26 @@ export const getSession = api(
         return acc;
       }, new Map()),
     };
-  }
+  },
 );
 
 // Get chat history endpoint
 export const getChatHistory = api(
-  { method: "GET", path: "/ws/sessions/:sessionId/chat", auth: true, expose: true },
-  async (req: { sessionId: string; limit?: number; offset?: number }, meta: APICallMeta<AuthData>): Promise<{ messages: ChatMessage[]; total: number }> => {
-    const { userID } = meta.auth;
+  { method: 'GET', path: '/ws/sessions/:sessionId/chat', auth: true, expose: true },
+  async (req: { sessionId: string; limit?: number; offset?: number }): Promise<{ messages: ChatMessage[]; total: number }> => {
+    // TODO: Get auth data from currentRequest() when auth handler is implemented
+    const userID = 'placeholder-user-id';
     const { sessionId, limit = 50, offset = 0 } = req;
     
     const session = sessions.get(sessionId);
     if (!session) {
-      throw new Error("Session not found");
+      throw new Error('Session not found');
     }
     
     // Check if user is a participant
     const isParticipant = session.participants.some(p => p.userId === userID);
     if (!isParticipant) {
-      throw new Error("Access denied");
+      throw new Error('Access denied');
     }
     
     const messages = chatHistory.get(sessionId) || [];
@@ -494,14 +515,15 @@ export const getChatHistory = api(
       messages: paginatedMessages,
       total: messages.length,
     };
-  }
+  },
 );
 
 // List user sessions endpoint
 export const listUserSessions = api(
-  { method: "GET", path: "/ws/sessions", auth: true, expose: true },
-  async (req: { active?: boolean }, meta: APICallMeta<AuthData>): Promise<{ sessions: CollaborationSession[]; total: number }> => {
-    const { userID } = meta.auth;
+  { method: 'GET', path: '/ws/sessions', auth: true, expose: true },
+  async (req: { active?: boolean }): Promise<{ sessions: CollaborationSession[]; total: number }> => {
+    // TODO: Get auth data from currentRequest() when auth handler is implemented
+    const userID = 'placeholder-user-id';
     const { active = true } = req;
     
     const userSessionIds = userSessions.get(userID) || new Set();
@@ -517,19 +539,20 @@ export const listUserSessions = api(
       sessions: userActiveSessions,
       total: userActiveSessions.length,
     };
-  }
+  },
 );
 
 // Leave session endpoint
 export const leaveSession = api(
-  { method: "POST", path: "/ws/sessions/:sessionId/leave", auth: true, expose: true },
-  async (req: { sessionId: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean }> => {
-    const { userID } = meta.auth;
+  { method: 'POST', path: '/ws/sessions/:sessionId/leave', auth: true, expose: true },
+  async (req: { sessionId: string }): Promise<{ success: boolean }> => {
+    // TODO: Get auth data from currentRequest() when auth handler is implemented
+    const userID = 'placeholder-user-id';
     const { sessionId } = req;
     
     const session = sessions.get(sessionId);
     if (!session) {
-      throw new Error("Session not found");
+      throw new Error('Session not found');
     }
     
     // Find and update participant
@@ -564,7 +587,7 @@ export const leaveSession = api(
     // Broadcast user leave event
     const message: WebSocketMessage = {
       id: uuidv4(),
-      type: "user_leave",
+      type: 'user_leave',
       payload: { userId: userID },
       timestamp: new Date(),
       userId: userID,
@@ -581,10 +604,10 @@ export const leaveSession = api(
     
     session.updatedAt = new Date();
     
-    log.info("User left collaboration session", { sessionId, userID });
+    log.info('User left collaboration session', { sessionId, userID });
     
     return { success: true };
-  }
+  },
 );
 
 // WebSocket connection handler (to be called by WebSocket middleware)
@@ -594,17 +617,17 @@ export function handleWebSocketConnection(ws: WebSocket, request: IncomingMessag
   const token = url.searchParams.get('token');
   
   if (!sessionId || !token) {
-    ws.close(1008, "Missing sessionId or token");
+    ws.close(1008, 'Missing sessionId or token');
     return;
   }
   
   // TODO: Verify JWT token and extract user ID
   // For now, using mock user ID
-  const userId = "mock_user_id";
+  const userId = 'mock_user_id';
   
   const session = sessions.get(sessionId);
   if (!session) {
-    ws.close(1008, "Session not found");
+    ws.close(1008, 'Session not found');
     return;
   }
   
@@ -621,7 +644,7 @@ export function handleWebSocketConnection(ws: WebSocket, request: IncomingMessag
     metadata: {
       userAgent: request.headers['user-agent'],
       ipAddress: request.socket.remoteAddress,
-      clientType: "web", // TODO: Extract from headers
+      clientType: 'web', // TODO: Extract from headers
       capabilities: [],
     },
   };
@@ -635,19 +658,19 @@ export function handleWebSocketConnection(ws: WebSocket, request: IncomingMessag
       connection.lastActivity = new Date();
       
       switch (message.type) {
-        case "cursor_move":
+        case 'cursor_move':
           handleCursorMove(connectionId, message.payload);
           break;
-        case "text_change":
+        case 'text_change':
           handleTextChange(connectionId, message.payload);
           break;
-        case "chat_message":
+        case 'chat_message':
           handleChatMessage(connectionId, message.payload);
           break;
-        case "ping":
+        case 'ping':
           ws.send(JSON.stringify({
             id: uuidv4(),
-            type: "pong",
+            type: 'pong',
             payload: {},
             timestamp: new Date(),
             userId,
@@ -655,12 +678,13 @@ export function handleWebSocketConnection(ws: WebSocket, request: IncomingMessag
           }));
           break;
         default:
-          log.warn("Unknown WebSocket message type", { type: message.type });
+          log.warn('Unknown WebSocket message type', { type: message.type });
       }
     } catch (error) {
-      log.error("Failed to process WebSocket message", { 
-        error: error.message,
-        connectionId 
+      const err = error as Error;
+      log.error('Failed to process WebSocket message', { 
+        error: err.message,
+        connectionId, 
       });
     }
   });
@@ -684,23 +708,23 @@ export function handleWebSocketConnection(ws: WebSocket, request: IncomingMessag
       }
     }
     
-    log.info("WebSocket connection closed", { connectionId, userId, sessionId });
+    log.info('WebSocket connection closed', { connectionId, userId, sessionId });
   });
   
   // Set up error handler
   ws.on('error', (error) => {
-    log.error("WebSocket error", { 
+    log.error('WebSocket error', { 
       error: error.message,
       connectionId,
       userId,
-      sessionId 
+      sessionId, 
     });
   });
   
   // Send welcome message
   const welcomeMessage: WebSocketMessage = {
     id: uuidv4(),
-    type: "user_join",
+    type: 'user_join',
     payload: {
       sessionId,
       participants: session.participants,
@@ -714,14 +738,14 @@ export function handleWebSocketConnection(ws: WebSocket, request: IncomingMessag
   
   ws.send(JSON.stringify(welcomeMessage));
   
-  log.info("WebSocket connection established", { connectionId, userId, sessionId });
+  log.info('WebSocket connection established', { connectionId, userId, sessionId });
 }
 
 // Initialize WebSocket server (called by Encore runtime)
 export function initializeWebSocketServer(server: any): void {
-  wsServer = new WebSocketServer({ server, path: "/ws/connect" });
+  wsServer = new WebSocketServer({ server, path: '/ws/connect' });
   
   wsServer.on('connection', handleWebSocketConnection);
   
-  log.info("WebSocket server initialized");
+  log.info('WebSocket server initialized');
 }

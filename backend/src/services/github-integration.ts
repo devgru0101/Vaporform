@@ -1,6 +1,6 @@
-import { api } from "encore.dev/api";
-import { ProjectFiles } from "./project-templates";
-import { ProjectAnalysis } from "./project-analyzer";
+import { api } from 'encore.dev/api';
+import { ProjectFiles } from './project-templates';
+import { ProjectAnalysis } from './project-analyzer';
 
 export interface GitHubRepository {
   id: number;
@@ -122,7 +122,7 @@ class GitHubIntegrationService {
         techStack, 
         dependencies, 
         configurations, 
-        metrics
+        metrics,
       );
 
       return {
@@ -132,7 +132,7 @@ class GitHubIntegrationService {
         dependencies,
         configurations,
         metrics,
-        recommendations
+        recommendations,
       };
     } catch (error) {
       console.error('Error analyzing repository:', error);
@@ -142,7 +142,7 @@ class GitHubIntegrationService {
 
   async createMigrationPlan(
     analysis: RepositoryAnalysis,
-    targetAnalysis: ProjectAnalysis
+    targetAnalysis: ProjectAnalysis,
   ): Promise<MigrationPlan> {
     const steps: MigrationStep[] = [];
     let complexity = 1;
@@ -160,14 +160,14 @@ class GitHubIntegrationService {
         'Review current architecture and dependencies',
         'Identify breaking changes and compatibility issues',
         'Create detailed migration timeline',
-        'Set up development environment'
+        'Set up development environment',
       ],
       validation: [
         'Migration plan documented',
         'All dependencies identified',
-        'Risk assessment completed'
+        'Risk assessment completed',
       ],
-      rollback: ['N/A - Planning phase']
+      rollback: ['N/A - Planning phase'],
     });
 
     // Step 2: Backup and Version Control
@@ -182,17 +182,17 @@ class GitHubIntegrationService {
         'Create full repository backup',
         'Create migration branch',
         'Tag current stable version',
-        'Set up separate development environment'
+        'Set up separate development environment',
       ],
       validation: [
         'Backup created and verified',
         'Migration branch ready',
-        'Version tagged'
+        'Version tagged',
       ],
       rollback: [
         'Restore from backup',
-        'Reset to tagged version'
-      ]
+        'Reset to tagged version',
+      ],
     });
 
     // Technology migration steps
@@ -217,26 +217,28 @@ class GitHubIntegrationService {
           'Migrate components one by one',
           'Update routing and state management',
           'Migrate styles and assets',
-          'Update build configuration'
+          'Update build configuration',
         ],
         validation: [
           'All components migrated and functional',
           'Build process working',
           'No TypeScript/linting errors',
-          'Core functionality preserved'
+          'Core functionality preserved',
         ],
         rollback: [
           'Switch back to migration branch',
           'Restore original frontend files',
-          'Revert build configuration'
-        ]
+          'Revert build configuration',
+        ],
       });
     }
 
     // Backend migration
     if (this.needsBackendMigration(currentTech.backend, targetTech.backend.framework)) {
       complexity += 2;
-      if (riskLevel === 'low') riskLevel = 'medium';
+      if (riskLevel === 'low') {
+        riskLevel = 'medium';
+      }
       
       steps.push({
         id: 'backend-migration',
@@ -251,19 +253,19 @@ class GitHubIntegrationService {
           'Migrate API endpoints and middleware',
           'Update database connections and models',
           'Migrate authentication and authorization',
-          'Update error handling and logging'
+          'Update error handling and logging',
         ],
         validation: [
           'All API endpoints working',
           'Database connections functional',
           'Authentication working',
-          'Error handling properly implemented'
+          'Error handling properly implemented',
         ],
         rollback: [
           'Switch back to original backend',
           'Restore database connections',
-          'Revert API configurations'
-        ]
+          'Revert API configurations',
+        ],
       });
     }
 
@@ -286,19 +288,19 @@ class GitHubIntegrationService {
           'Transform data for new schema',
           'Import data to new database',
           'Update application database connections',
-          'Test data integrity and performance'
+          'Test data integrity and performance',
         ],
         validation: [
           'All data migrated successfully',
           'Data integrity verified',
           'Performance benchmarks met',
-          'Application connects to new database'
+          'Application connects to new database',
         ],
         rollback: [
           'Restore original database',
           'Revert connection strings',
-          'Restore backup data'
-        ]
+          'Restore backup data',
+        ],
       });
     }
 
@@ -316,18 +318,18 @@ class GitHubIntegrationService {
         'Test API endpoints with integration tests',
         'Verify database operations',
         'Test authentication and authorization',
-        'Performance testing and optimization'
+        'Performance testing and optimization',
       ],
       validation: [
         'All tests passing',
         'Core functionality working',
         'Performance meets requirements',
-        'No critical bugs identified'
+        'No critical bugs identified',
       ],
       rollback: [
         'Document all issues found',
-        'Revert to backup if critical issues exist'
-      ]
+        'Revert to backup if critical issues exist',
+      ],
     });
 
     // Deployment and finalization
@@ -344,19 +346,19 @@ class GitHubIntegrationService {
         'Perform final testing in staging',
         'Deploy to production with zero-downtime strategy',
         'Monitor application health and performance',
-        'Update documentation and team knowledge'
+        'Update documentation and team knowledge',
       ],
       validation: [
         'Application deployed successfully',
         'All systems operational',
         'Performance monitoring active',
-        'Team trained on new system'
+        'Team trained on new system',
       ],
       rollback: [
         'Implement blue-green deployment rollback',
         'Restore from production backup',
-        'Revert DNS and load balancer settings'
-      ]
+        'Revert DNS and load balancer settings',
+      ],
     });
 
     // Calculate total estimated time
@@ -372,22 +374,22 @@ class GitHubIntegrationService {
         'Development environment setup',
         'Database access and backup capabilities',
         'Staging environment for testing',
-        'Team coordination and communication plan'
+        'Team coordination and communication plan',
       ],
       rollbackPlan: [
         'Maintain original code in separate branch',
         'Keep database backups accessible',
         'Document all configuration changes',
         'Test rollback procedures in staging',
-        'Have monitoring and alerting ready'
-      ]
+        'Have monitoring and alerting ready',
+      ],
     };
   }
 
   async importRepository(
     repoUrl: string,
     targetDirectory: string,
-    accessToken?: string
+    accessToken?: string,
   ): Promise<ProjectFiles> {
     try {
       const { owner, repo } = this.parseRepositoryUrl(repoUrl);
@@ -419,18 +421,18 @@ class GitHubIntegrationService {
     
     return {
       owner: match[1],
-      repo: match[2].replace(/\.git$/, '')
+      repo: match[2].replace(/\.git$/, ''),
     };
   }
 
   private async fetchRepositoryInfo(
     owner: string, 
     repo: string, 
-    accessToken?: string
+    accessToken?: string,
   ): Promise<GitHubRepository> {
     const url = `${this.GITHUB_API_BASE}/repos/${owner}/${repo}`;
     const headers: Record<string, string> = {
-      'Accept': 'application/vnd.github.v3+json'
+      'Accept': 'application/vnd.github.v3+json',
     };
     
     if (accessToken) {
@@ -461,8 +463,8 @@ class GitHubIntegrationService {
       topics: data.topics || [],
       license: data.license ? {
         name: data.license.name,
-        spdxId: data.license.spdx_id
-      } : undefined
+        spdxId: data.license.spdx_id,
+      } : undefined,
     };
   }
 
@@ -470,11 +472,11 @@ class GitHubIntegrationService {
     owner: string, 
     repo: string, 
     accessToken?: string,
-    path = ''
+    path = '',
   ): Promise<GitHubFile[]> {
     const url = `${this.GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${path}`;
     const headers: Record<string, string> = {
-      'Accept': 'application/vnd.github.v3+json'
+      'Accept': 'application/vnd.github.v3+json',
     };
     
     if (accessToken) {
@@ -496,7 +498,7 @@ class GitHubIntegrationService {
         path: item.path,
         type: item.type === 'dir' ? 'dir' : 'file',
         size: item.size,
-        downloadUrl: item.download_url
+        downloadUrl: item.download_url,
       };
       
       files.push(file);
@@ -531,7 +533,7 @@ class GitHubIntegrationService {
     structure: GitHubFile[],
     owner: string,
     repo: string,
-    accessToken?: string
+    accessToken?: string,
   ): Promise<RepositoryAnalysis['techStack']> {
     const frontend: string[] = [];
     const backend: string[] = [];
@@ -551,31 +553,69 @@ class GitHubIntegrationService {
           const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
           
           // Frontend frameworks
-          if (deps.react) frontend.push('React');
-          if (deps.vue) frontend.push('Vue.js');
-          if (deps['@angular/core']) frontend.push('Angular');
-          if (deps.svelte) frontend.push('Svelte');
+          if (deps.react) {
+            frontend.push('React');
+          }
+          if (deps.vue) {
+            frontend.push('Vue.js');
+          }
+          if (deps['@angular/core']) {
+            frontend.push('Angular');
+          }
+          if (deps.svelte) {
+            frontend.push('Svelte');
+          }
           
           // Backend frameworks
-          if (deps.express) backend.push('Express.js');
-          if (deps.fastify) backend.push('Fastify');
-          if (deps['@nestjs/core']) backend.push('NestJS');
-          if (deps.koa) backend.push('Koa.js');
+          if (deps.express) {
+            backend.push('Express.js');
+          }
+          if (deps.fastify) {
+            backend.push('Fastify');
+          }
+          if (deps['@nestjs/core']) {
+            backend.push('NestJS');
+          }
+          if (deps.koa) {
+            backend.push('Koa.js');
+          }
           
           // Database libraries
-          if (deps.mongoose) database.push('MongoDB');
-          if (deps.pg || deps.postgres) database.push('PostgreSQL');
-          if (deps.mysql || deps.mysql2) database.push('MySQL');
-          if (deps.redis) database.push('Redis');
-          if (deps.typeorm) database.push('TypeORM');
+          if (deps.mongoose) {
+            database.push('MongoDB');
+          }
+          if (deps.pg || deps.postgres) {
+            database.push('PostgreSQL');
+          }
+          if (deps.mysql || deps.mysql2) {
+            database.push('MySQL');
+          }
+          if (deps.redis) {
+            database.push('Redis');
+          }
+          if (deps.typeorm) {
+            database.push('TypeORM');
+          }
           
           // Tools
-          if (deps.webpack) tools.push('Webpack');
-          if (deps.vite) tools.push('Vite');
-          if (deps.jest) tools.push('Jest');
-          if (deps.eslint) tools.push('ESLint');
-          if (deps.prettier) tools.push('Prettier');
-          if (deps.typescript) tools.push('TypeScript');
+          if (deps.webpack) {
+            tools.push('Webpack');
+          }
+          if (deps.vite) {
+            tools.push('Vite');
+          }
+          if (deps.jest) {
+            tools.push('Jest');
+          }
+          if (deps.eslint) {
+            tools.push('ESLint');
+          }
+          if (deps.prettier) {
+            tools.push('Prettier');
+          }
+          if (deps.typescript) {
+            tools.push('TypeScript');
+          }
           
         } catch (error) {
           console.error('Error parsing package.json:', error);
@@ -585,7 +625,7 @@ class GitHubIntegrationService {
 
     // Check for Python requirements.txt or setup.py
     const pythonFiles = structure.filter(f => 
-      f.name === 'requirements.txt' || f.name === 'setup.py' || f.name === 'Pipfile'
+      f.name === 'requirements.txt' || f.name === 'setup.py' || f.name === 'Pipfile',
     );
     
     if (pythonFiles.length > 0) {
@@ -607,16 +647,22 @@ class GitHubIntegrationService {
     }
 
     // Check for configuration files
-    if (structure.some(f => f.name === 'Dockerfile')) tools.push('Docker');
-    if (structure.some(f => f.name === 'docker-compose.yml')) tools.push('Docker Compose');
-    if (structure.some(f => f.name === 'kubernetes' || f.path.includes('k8s'))) tools.push('Kubernetes');
+    if (structure.some(f => f.name === 'Dockerfile')) {
+      tools.push('Docker');
+    }
+    if (structure.some(f => f.name === 'docker-compose.yml')) {
+      tools.push('Docker Compose');
+    }
+    if (structure.some(f => f.name === 'kubernetes' || f.path.includes('k8s'))) {
+      tools.push('Kubernetes');
+    }
 
     return {
       frontend: Array.from(new Set(frontend)),
       backend: Array.from(new Set(backend)),
       database: Array.from(new Set(database)),
       tools: Array.from(new Set(tools)),
-      languages
+      languages,
     };
   }
 
@@ -624,7 +670,7 @@ class GitHubIntegrationService {
     structure: GitHubFile[],
     owner: string,
     repo: string,
-    accessToken?: string
+    accessToken?: string,
   ): Promise<RepositoryAnalysis['dependencies']> {
     const frontend: Record<string, string> = {};
     const backend: Record<string, string> = {};
@@ -661,7 +707,7 @@ class GitHubIntegrationService {
     return {
       frontend,
       backend,
-      devDependencies
+      devDependencies,
     };
   }
 
@@ -673,24 +719,24 @@ class GitHubIntegrationService {
         f.path.includes('.github/workflows') || 
         f.name === '.gitlab-ci.yml' || 
         f.name === '.travis.yml' ||
-        f.name === 'Jenkinsfile'
+        f.name === 'Jenkinsfile',
       ),
       hasTests: structure.some(f => 
         f.path.includes('test') || 
         f.path.includes('spec') || 
         f.name.includes('.test.') ||
-        f.name.includes('.spec.')
+        f.name.includes('.spec.'),
       ),
       hasLinting: structure.some(f => 
         f.name === '.eslintrc.js' || 
         f.name === '.eslintrc.json' ||
-        f.name === 'tslint.json'
+        f.name === 'tslint.json',
       ),
       hasTypeScript: structure.some(f => 
         f.name === 'tsconfig.json' || 
         f.name.endsWith('.ts') || 
-        f.name.endsWith('.tsx')
-      )
+        f.name.endsWith('.tsx'),
+      ),
     };
   }
 
@@ -698,11 +744,11 @@ class GitHubIntegrationService {
     structure: GitHubFile[],
     owner: string,
     repo: string,
-    accessToken?: string
+    accessToken?: string,
   ): Promise<RepositoryAnalysis['metrics']> {
     const fileCount = structure.filter(f => f.type === 'file').length;
     const codeFiles = structure.filter(f => 
-      f.type === 'file' && this.isCodeFile(f.name)
+      f.type === 'file' && this.isCodeFile(f.name),
     );
     
     let linesOfCode = 0;
@@ -731,11 +777,17 @@ class GitHubIntegrationService {
     }
 
     // Calculate complexity based on file count and structure
-    if (fileCount > 1000) complexity = 5;
-    else if (fileCount > 500) complexity = 4;
-    else if (fileCount > 100) complexity = 3;
-    else if (fileCount > 20) complexity = 2;
-    else complexity = 1;
+    if (fileCount > 1000) {
+      complexity = 5;
+    } else if (fileCount > 500) {
+      complexity = 4;
+    } else if (fileCount > 100) {
+      complexity = 3;
+    } else if (fileCount > 20) {
+      complexity = 2;
+    } else {
+      complexity = 1;
+    }
 
     // Determine maintainability
     let maintainability: 'low' | 'medium' | 'high' = 'medium';
@@ -755,7 +807,7 @@ class GitHubIntegrationService {
       linesOfCode,
       fileCount,
       complexity,
-      maintainability
+      maintainability,
     };
   }
 
@@ -763,7 +815,7 @@ class GitHubIntegrationService {
     techStack: RepositoryAnalysis['techStack'],
     dependencies: RepositoryAnalysis['dependencies'],
     configurations: RepositoryAnalysis['configurations'],
-    metrics: RepositoryAnalysis['metrics']
+    metrics: RepositoryAnalysis['metrics'],
   ): Promise<RepositoryAnalysis['recommendations']> {
     const modernization: string[] = [];
     const security: string[] = [];
@@ -828,14 +880,14 @@ class GitHubIntegrationService {
       security,
       performance,
       testing,
-      tooling
+      tooling,
     };
   }
 
   private isCodeFile(filename: string): boolean {
     const codeExtensions = [
       '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.go', '.rs', '.php',
-      '.rb', '.swift', '.kt', '.scala', '.cs', '.cpp', '.c', '.h'
+      '.rb', '.swift', '.kt', '.scala', '.cs', '.cpp', '.c', '.h',
     ];
     
     return codeExtensions.some(ext => filename.endsWith(ext));
@@ -858,9 +910,15 @@ class GitHubIntegrationService {
     // this would be more sophisticated
     const totalSteps = steps.length;
     
-    if (totalSteps <= 3) return '1-2 weeks';
-    if (totalSteps <= 5) return '3-4 weeks';
-    if (totalSteps <= 7) return '1-2 months';
+    if (totalSteps <= 3) {
+      return '1-2 weeks';
+    }
+    if (totalSteps <= 5) {
+      return '3-4 weeks';
+    }
+    if (totalSteps <= 7) {
+      return '1-2 months';
+    }
     return '2-3 months';
   }
 }
@@ -869,42 +927,42 @@ export const githubIntegration = new GitHubIntegrationService();
 
 // API endpoints
 export const analyzeRepository = api(
-  { method: "POST", path: "/github/analyze" },
+  { method: 'POST', path: '/github/analyze' },
   async ({ 
     repoUrl, 
-    accessToken 
+    accessToken, 
   }: { 
     repoUrl: string; 
     accessToken?: string 
   }): Promise<RepositoryAnalysis> => {
     return await githubIntegration.analyzeRepository(repoUrl, accessToken);
-  }
+  },
 );
 
 export const createMigrationPlan = api(
-  { method: "POST", path: "/github/migration-plan" },
+  { method: 'POST', path: '/github/migration-plan' },
   async ({ 
     repositoryAnalysis, 
-    targetAnalysis 
+    targetAnalysis, 
   }: { 
     repositoryAnalysis: RepositoryAnalysis; 
     targetAnalysis: ProjectAnalysis 
   }): Promise<MigrationPlan> => {
     return await githubIntegration.createMigrationPlan(repositoryAnalysis, targetAnalysis);
-  }
+  },
 );
 
 export const importRepository = api(
-  { method: "POST", path: "/github/import" },
+  { method: 'POST', path: '/github/import' },
   async ({ 
     repoUrl, 
     targetDirectory, 
-    accessToken 
+    accessToken, 
   }: { 
     repoUrl: string; 
     targetDirectory: string; 
     accessToken?: string 
   }): Promise<ProjectFiles> => {
     return await githubIntegration.importRepository(repoUrl, targetDirectory, accessToken);
-  }
+  },
 );

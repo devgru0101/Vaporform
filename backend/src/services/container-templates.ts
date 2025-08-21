@@ -1,13 +1,13 @@
-import { api, APICallMeta } from "encore.dev/api";
-import log from "encore.dev/log";
-import { z } from "zod";
-import { AuthData } from "./auth";
-import { v4 as uuidv4 } from "uuid";
-import * as fs from "fs/promises";
-import * as path from "path";
-import { promisify } from "util";
-import { exec } from "child_process";
-import Docker from "dockerode";
+import { api, APICallMeta } from 'encore.dev/api';
+import log from 'encore.dev/log';
+import { z } from 'zod';
+import { AuthData } from './auth';
+import { v4 as uuidv4 } from 'uuid';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { promisify } from 'util';
+import { exec } from 'child_process';
+import Docker from 'dockerode';
 
 const docker = new Docker();
 const execAsync = promisify(exec);
@@ -43,18 +43,18 @@ export interface ContainerTemplate {
 }
 
 export type TemplateCategory = 
-  | "web"
-  | "api" 
-  | "database"
-  | "microservice"
-  | "fullstack"
-  | "mobile"
-  | "desktop"
-  | "ml"
-  | "devtools"
-  | "infrastructure"
-  | "monitoring"
-  | "security";
+  | 'web'
+  | 'api' 
+  | 'database'
+  | 'microservice'
+  | 'fullstack'
+  | 'mobile'
+  | 'desktop'
+  | 'ml'
+  | 'devtools'
+  | 'infrastructure'
+  | 'monitoring'
+  | 'security';
 
 export interface TemplateAuthor {
   id: string;
@@ -109,7 +109,7 @@ export interface TemplateConfiguration {
     };
   };
   networking: {
-    mode: "bridge" | "host" | "overlay" | "none";
+    mode: 'bridge' | 'host' | 'overlay' | 'none';
     aliases?: string[];
     dnsConfig?: {
       nameservers: string[];
@@ -120,7 +120,7 @@ export interface TemplateConfiguration {
 
 export interface TemplateVariable {
   description: string;
-  type: "string" | "number" | "boolean" | "enum";
+  type: 'string' | 'number' | 'boolean' | 'enum';
   default?: any;
   required: boolean;
   options?: string[]; // For enum type
@@ -148,20 +148,20 @@ export interface TemplateService {
     timeout: string;
     retries: number;
   };
-  restart: "no" | "always" | "on-failure" | "unless-stopped";
+  restart: 'no' | 'always' | 'on-failure' | 'unless-stopped';
   networks?: string[];
 }
 
 export interface ServicePort {
   container: number;
   host?: number;
-  protocol: "tcp" | "udp";
+  protocol: 'tcp' | 'udp';
   description?: string;
 }
 
 export interface TemplateVolume {
   name: string;
-  type: "bind" | "volume" | "tmpfs";
+  type: 'bind' | 'volume' | 'tmpfs';
   source?: string;
   target: string;
   readOnly?: boolean;
@@ -170,7 +170,7 @@ export interface TemplateVolume {
 
 export interface TemplateNetwork {
   name: string;
-  driver: "bridge" | "overlay" | "macvlan" | "none";
+  driver: 'bridge' | 'overlay' | 'macvlan' | 'none';
   external?: boolean;
   ipam?: {
     driver: string;
@@ -184,7 +184,7 @@ export interface TemplateNetwork {
 export interface TemplateSecret {
   name: string;
   description: string;
-  type: "password" | "api_key" | "certificate" | "custom";
+  type: 'password' | 'api_key' | 'certificate' | 'custom';
   generate?: boolean;
   length?: number;
   pattern?: string;
@@ -193,7 +193,7 @@ export interface TemplateSecret {
 export interface TemplateScript {
   name: string;
   description: string;
-  type: "setup" | "build" | "deploy" | "test" | "cleanup";
+  type: 'setup' | 'build' | 'deploy' | 'test' | 'cleanup';
   command: string;
   workingDirectory?: string;
   environment?: { [key: string]: string };
@@ -233,7 +233,7 @@ export interface FAQ {
 export interface DocumentationLink {
   title: string;
   url: string;
-  type: "official" | "tutorial" | "example" | "reference";
+  type: 'official' | 'tutorial' | 'example' | 'reference';
 }
 
 export interface TemplateMetadata {
@@ -299,8 +299,8 @@ const CreateTemplateRequest = z.object({
   name: z.string().min(1).max(100),
   description: z.string().min(10).max(1000),
   category: z.enum([
-    "web", "api", "database", "microservice", "fullstack", 
-    "mobile", "desktop", "ml", "devtools", "infrastructure", "monitoring", "security"
+    'web', 'api', 'database', 'microservice', 'fullstack', 
+    'mobile', 'desktop', 'ml', 'devtools', 'infrastructure', 'monitoring', 'security',
   ]),
   subcategory: z.string().max(50).optional(),
   tags: z.array(z.string().max(30)).max(10),
@@ -314,19 +314,19 @@ const CreateTemplateRequest = z.object({
   }),
   configuration: z.object({
     baseImage: z.string(),
-    workingDirectory: z.string().default("/app"),
+    workingDirectory: z.string().default('/app'),
     exposedPorts: z.array(z.number().min(1).max(65535)),
     environmentVariables: z.record(z.object({
       description: z.string(),
-      type: z.enum(["string", "number", "boolean", "enum"]),
+      type: z.enum(['string', 'number', 'boolean', 'enum']),
       default: z.any().optional(),
       required: z.boolean().default(false),
       sensitive: z.boolean().default(false),
     })).default({}),
     resourceLimits: z.object({
-      cpu: z.string().default("1"),
-      memory: z.string().default("512Mi"),
-      storage: z.string().default("1Gi"),
+      cpu: z.string().default('1'),
+      memory: z.string().default('512Mi'),
+      storage: z.string().default('1Gi'),
     }),
   }),
   dockerfile: z.string().optional(),
@@ -351,7 +351,7 @@ const UpdateTemplateRequest = z.object({
     exposedPorts: z.array(z.number().min(1).max(65535)).optional(),
     environmentVariables: z.record(z.object({
       description: z.string(),
-      type: z.enum(["string", "number", "boolean", "enum"]),
+      type: z.enum(['string', 'number', 'boolean', 'enum']),
       default: z.any().optional(),
       required: z.boolean(),
       sensitive: z.boolean(),
@@ -379,8 +379,8 @@ const SearchTemplatesRequest = z.object({
   author: z.string().optional(),
   verified: z.boolean().optional(),
   official: z.boolean().optional(),
-  sortBy: z.enum(["downloads", "stars", "rating", "updated", "created", "name"]).default("downloads"),
-  sortOrder: z.enum(["asc", "desc"]).default("desc"),
+  sortBy: z.enum(['downloads', 'stars', 'rating', 'updated', 'created', 'name']).default('downloads'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
   limit: z.number().min(1).max(100).default(20),
   offset: z.number().min(0).default(0),
 });
@@ -409,65 +409,65 @@ const templateAuthors: Map<string, TemplateAuthor> = new Map();
 initializeDefaultTemplates();
 
 async function initializeDefaultTemplates() {
-  const defaultTemplates: Omit<ContainerTemplate, "id" | "createdAt" | "updatedAt">[] = [
+  const defaultTemplates: Omit<ContainerTemplate, 'id' | 'createdAt' | 'updatedAt'>[] = [
     {
-      name: "React TypeScript App",
-      description: "Modern React application with TypeScript, Vite, and hot module replacement for rapid development",
-      category: "web",
-      subcategory: "frontend",
-      tags: ["react", "typescript", "vite", "frontend", "spa"],
+      name: 'React TypeScript App',
+      description: 'Modern React application with TypeScript, Vite, and hot module replacement for rapid development',
+      category: 'web',
+      subcategory: 'frontend',
+      tags: ['react', 'typescript', 'vite', 'frontend', 'spa'],
       author: {
-        id: "vaporform",
-        username: "vaporform",
-        displayName: "Vaporform Team",
+        id: 'vaporform',
+        username: 'vaporform',
+        displayName: 'Vaporform Team',
         verified: true,
-        reputation: 100
+        reputation: 100,
       },
-      version: "1.0.0",
+      version: '1.0.0',
       isOfficial: true,
       isVerified: true,
       isPublic: true,
       techStack: {
-        primaryLanguage: "typescript",
-        languages: ["typescript", "javascript"],
-        frameworks: ["react", "vite"],
+        primaryLanguage: 'typescript',
+        languages: ['typescript', 'javascript'],
+        frameworks: ['react', 'vite'],
         databases: [],
-        tools: ["npm", "eslint", "prettier"],
-        platforms: ["web"],
-        runtime: "18",
-        packageManager: "npm",
-        buildTool: "vite"
+        tools: ['npm', 'eslint', 'prettier'],
+        platforms: ['web'],
+        runtime: '18',
+        packageManager: 'npm',
+        buildTool: 'vite',
       },
       configuration: {
-        baseImage: "node:18-alpine",
-        workingDirectory: "/app",
+        baseImage: 'node:18-alpine',
+        workingDirectory: '/app',
         exposedPorts: [3000],
         environmentVariables: {
           NODE_ENV: {
-            description: "Node.js environment mode",
-            type: "enum",
-            default: "development",
+            description: 'Node.js environment mode',
+            type: 'enum',
+            default: 'development',
             required: true,
-            options: ["development", "production", "test"]
+            options: ['development', 'production', 'test'],
           },
           REACT_APP_API_URL: {
-            description: "API backend URL",
-            type: "string",
-            default: "http://localhost:8000",
-            required: false
-          }
+            description: 'API backend URL',
+            type: 'string',
+            default: 'http://localhost:8000',
+            required: false,
+          },
         },
         resourceLimits: {
-          cpu: "1",
-          memory: "512Mi",
-          storage: "1Gi"
+          cpu: '1',
+          memory: '512Mi',
+          storage: '1Gi',
         },
         healthCheck: {
-          command: ["CMD", "curl", "-f", "http://localhost:3000"],
-          interval: "30s",
-          timeout: "10s",
+          command: ['CMD', 'curl', '-f', 'http://localhost:3000'],
+          interval: '30s',
+          timeout: '10s',
           retries: 3,
-          startPeriod: "60s"
+          startPeriod: '60s',
         },
         security: {
           runAsUser: 1001,
@@ -475,28 +475,28 @@ async function initializeDefaultTemplates() {
           readOnlyRootFilesystem: false,
           allowPrivilegeEscalation: false,
           capabilities: {
-            drop: ["ALL"],
-            add: []
-          }
+            drop: ['ALL'],
+            add: [],
+          },
         },
         networking: {
-          mode: "bridge"
-        }
+          mode: 'bridge',
+        },
       },
       services: [],
       volumes: [
         {
-          name: "node_modules",
-          type: "volume",
-          target: "/app/node_modules",
-          description: "Node.js dependencies volume for faster builds"
-        }
+          name: 'node_modules',
+          type: 'volume',
+          target: '/app/node_modules',
+          description: 'Node.js dependencies volume for faster builds',
+        },
       ],
       networks: [],
       secrets: [],
       environment: {
-        NODE_ENV: "development",
-        REACT_APP_API_URL: "http://localhost:8000"
+        NODE_ENV: 'development',
+        REACT_APP_API_URL: 'http://localhost:8000',
       },
       dockerfile: `FROM node:18-alpine AS builder
 
@@ -528,29 +528,29 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]`,
       scripts: [
         {
-          name: "setup",
-          description: "Initialize React project",
-          type: "setup",
-          command: "npm create vite@latest . -- --template react-ts"
+          name: 'setup',
+          description: 'Initialize React project',
+          type: 'setup',
+          command: 'npm create vite@latest . -- --template react-ts',
         },
         {
-          name: "dev",
-          description: "Start development server",
-          type: "build",
-          command: "npm run dev"
+          name: 'dev',
+          description: 'Start development server',
+          type: 'build',
+          command: 'npm run dev',
         },
         {
-          name: "build",
-          description: "Build for production",
-          type: "build",
-          command: "npm run build"
+          name: 'build',
+          description: 'Build for production',
+          type: 'build',
+          command: 'npm run build',
         },
         {
-          name: "test",
-          description: "Run tests",
-          type: "test",
-          command: "npm run test"
-        }
+          name: 'test',
+          description: 'Run tests',
+          type: 'test',
+          command: 'npm run test',
+        },
       ],
       documentation: {
         readme: `# React TypeScript Template
@@ -587,8 +587,8 @@ A modern React application template with TypeScript, Vite, and development tools
 The template includes nginx configuration for production deployment.`,
         examples: [
           {
-            title: "Basic Component",
-            description: "Example of a simple React component with TypeScript",
+            title: 'Basic Component',
+            description: 'Example of a simple React component with TypeScript',
             code: `import React from 'react';
 
 interface Props {
@@ -602,21 +602,21 @@ export const HelloWorld: React.FC<Props> = ({ message }) => {
     </div>
   );
 };`,
-            language: "typescript"
-          }
+            language: 'typescript',
+          },
         ],
         links: [
           {
-            title: "React Documentation",
-            url: "https://reactjs.org/docs",
-            type: "official"
+            title: 'React Documentation',
+            url: 'https://reactjs.org/docs',
+            type: 'official',
           },
           {
-            title: "Vite Documentation",
-            url: "https://vitejs.dev/guide",
-            type: "official"
-          }
-        ]
+            title: 'Vite Documentation',
+            url: 'https://vitejs.dev/guide',
+            type: 'official',
+          },
+        ],
       },
       metadata: {
         downloads: 15420,
@@ -626,182 +626,182 @@ export const HelloWorld: React.FC<Props> = ({ message }) => {
         forks: 234,
         size: 125000000,
         compatibility: {
-          platforms: ["linux", "windows", "macos"],
-          architectures: ["amd64", "arm64"],
-          minDockerVersion: "20.10.0"
+          platforms: ['linux', 'windows', 'macos'],
+          architectures: ['amd64', 'arm64'],
+          minDockerVersion: '20.10.0',
         },
-        license: "MIT",
-        keywords: ["react", "typescript", "vite", "frontend", "spa", "web"]
-      }
+        license: 'MIT',
+        keywords: ['react', 'typescript', 'vite', 'frontend', 'spa', 'web'],
+      },
     },
     {
-      name: "Node.js Express API",
-      description: "RESTful API server with Express.js, TypeScript, PostgreSQL, and comprehensive middleware",
-      category: "api",
-      subcategory: "backend",
-      tags: ["nodejs", "express", "typescript", "postgresql", "rest-api"],
+      name: 'Node.js Express API',
+      description: 'RESTful API server with Express.js, TypeScript, PostgreSQL, and comprehensive middleware',
+      category: 'api',
+      subcategory: 'backend',
+      tags: ['nodejs', 'express', 'typescript', 'postgresql', 'rest-api'],
       author: {
-        id: "vaporform",
-        username: "vaporform",
-        displayName: "Vaporform Team",
+        id: 'vaporform',
+        username: 'vaporform',
+        displayName: 'Vaporform Team',
         verified: true,
-        reputation: 100
+        reputation: 100,
       },
-      version: "1.0.0",
+      version: '1.0.0',
       isOfficial: true,
       isVerified: true,
       isPublic: true,
       techStack: {
-        primaryLanguage: "typescript",
-        languages: ["typescript", "javascript"],
-        frameworks: ["express"],
-        databases: ["postgresql"],
-        tools: ["npm", "jest", "eslint"],
-        platforms: ["server"],
-        runtime: "18",
-        packageManager: "npm"
+        primaryLanguage: 'typescript',
+        languages: ['typescript', 'javascript'],
+        frameworks: ['express'],
+        databases: ['postgresql'],
+        tools: ['npm', 'jest', 'eslint'],
+        platforms: ['server'],
+        runtime: '18',
+        packageManager: 'npm',
       },
       configuration: {
-        baseImage: "node:18-alpine",
-        workingDirectory: "/app",
+        baseImage: 'node:18-alpine',
+        workingDirectory: '/app',
         exposedPorts: [8000],
         environmentVariables: {
           NODE_ENV: {
-            description: "Node.js environment",
-            type: "enum",
-            default: "development",
+            description: 'Node.js environment',
+            type: 'enum',
+            default: 'development',
             required: true,
-            options: ["development", "production", "test"]
+            options: ['development', 'production', 'test'],
           },
           PORT: {
-            description: "Server port",
-            type: "number",
+            description: 'Server port',
+            type: 'number',
             default: 8000,
-            required: true
+            required: true,
           },
           DATABASE_URL: {
-            description: "PostgreSQL connection string",
-            type: "string",
+            description: 'PostgreSQL connection string',
+            type: 'string',
             required: true,
-            sensitive: true
+            sensitive: true,
           },
           JWT_SECRET: {
-            description: "JWT signing secret",
-            type: "string",
+            description: 'JWT signing secret',
+            type: 'string',
             required: true,
-            sensitive: true
-          }
+            sensitive: true,
+          },
         },
         resourceLimits: {
-          cpu: "1",
-          memory: "512Mi",
-          storage: "2Gi"
+          cpu: '1',
+          memory: '512Mi',
+          storage: '2Gi',
         },
         healthCheck: {
-          command: ["CMD", "curl", "-f", "http://localhost:8000/health"],
-          interval: "30s",
-          timeout: "10s",
-          retries: 3
+          command: ['CMD', 'curl', '-f', 'http://localhost:8000/health'],
+          interval: '30s',
+          timeout: '10s',
+          retries: 3,
         },
         security: {
           runAsUser: 1001,
           readOnlyRootFilesystem: false,
           allowPrivilegeEscalation: false,
           capabilities: {
-            drop: ["ALL"],
-            add: []
-          }
+            drop: ['ALL'],
+            add: [],
+          },
         },
         networking: {
-          mode: "bridge"
-        }
+          mode: 'bridge',
+        },
       },
       services: [
         {
-          name: "postgres",
-          description: "PostgreSQL database",
-          image: "postgres",
-          tag: "15-alpine",
+          name: 'postgres',
+          description: 'PostgreSQL database',
+          image: 'postgres',
+          tag: '15-alpine',
           ports: [
             {
               container: 5432,
-              protocol: "tcp",
-              description: "PostgreSQL port"
-            }
+              protocol: 'tcp',
+              description: 'PostgreSQL port',
+            },
           ],
           environment: {
-            POSTGRES_DB: "app",
-            POSTGRES_USER: "postgres",
-            POSTGRES_PASSWORD: "password"
+            POSTGRES_DB: 'app',
+            POSTGRES_USER: 'postgres',
+            POSTGRES_PASSWORD: 'password',
           },
-          volumes: ["postgres_data:/var/lib/postgresql/data"],
+          volumes: ['postgres_data:/var/lib/postgresql/data'],
           dependsOn: [],
           healthCheck: {
-            test: ["CMD-SHELL", "pg_isready -U postgres"],
-            interval: "10s",
-            timeout: "5s",
-            retries: 5
+            test: ['CMD-SHELL', 'pg_isready -U postgres'],
+            interval: '10s',
+            timeout: '5s',
+            retries: 5,
           },
-          restart: "unless-stopped"
+          restart: 'unless-stopped',
         },
         {
-          name: "redis",
-          description: "Redis cache",
-          image: "redis",
-          tag: "7-alpine",
+          name: 'redis',
+          description: 'Redis cache',
+          image: 'redis',
+          tag: '7-alpine',
           ports: [
             {
               container: 6379,
-              protocol: "tcp",
-              description: "Redis port"
-            }
+              protocol: 'tcp',
+              description: 'Redis port',
+            },
           ],
           environment: {},
-          volumes: ["redis_data:/data"],
+          volumes: ['redis_data:/data'],
           dependsOn: [],
           healthCheck: {
-            test: ["CMD", "redis-cli", "ping"],
-            interval: "10s",
-            timeout: "3s",
-            retries: 3
+            test: ['CMD', 'redis-cli', 'ping'],
+            interval: '10s',
+            timeout: '3s',
+            retries: 3,
           },
-          restart: "unless-stopped"
-        }
+          restart: 'unless-stopped',
+        },
       ],
       volumes: [
         {
-          name: "postgres_data",
-          type: "volume",
-          target: "/var/lib/postgresql/data",
-          description: "PostgreSQL data volume"
+          name: 'postgres_data',
+          type: 'volume',
+          target: '/var/lib/postgresql/data',
+          description: 'PostgreSQL data volume',
         },
         {
-          name: "redis_data",
-          type: "volume",
-          target: "/data",
-          description: "Redis data volume"
-        }
+          name: 'redis_data',
+          type: 'volume',
+          target: '/data',
+          description: 'Redis data volume',
+        },
       ],
       networks: [],
       secrets: [
         {
-          name: "jwt_secret",
-          description: "JWT signing secret",
-          type: "password",
+          name: 'jwt_secret',
+          description: 'JWT signing secret',
+          type: 'password',
           generate: true,
-          length: 32
+          length: 32,
         },
         {
-          name: "db_password",
-          description: "Database password",
-          type: "password",
+          name: 'db_password',
+          description: 'Database password',
+          type: 'password',
           generate: true,
-          length: 16
-        }
+          length: 16,
+        },
       ],
       environment: {
-        NODE_ENV: "development",
-        PORT: "8000"
+        NODE_ENV: 'development',
+        PORT: '8000',
       },
       dockerfile: `FROM node:18-alpine
 
@@ -873,29 +873,29 @@ networks:
     driver: bridge`,
       scripts: [
         {
-          name: "setup",
-          description: "Setup database and run migrations",
-          type: "setup",
-          command: "npm run migrate"
+          name: 'setup',
+          description: 'Setup database and run migrations',
+          type: 'setup',
+          command: 'npm run migrate',
         },
         {
-          name: "dev",
-          description: "Start development server",
-          type: "build",
-          command: "npm run dev"
+          name: 'dev',
+          description: 'Start development server',
+          type: 'build',
+          command: 'npm run dev',
         },
         {
-          name: "build",
-          description: "Build TypeScript",
-          type: "build",
-          command: "npm run build"
+          name: 'build',
+          description: 'Build TypeScript',
+          type: 'build',
+          command: 'npm run build',
         },
         {
-          name: "test",
-          description: "Run tests",
-          type: "test",
-          command: "npm run test"
-        }
+          name: 'test',
+          description: 'Run tests',
+          type: 'test',
+          command: 'npm run test',
+        },
       ],
       documentation: {
         readme: `# Node.js Express API Template
@@ -938,8 +938,8 @@ A robust RESTful API server with Express.js, TypeScript, PostgreSQL, and Redis.
 - **Run migrations**: \`npm run migrate\``,
         examples: [
           {
-            title: "Express Route Handler",
-            description: "Example of a typed Express route handler",
+            title: 'Express Route Handler',
+            description: 'Example of a typed Express route handler',
             code: `import { Request, Response } from 'express';
 import { User } from '../models/User';
 
@@ -951,16 +951,16 @@ export const getUsers = async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };`,
-            language: "typescript"
-          }
+            language: 'typescript',
+          },
         ],
         links: [
           {
-            title: "Express.js Documentation",
-            url: "https://expressjs.com/",
-            type: "official"
-          }
-        ]
+            title: 'Express.js Documentation',
+            url: 'https://expressjs.com/',
+            type: 'official',
+          },
+        ],
       },
       metadata: {
         downloads: 8934,
@@ -970,26 +970,26 @@ export const getUsers = async (req: Request, res: Response) => {
         forks: 123,
         size: 250000000,
         compatibility: {
-          platforms: ["linux", "windows", "macos"],
-          architectures: ["amd64", "arm64"],
-          minDockerVersion: "20.10.0",
-          minComposeVersion: "2.0.0"
+          platforms: ['linux', 'windows', 'macos'],
+          architectures: ['amd64', 'arm64'],
+          minDockerVersion: '20.10.0',
+          minComposeVersion: '2.0.0',
         },
-        license: "MIT",
-        keywords: ["nodejs", "express", "api", "postgresql", "typescript", "backend"]
-      }
-    }
+        license: 'MIT',
+        keywords: ['nodejs', 'express', 'api', 'postgresql', 'typescript', 'backend'],
+      },
+    },
   ];
 
   const vaporformAuthor: TemplateAuthor = {
-    id: "vaporform",
-    username: "vaporform",
-    displayName: "Vaporform Team",
+    id: 'vaporform',
+    username: 'vaporform',
+    displayName: 'Vaporform Team',
     verified: true,
-    reputation: 100
+    reputation: 100,
   };
 
-  templateAuthors.set("vaporform", vaporformAuthor);
+  templateAuthors.set('vaporform', vaporformAuthor);
 
   for (const templateData of defaultTemplates) {
     const template: ContainerTemplate = {
@@ -997,13 +997,13 @@ export const getUsers = async (req: Request, res: Response) => {
       id: uuidv4(),
       createdAt: new Date(),
       updatedAt: new Date(),
-      publishedAt: new Date()
+      publishedAt: new Date(),
     };
 
     templates.set(template.id, template);
   }
 
-  log.info("Default templates initialized", { count: defaultTemplates.length });
+  log.info('Default templates initialized', { count: defaultTemplates.length });
 }
 
 // Template validation and processing
@@ -1012,19 +1012,19 @@ async function validateTemplate(template: Partial<ContainerTemplate>): Promise<s
 
   // Validate basic fields
   if (!template.name || template.name.length < 1) {
-    errors.push("Template name is required");
+    errors.push('Template name is required');
   }
 
   if (!template.description || template.description.length < 10) {
-    errors.push("Template description must be at least 10 characters");
+    errors.push('Template description must be at least 10 characters');
   }
 
   if (!template.techStack?.primaryLanguage) {
-    errors.push("Primary language is required");
+    errors.push('Primary language is required');
   }
 
   if (!template.configuration?.baseImage) {
-    errors.push("Base image is required");
+    errors.push('Base image is required');
   }
 
   // Validate Dockerfile if provided
@@ -1059,7 +1059,9 @@ function validateDockerfile(dockerfile: string): string[] {
   
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue;
+    }
     
     if (trimmed.toUpperCase().startsWith('FROM')) {
       hasFrom = true;
@@ -1067,16 +1069,16 @@ function validateDockerfile(dockerfile: string): string[] {
     
     // Check for security issues
     if (trimmed.includes('--privileged')) {
-      errors.push("Avoid using --privileged in Dockerfile");
+      errors.push('Avoid using --privileged in Dockerfile');
     }
     
     if (trimmed.includes('sudo') && !trimmed.includes('apt-get')) {
-      errors.push("Avoid using sudo in Dockerfile");
+      errors.push('Avoid using sudo in Dockerfile');
     }
   }
   
   if (!hasFrom) {
-    errors.push("Dockerfile must contain a FROM instruction");
+    errors.push('Dockerfile must contain a FROM instruction');
   }
   
   return errors;
@@ -1089,14 +1091,14 @@ async function validateComposeFile(composeContent: string): Promise<string[]> {
     // Basic YAML validation would go here
     // For now, just check if it contains required sections
     if (!composeContent.includes('version:')) {
-      errors.push("Docker Compose file must specify a version");
+      errors.push('Docker Compose file must specify a version');
     }
     
     if (!composeContent.includes('services:')) {
-      errors.push("Docker Compose file must define services");
+      errors.push('Docker Compose file must define services');
     }
   } catch (error) {
-    errors.push("Invalid Docker Compose YAML format");
+    errors.push('Invalid Docker Compose YAML format');
   }
   
   return errors;
@@ -1108,29 +1110,29 @@ async function testTemplate(template: ContainerTemplate): Promise<{ success: boo
   const errors: string[] = [];
   
   try {
-    logs.push("Starting template validation...");
+    logs.push('Starting template validation...');
     
     // Test Dockerfile build
     if (template.dockerfile) {
-      logs.push("Testing Dockerfile build...");
+      logs.push('Testing Dockerfile build...');
       await testDockerfileBuild(template, logs, errors);
     }
     
     // Test Docker Compose
     if (template.composeFile) {
-      logs.push("Testing Docker Compose configuration...");
+      logs.push('Testing Docker Compose configuration...');
       await testComposeConfiguration(template, logs, errors);
     }
     
     // Test environment variables
-    logs.push("Validating environment variables...");
+    logs.push('Validating environment variables...');
     validateEnvironmentVariables(template, logs, errors);
     
     // Test networking configuration
-    logs.push("Validating networking configuration...");
+    logs.push('Validating networking configuration...');
     validateNetworkingConfiguration(template, logs, errors);
     
-    logs.push("Template validation completed");
+    logs.push('Template validation completed');
     return { success: errors.length === 0, logs, errors };
     
   } catch (error) {
@@ -1151,16 +1153,16 @@ async function testDockerfileBuild(template: ContainerTemplate, logs: string[], 
     // 4. Check for build errors
     // 5. Clean up
     
-    logs.push("Dockerfile syntax validation passed");
+    logs.push('Dockerfile syntax validation passed');
     
     // Simulate build test
     const hasIssues = template.dockerfile?.includes('RUN rm -rf /') || 
                      template.dockerfile?.includes('--privileged');
     
     if (hasIssues) {
-      errors.push("Dockerfile contains potentially dangerous commands");
+      errors.push('Dockerfile contains potentially dangerous commands');
     } else {
-      logs.push("Dockerfile security check passed");
+      logs.push('Dockerfile security check passed');
     }
     
   } catch (error) {
@@ -1170,21 +1172,23 @@ async function testDockerfileBuild(template: ContainerTemplate, logs: string[], 
 
 async function testComposeConfiguration(template: ContainerTemplate, logs: string[], errors: string[]): Promise<void> {
   try {
-    if (!template.composeFile) return;
+    if (!template.composeFile) {
+      return;
+    }
     
     // Validate compose file syntax
-    logs.push("Docker Compose syntax validation passed");
+    logs.push('Docker Compose syntax validation passed');
     
     // Check for common issues
     if (template.composeFile.includes('privileged: true')) {
-      errors.push("Avoid using privileged mode in Docker Compose");
+      errors.push('Avoid using privileged mode in Docker Compose');
     }
     
     if (template.composeFile.includes('network_mode: host')) {
-      logs.push("Warning: Using host network mode may cause port conflicts");
+      logs.push('Warning: Using host network mode may cause port conflicts');
     }
     
-    logs.push("Docker Compose configuration validated");
+    logs.push('Docker Compose configuration validated');
     
   } catch (error) {
     errors.push(`Docker Compose validation failed: ${error.message}`);
@@ -1203,7 +1207,7 @@ function validateEnvironmentVariables(template: ContainerTemplate, logs: string[
       errors.push(`Sensitive environment variable '${name}' should not have a default value`);
     }
     
-    if (config.type === "enum" && !config.options) {
+    if (config.type === 'enum' && !config.options) {
       errors.push(`Enum environment variable '${name}' must specify options`);
     }
   }
@@ -1235,7 +1239,7 @@ function validateNetworkingConfiguration(template: ContainerTemplate, logs: stri
     }
   }
   
-  logs.push("Network configuration validated");
+  logs.push('Network configuration validated');
 }
 
 // Template search and filtering
@@ -1249,7 +1253,7 @@ function searchTemplates(
     author?: string;
     verified?: boolean;
     official?: boolean;
-  }
+  },
 ): ContainerTemplate[] {
   let results = Array.from(templates.values());
   
@@ -1260,7 +1264,7 @@ function searchTemplates(
       template.name.toLowerCase().includes(queryLower) ||
       template.description.toLowerCase().includes(queryLower) ||
       template.tags.some(tag => tag.toLowerCase().includes(queryLower)) ||
-      template.techStack.primaryLanguage.toLowerCase().includes(queryLower)
+      template.techStack.primaryLanguage.toLowerCase().includes(queryLower),
     );
   }
   
@@ -1272,7 +1276,7 @@ function searchTemplates(
   // Tags filter
   if (filters.tags && filters.tags.length > 0) {
     results = results.filter(template => 
-      filters.tags!.some(tag => template.tags.includes(tag))
+      filters.tags!.some(tag => template.tags.includes(tag)),
     );
   }
   
@@ -1280,21 +1284,21 @@ function searchTemplates(
   if (filters.language) {
     results = results.filter(template => 
       template.techStack.primaryLanguage === filters.language ||
-      template.techStack.languages.includes(filters.language)
+      template.techStack.languages.includes(filters.language),
     );
   }
   
   // Framework filter
   if (filters.framework) {
     results = results.filter(template => 
-      template.techStack.frameworks.includes(filters.framework)
+      template.techStack.frameworks.includes(filters.framework),
     );
   }
   
   // Author filter
   if (filters.author) {
     results = results.filter(template => 
-      template.author.username === filters.author
+      template.author.username === filters.author,
     );
   }
   
@@ -1314,34 +1318,34 @@ function searchTemplates(
 function sortTemplates(
   templates: ContainerTemplate[],
   sortBy: string,
-  sortOrder: "asc" | "desc"
+  sortOrder: 'asc' | 'desc',
 ): ContainerTemplate[] {
   return templates.sort((a, b) => {
     let aValue: any;
     let bValue: any;
     
     switch (sortBy) {
-      case "downloads":
+      case 'downloads':
         aValue = a.metadata.downloads;
         bValue = b.metadata.downloads;
         break;
-      case "stars":
+      case 'stars':
         aValue = a.metadata.stars;
         bValue = b.metadata.stars;
         break;
-      case "rating":
+      case 'rating':
         aValue = a.metadata.rating;
         bValue = b.metadata.rating;
         break;
-      case "updated":
+      case 'updated':
         aValue = a.updatedAt;
         bValue = b.updatedAt;
         break;
-      case "created":
+      case 'created':
         aValue = a.createdAt;
         bValue = b.createdAt;
         break;
-      case "name":
+      case 'name':
         aValue = a.name.toLowerCase();
         bValue = b.name.toLowerCase();
         break;
@@ -1349,8 +1353,12 @@ function sortTemplates(
         return 0;
     }
     
-    if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
-    if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
+    if (aValue < bValue) {
+      return sortOrder === 'asc' ? -1 : 1;
+    }
+    if (aValue > bValue) {
+      return sortOrder === 'asc' ? 1 : -1;
+    }
     return 0;
   });
 }
@@ -1359,12 +1367,12 @@ function sortTemplates(
 
 // Create template
 export const createTemplate = api<typeof CreateTemplateRequest>(
-  { method: "POST", path: "/templates", auth: true, expose: true },
+  { method: 'POST', path: '/templates', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<ContainerTemplate> => {
     const { userID } = meta.auth;
     const templateData = req;
     
-    log.info("Creating template", { name: templateData.name, userID });
+    log.info('Creating template', { name: templateData.name, userID });
     
     // Get or create author
     let author = templateAuthors.get(userID);
@@ -1374,7 +1382,7 @@ export const createTemplate = api<typeof CreateTemplateRequest>(
         username: userID, // In real implementation, get from user service
         displayName: userID,
         verified: false,
-        reputation: 0
+        reputation: 0,
       };
       templateAuthors.set(userID, author);
     }
@@ -1390,7 +1398,7 @@ export const createTemplate = api<typeof CreateTemplateRequest>(
       subcategory: templateData.subcategory,
       tags: templateData.tags,
       author,
-      version: "1.0.0",
+      version: '1.0.0',
       isOfficial: false,
       isVerified: false,
       isPublic: templateData.isPublic,
@@ -1402,19 +1410,19 @@ export const createTemplate = api<typeof CreateTemplateRequest>(
           readOnlyRootFilesystem: false,
           allowPrivilegeEscalation: false,
           capabilities: {
-            drop: ["ALL"],
-            add: []
-          }
+            drop: ['ALL'],
+            add: [],
+          },
         },
         networking: {
-          mode: "bridge"
+          mode: 'bridge',
         },
         healthCheck: {
-          command: ["CMD", "curl", "-f", `http://localhost:${templateData.configuration.exposedPorts[0] || 8000}`],
-          interval: "30s",
-          timeout: "10s",
-          retries: 3
-        }
+          command: ['CMD', 'curl', '-f', `http://localhost:${templateData.configuration.exposedPorts[0] || 8000}`],
+          interval: '30s',
+          timeout: '10s',
+          retries: 3,
+        },
       },
       services: [],
       volumes: [],
@@ -1433,38 +1441,38 @@ export const createTemplate = api<typeof CreateTemplateRequest>(
         forks: 0,
         size: 0,
         compatibility: {
-          platforms: ["linux"],
-          architectures: ["amd64"],
-          minDockerVersion: "20.10.0"
+          platforms: ['linux'],
+          architectures: ['amd64'],
+          minDockerVersion: '20.10.0',
         },
-        license: "MIT",
-        keywords: templateData.tags
+        license: 'MIT',
+        keywords: templateData.tags,
       },
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     };
     
     // Validate template
     const validationErrors = await validateTemplate(template);
     if (validationErrors.length > 0) {
-      throw new Error(`Template validation failed: ${validationErrors.join(", ")}`);
+      throw new Error(`Template validation failed: ${validationErrors.join(', ')}`);
     }
     
     templates.set(templateId, template);
     
-    log.info("Template created", { templateId, name: template.name });
+    log.info('Template created', { templateId, name: template.name });
     
     return template;
-  }
+  },
 );
 
 // Get template
 export const getTemplate = api(
-  { method: "GET", path: "/templates/:id", auth: true, expose: true },
+  { method: 'GET', path: '/templates/:id', auth: true, expose: true },
   async (req: { id: string }, meta: APICallMeta<AuthData>): Promise<ContainerTemplate> => {
     const template = templates.get(req.id);
     if (!template) {
-      throw new Error("Template not found");
+      throw new Error('Template not found');
     }
     
     // Increment download count (in real implementation, track per user)
@@ -1472,24 +1480,24 @@ export const getTemplate = api(
     templates.set(req.id, template);
     
     return template;
-  }
+  },
 );
 
 // Search templates
 export const searchTemplatesEndpoint = api<typeof SearchTemplatesRequest>(
-  { method: "GET", path: "/templates", auth: true, expose: true },
+  { method: 'GET', path: '/templates', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<{ templates: ContainerTemplate[]; total: number; facets: any }> => {
     const { query, category, tags, language, framework, author, verified, official, sortBy, sortOrder, limit, offset } = req;
     
     // Search and filter
-    const results = searchTemplates(query || "", {
+    const results = searchTemplates(query || '', {
       category,
       tags,
       language,
       framework,
       author,
       verified,
-      official
+      official,
     });
     
     // Sort results
@@ -1503,15 +1511,15 @@ export const searchTemplatesEndpoint = api<typeof SearchTemplatesRequest>(
       categories: generateCategoryFacets(results),
       languages: generateLanguageFacets(results),
       frameworks: generateFrameworkFacets(results),
-      tags: generateTagFacets(results)
+      tags: generateTagFacets(results),
     };
     
     return {
       templates: paginatedResults,
       total: sortedResults.length,
-      facets
+      facets,
     };
-  }
+  },
 );
 
 function generateCategoryFacets(templates: ContainerTemplate[]) {
@@ -1557,27 +1565,37 @@ function generateTagFacets(templates: ContainerTemplate[]) {
 
 // Update template
 export const updateTemplate = api<typeof UpdateTemplateRequest>(
-  { method: "PATCH", path: "/templates/:id", auth: true, expose: true },
+  { method: 'PATCH', path: '/templates/:id', auth: true, expose: true },
   async (req: z.infer<typeof UpdateTemplateRequest> & { id: string }, meta: APICallMeta<AuthData>): Promise<ContainerTemplate> => {
     const { userID } = meta.auth;
     const { id, ...updateData } = req;
     
     const template = templates.get(id);
     if (!template) {
-      throw new Error("Template not found");
+      throw new Error('Template not found');
     }
     
     // Check ownership
     if (template.author.id !== userID) {
-      throw new Error("Unauthorized: You can only update your own templates");
+      throw new Error('Unauthorized: You can only update your own templates');
     }
     
     // Update template
-    if (updateData.name) template.name = updateData.name;
-    if (updateData.description) template.description = updateData.description;
-    if (updateData.tags) template.tags = updateData.tags;
-    if (updateData.dockerfile) template.dockerfile = updateData.dockerfile;
-    if (updateData.isPublic !== undefined) template.isPublic = updateData.isPublic;
+    if (updateData.name) {
+      template.name = updateData.name;
+    }
+    if (updateData.description) {
+      template.description = updateData.description;
+    }
+    if (updateData.tags) {
+      template.tags = updateData.tags;
+    }
+    if (updateData.dockerfile) {
+      template.dockerfile = updateData.dockerfile;
+    }
+    if (updateData.isPublic !== undefined) {
+      template.isPublic = updateData.isPublic;
+    }
     
     if (updateData.configuration) {
       if (updateData.configuration.exposedPorts) {
@@ -1602,42 +1620,42 @@ export const updateTemplate = api<typeof UpdateTemplateRequest>(
     // Validate updated template
     const validationErrors = await validateTemplate(template);
     if (validationErrors.length > 0) {
-      throw new Error(`Template validation failed: ${validationErrors.join(", ")}`);
+      throw new Error(`Template validation failed: ${validationErrors.join(', ')}`);
     }
     
     templates.set(id, template);
     
-    log.info("Template updated", { templateId: id, name: template.name });
+    log.info('Template updated', { templateId: id, name: template.name });
     
     return template;
-  }
+  },
 );
 
 // Test template
 export const testTemplate = api(
-  { method: "POST", path: "/templates/:id/test", auth: true, expose: true },
+  { method: 'POST', path: '/templates/:id/test', auth: true, expose: true },
   async (req: { id: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean; logs: string[]; errors: string[] }> => {
     const template = templates.get(req.id);
     if (!template) {
-      throw new Error("Template not found");
+      throw new Error('Template not found');
     }
     
-    log.info("Testing template", { templateId: req.id, name: template.name });
+    log.info('Testing template', { templateId: req.id, name: template.name });
     
     return await testTemplate(template);
-  }
+  },
 );
 
 // Create review
 export const createTemplateReview = api<typeof CreateReviewRequest>(
-  { method: "POST", path: "/templates/:id/reviews", auth: true, expose: true },
+  { method: 'POST', path: '/templates/:id/reviews', auth: true, expose: true },
   async (req: z.infer<typeof CreateReviewRequest> & { id: string }, meta: APICallMeta<AuthData>): Promise<TemplateReview> => {
     const { userID } = meta.auth;
     const { id: templateId, rating, title, comment } = req;
     
     const template = templates.get(templateId);
     if (!template) {
-      throw new Error("Template not found");
+      throw new Error('Template not found');
     }
     
     const reviewId = uuidv4();
@@ -1654,7 +1672,7 @@ export const createTemplateReview = api<typeof CreateReviewRequest>(
       helpful: 0,
       version: template.version,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     };
     
     // Add to reviews
@@ -1671,15 +1689,15 @@ export const createTemplateReview = api<typeof CreateReviewRequest>(
     
     templates.set(templateId, template);
     
-    log.info("Review created", { reviewId, templateId, rating });
+    log.info('Review created', { reviewId, templateId, rating });
     
     return review;
-  }
+  },
 );
 
 // Get template reviews
 export const getTemplateReviews = api(
-  { method: "GET", path: "/templates/:id/reviews", auth: true, expose: true },
+  { method: 'GET', path: '/templates/:id/reviews', auth: true, expose: true },
   async (req: { id: string; limit?: number; offset?: number }, meta: APICallMeta<AuthData>): Promise<{ reviews: TemplateReview[]; total: number }> => {
     const { id: templateId, limit = 20, offset = 0 } = req;
     
@@ -1689,14 +1707,14 @@ export const getTemplateReviews = api(
     
     return {
       reviews: paginatedReviews,
-      total: reviews.length
+      total: reviews.length,
     };
-  }
+  },
 );
 
 // Get marketplace stats
 export const getMarketplaceStats = api(
-  { method: "GET", path: "/marketplace/stats", auth: true, expose: true },
+  { method: 'GET', path: '/marketplace/stats', auth: true, expose: true },
   async (req: {}, meta: APICallMeta<AuthData>): Promise<MarketplaceStats> => {
     const allTemplates = Array.from(templates.values()).filter(t => t.isPublic);
     
@@ -1744,14 +1762,14 @@ export const getMarketplaceStats = api(
       popularTags,
       recentTemplates,
       trendingTemplates,
-      featuredTemplates
+      featuredTemplates,
     };
-  }
+  },
 );
 
 // Create collection
 export const createTemplateCollection = api<typeof CreateCollectionRequest>(
-  { method: "POST", path: "/collections", auth: true, expose: true },
+  { method: 'POST', path: '/collections', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<TemplateCollection> => {
     const { userID } = meta.auth;
     const { name, description, templates: templateIds, isPublic, tags } = req;
@@ -1773,7 +1791,7 @@ export const createTemplateCollection = api<typeof CreateCollectionRequest>(
         username: userID,
         displayName: userID,
         verified: false,
-        reputation: 0
+        reputation: 0,
       };
       templateAuthors.set(userID, author);
     }
@@ -1787,20 +1805,20 @@ export const createTemplateCollection = api<typeof CreateCollectionRequest>(
       isPublic,
       tags,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     };
     
     templateCollections.set(collectionId, collection);
     
-    log.info("Template collection created", { collectionId, name, templateCount: templateIds.length });
+    log.info('Template collection created', { collectionId, name, templateCount: templateIds.length });
     
     return collection;
-  }
+  },
 );
 
 // Get template collections
 export const getTemplateCollections = api(
-  { method: "GET", path: "/collections", auth: true, expose: true },
+  { method: 'GET', path: '/collections', auth: true, expose: true },
   async (req: { author?: string; isPublic?: boolean; limit?: number; offset?: number }, meta: APICallMeta<AuthData>): Promise<{ collections: TemplateCollection[]; total: number }> => {
     const { author, isPublic, limit = 20, offset = 0 } = req;
     
@@ -1819,25 +1837,25 @@ export const getTemplateCollections = api(
     
     return {
       collections: paginatedCollections,
-      total: filteredCollections.length
+      total: filteredCollections.length,
     };
-  }
+  },
 );
 
 // Delete template
 export const deleteTemplate = api(
-  { method: "DELETE", path: "/templates/:id", auth: true, expose: true },
+  { method: 'DELETE', path: '/templates/:id', auth: true, expose: true },
   async (req: { id: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean }> => {
     const { userID } = meta.auth;
     
     const template = templates.get(req.id);
     if (!template) {
-      throw new Error("Template not found");
+      throw new Error('Template not found');
     }
     
     // Check ownership (allow admins to delete any template)
     if (template.author.id !== userID && !template.isOfficial) {
-      throw new Error("Unauthorized: You can only delete your own templates");
+      throw new Error('Unauthorized: You can only delete your own templates');
     }
     
     // Remove template
@@ -1855,8 +1873,8 @@ export const deleteTemplate = api(
       }
     }
     
-    log.info("Template deleted", { templateId: req.id, name: template.name });
+    log.info('Template deleted', { templateId: req.id, name: template.name });
     
     return { success: true };
-  }
+  },
 );

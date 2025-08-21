@@ -11,19 +11,19 @@
  * - Automated Recovery Strategies
  */
 
-import { api } from "encore.dev/api";
-import { secret } from "encore.dev/config";
-import { Redis } from "ioredis";
-import winston from "winston";
-import crypto from "crypto";
-import { z } from "zod";
-import schedule from "node-schedule";
-import * as Sentry from "@sentry/node";
+import { api } from 'encore.dev/api';
+import { secret } from 'encore.dev/config';
+import { Redis } from 'ioredis';
+import winston from 'winston';
+import crypto from 'crypto';
+import { z } from 'zod';
+import schedule from 'node-schedule';
+import * as Sentry from '@sentry/node';
 
 // Configuration
-const BACKUP_STORAGE_KEY = secret("BACKUP_STORAGE_KEY");
-const NOTIFICATION_WEBHOOK = secret("NOTIFICATION_WEBHOOK");
-const RECOVERY_TIMEOUT = parseInt(process.env.RECOVERY_TIMEOUT || "300000"); // 5 minutes
+const BACKUP_STORAGE_KEY = secret('BACKUP_STORAGE_KEY');
+const NOTIFICATION_WEBHOOK = secret('NOTIFICATION_WEBHOOK');
+const RECOVERY_TIMEOUT = parseInt(process.env.RECOVERY_TIMEOUT || '300000'); // 5 minutes
 
 // Redis instances for different purposes
 const primaryRedis = new Redis({
@@ -48,7 +48,7 @@ const errorLogger = winston.createLogger({
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
-    winston.format.json()
+    winston.format.json(),
   ),
   defaultMeta: { service: 'error-handling' },
   transports: [
@@ -68,7 +68,7 @@ const errorLogger = winston.createLogger({
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
-        winston.format.simple()
+        winston.format.simple(),
       ),
     }),
   ],
@@ -79,7 +79,7 @@ const recoveryLogger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
-    winston.format.json()
+    winston.format.json(),
   ),
   defaultMeta: { service: 'disaster-recovery' },
   transports: [
@@ -221,15 +221,15 @@ const SystemErrorSchema = z.object({
  * Global Error Handler
  */
 export class GlobalErrorHandler {
-  private static circuitBreakers = new Map<string, CircuitBreakerState>();
-  private static fallbackStrategies = new Map<string, Function>();
+  private static readonly circuitBreakers = new Map<string, CircuitBreakerState>();
+  private static readonly fallbackStrategies = new Map<string, Function>();
 
   /**
    * Handle system error with appropriate strategy
    */
   static async handleError(
     error: Error,
-    context: Omit<ErrorContext, 'id' | 'timestamp' | 'environment' | 'version'>
+    context: Omit<ErrorContext, 'id' | 'timestamp' | 'environment' | 'version'>,
   ): Promise<SystemError> {
     try {
       const errorId = crypto.randomUUID();
@@ -759,8 +759,8 @@ export class GlobalErrorHandler {
  * Disaster Recovery Service
  */
 export class DisasterRecoveryService {
-  private static recoveryPlans = new Map<string, DisasterRecoveryPlan>();
-  private static activeRecoveries = new Map<string, RecoveryAction>();
+  private static readonly recoveryPlans = new Map<string, DisasterRecoveryPlan>();
+  private static readonly activeRecoveries = new Map<string, RecoveryAction>();
 
   /**
    * Trigger disaster recovery
@@ -960,7 +960,7 @@ export class DisasterRecoveryService {
    */
   static listActiveRecoveries(): RecoveryAction[] {
     return Array.from(this.activeRecoveries.values()).filter(
-      recovery => recovery.status === 'pending' || recovery.status === 'in_progress'
+      recovery => recovery.status === 'pending' || recovery.status === 'in_progress',
     );
   }
 }
@@ -1067,7 +1067,9 @@ export class BackupService {
   static async getLatestBackup(): Promise<BackupRecord | null> {
     try {
       const backupIds = await primaryRedis.hkeys('backups');
-      if (backupIds.length === 0) return null;
+      if (backupIds.length === 0) {
+        return null;
+      }
 
       let latestBackup: BackupRecord | null = null;
       let latestTimestamp = 0;
@@ -1168,7 +1170,7 @@ export class BackupService {
     let encrypted = cipher.update(JSON.stringify(data), 'utf8', 'hex');
     encrypted += cipher.final('hex');
     
-    return iv.toString('hex') + ':' + encrypted;
+    return `${iv.toString('hex')  }:${  encrypted}`;
   }
 
   /**
@@ -1193,7 +1195,9 @@ export class BackupService {
   private static async verifyBackup(backupId: string): Promise<boolean> {
     try {
       const encryptedData = await backupRedis.get(`backup:${backupId}`);
-      if (!encryptedData) return false;
+      if (!encryptedData) {
+        return false;
+      }
 
       // Try to decrypt and parse
       const data = this.decryptBackupData(encryptedData);
@@ -1291,7 +1295,7 @@ schedule.scheduleJob('0 */6 * * *', async () => {
 // API Endpoints
 
 export const reportError = api(
-  { method: "POST", path: "/api/error-handling/report" },
+  { method: 'POST', path: '/api/error-handling/report' },
   async ({ error, context }: {
     error: { name: string; message: string; stack?: string };
     context: Omit<ErrorContext, 'id' | 'timestamp' | 'environment' | 'version'>;
@@ -1302,11 +1306,11 @@ export const reportError = api(
     jsError.stack = error.stack;
 
     return await GlobalErrorHandler.handleError(jsError, contextValidation);
-  }
+  },
 );
 
 export const getErrorStatus = api(
-  { method: "GET", path: "/api/error-handling/status/:errorId" },
+  { method: 'GET', path: '/api/error-handling/status/:errorId' },
   async ({ errorId }: { errorId: string }): Promise<SystemError | null> => {
     const errorData = await primaryRedis.lrange('errors:recent', 0, -1);
     const error = errorData
@@ -1314,11 +1318,11 @@ export const getErrorStatus = api(
       .find(e => e.id === errorId);
 
     return error || null;
-  }
+  },
 );
 
 export const getCircuitBreakerStatus = api(
-  { method: "GET", path: "/api/error-handling/circuit-breakers" },
+  { method: 'GET', path: '/api/error-handling/circuit-breakers' },
   async (): Promise<CircuitBreakerState[]> => {
     const statuses: CircuitBreakerState[] = [];
     
@@ -1333,11 +1337,11 @@ export const getCircuitBreakerStatus = api(
     }
 
     return statuses;
-  }
+  },
 );
 
 export const triggerRecovery = api(
-  { method: "POST", path: "/api/error-handling/recovery/trigger", auth: true },
+  { method: 'POST', path: '/api/error-handling/recovery/trigger', auth: true },
   async ({ errorId, recoveryType }: {
     errorId: string;
     recoveryType: 'restart_service' | 'failover' | 'scale_up' | 'data_restore' | 'rollback';
@@ -1361,47 +1365,47 @@ export const triggerRecovery = api(
     };
 
     return await DisasterRecoveryService.triggerRecovery(error);
-  }
+  },
 );
 
 export const getRecoveryStatus = api(
-  { method: "GET", path: "/api/error-handling/recovery/:recoveryId" },
+  { method: 'GET', path: '/api/error-handling/recovery/:recoveryId' },
   async ({ recoveryId }: { recoveryId: string }): Promise<RecoveryAction | null> => {
     return DisasterRecoveryService.getRecoveryStatus(recoveryId);
-  }
+  },
 );
 
 export const listActiveRecoveries = api(
-  { method: "GET", path: "/api/error-handling/recovery/active" },
+  { method: 'GET', path: '/api/error-handling/recovery/active' },
   async (): Promise<RecoveryAction[]> => {
     return DisasterRecoveryService.listActiveRecoveries();
-  }
+  },
 );
 
 export const createBackup = api(
-  { method: "POST", path: "/api/error-handling/backup/create", auth: true },
+  { method: 'POST', path: '/api/error-handling/backup/create', auth: true },
   async ({ type = 'full' }: { type?: 'full' | 'incremental' | 'differential' }): Promise<BackupRecord> => {
     return await BackupService.createBackup(type);
-  }
+  },
 );
 
 export const listBackups = api(
-  { method: "GET", path: "/api/error-handling/backup/list", auth: true },
+  { method: 'GET', path: '/api/error-handling/backup/list', auth: true },
   async (): Promise<BackupRecord[]> => {
     return await BackupService.listBackups();
-  }
+  },
 );
 
 export const restoreBackup = api(
-  { method: "POST", path: "/api/error-handling/backup/restore/:backupId", auth: true },
+  { method: 'POST', path: '/api/error-handling/backup/restore/:backupId', auth: true },
   async ({ backupId }: { backupId: string }): Promise<{ success: boolean }> => {
     const success = await BackupService.restoreFromBackup(backupId);
     return { success };
-  }
+  },
 );
 
 export const getSystemHealth = api(
-  { method: "GET", path: "/api/error-handling/health" },
+  { method: 'GET', path: '/api/error-handling/health' },
   async (): Promise<Record<string, any>> => {
     const recentErrors = await primaryRedis.lrange('errors:recent', 0, 99);
     const circuitBreakers = await Promise.resolve([]); // Would get actual circuit breaker states
@@ -1436,5 +1440,5 @@ export const getSystemHealth = api(
       },
       timestamp: new Date(),
     };
-  }
+  },
 );

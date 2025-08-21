@@ -9,24 +9,24 @@
  * - WebAuthn/FIDO2 Support
  */
 
-import { api } from "encore.dev/api";
-import { secret } from "encore.dev/config";
-import speakeasy from "speakeasy";
-import QRCode from "qrcode";
-import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from "@simplewebauthn/server";
-import { AuthenticatorDevice } from "@simplewebauthn/typescript-types";
-import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
-import crypto from "crypto";
-import { Redis } from "ioredis";
-import winston from "winston";
-import { z } from "zod";
+import { api } from 'encore.dev/api';
+import { secret } from 'encore.dev/config';
+import speakeasy from 'speakeasy';
+import QRCode from 'qrcode';
+import { generateRegistrationOptions, verifyRegistrationResponse, generateAuthenticationOptions, verifyAuthenticationResponse } from '@simplewebauthn/server';
+import { AuthenticatorDevice } from '@simplewebauthn/typescript-types';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+import { Redis } from 'ioredis';
+import winston from 'winston';
+import { z } from 'zod';
 
 // Configuration
-const JWT_SECRET = secret("JWT_SECRET");
-const ENCRYPTION_KEY = secret("ENCRYPTION_KEY");
-const WEBAUTHN_RP_ID = secret("WEBAUTHN_RP_ID", "localhost");
-const WEBAUTHN_RP_NAME = secret("WEBAUTHN_RP_NAME", "Vaporform");
+const JWT_SECRET = secret('JWT_SECRET');
+const ENCRYPTION_KEY = secret('ENCRYPTION_KEY');
+const WEBAUTHN_RP_ID = secret('WEBAUTHN_RP_ID', 'localhost');
+const WEBAUTHN_RP_NAME = secret('WEBAUTHN_RP_NAME', 'Vaporform');
 
 // Redis for session and security data
 const redis = new Redis({
@@ -42,13 +42,13 @@ const securityLogger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
-    winston.format.json()
+    winston.format.json(),
   ),
   defaultMeta: { service: 'security' },
   transports: [
     new winston.transports.File({ filename: 'logs/security.log' }),
-    new winston.transports.Console()
-  ]
+    new winston.transports.Console(),
+  ],
 });
 
 // Types
@@ -151,7 +151,7 @@ export class MFAService {
 
       // Generate backup codes
       const backupCodes = Array.from({ length: 10 }, () => 
-        crypto.randomBytes(4).toString('hex').toUpperCase()
+        crypto.randomBytes(4).toString('hex').toUpperCase(),
       );
 
       // Store encrypted secret and backup codes
@@ -309,7 +309,7 @@ export class MFAService {
   static async generateNewBackupCodes(userId: string): Promise<string[]> {
     try {
       const backupCodes = Array.from({ length: 10 }, () => 
-        crypto.randomBytes(4).toString('hex').toUpperCase()
+        crypto.randomBytes(4).toString('hex').toUpperCase(),
       );
 
       const encryptedBackupCodes = backupCodes.map(code => this.encrypt(code));
@@ -344,7 +344,7 @@ export class MFAService {
     let encrypted = cipher.update(text, 'utf8', 'hex');
     encrypted += cipher.final('hex');
     
-    return iv.toString('hex') + ':' + encrypted;
+    return `${iv.toString('hex')  }:${  encrypted}`;
   }
 
   /**
@@ -524,7 +524,7 @@ export class WebAuthnService {
       const devices = JSON.parse(userDevices);
       
       const device = devices.find((d: any) => 
-        Buffer.from(d.credentialID).equals(Buffer.from(response.id, 'base64url'))
+        Buffer.from(d.credentialID).equals(Buffer.from(response.id, 'base64url')),
       );
 
       if (!device) {
@@ -605,7 +605,9 @@ export class RBACService {
           // Check conditions if present
           if (permission.conditions && context) {
             const conditionsMet = this.evaluateConditions(permission.conditions, context);
-            if (!conditionsMet) continue;
+            if (!conditionsMet) {
+              continue;
+            }
           }
 
           await MFAService['logSecurityEvent']({
@@ -619,7 +621,7 @@ export class RBACService {
               resource, 
               action, 
               granted: true,
-              permission: permission.id 
+              permission: permission.id, 
             },
             resolved: true,
           });
@@ -638,7 +640,7 @@ export class RBACService {
         details: { 
           resource, 
           action, 
-          granted: false 
+          granted: false, 
         },
         resolved: true,
       });
@@ -817,7 +819,7 @@ export class ThreatDetectionService {
           email, 
           riskScore, 
           reasons,
-          blocked 
+          blocked, 
         },
         resolved: !blocked,
       });
@@ -889,7 +891,7 @@ export class ThreatDetectionService {
             action, 
             anomalyScore, 
             confidence,
-            reasons 
+            reasons, 
           },
           resolved: false,
         });
@@ -915,7 +917,9 @@ export class ThreatDetectionService {
   private static async getHistoricalAverage(userId: string, action: string): Promise<number> {
     // Simplified historical average calculation
     const keys = await redis.keys(`user_action:${userId}:${action}:*`);
-    if (keys.length === 0) return 1;
+    if (keys.length === 0) {
+      return 1;
+    }
     
     let total = 0;
     for (const key of keys) {
@@ -930,7 +934,7 @@ export class ThreatDetectionService {
 // API Endpoints
 
 export const setupMFA = api(
-  { method: "POST", path: "/api/security/mfa/setup", auth: true },
+  { method: 'POST', path: '/api/security/mfa/setup', auth: true },
   async ({ userId, method }: { userId: string; method: 'totp' | 'sms' | 'email' }): Promise<{
     secret?: string;
     qrCodeUrl?: string;
@@ -944,36 +948,36 @@ export const setupMFA = api(
     }
     
     throw new Error('MFA method not supported');
-  }
+  },
 );
 
 export const verifyMFA = api(
-  { method: "POST", path: "/api/security/mfa/verify" },
+  { method: 'POST', path: '/api/security/mfa/verify' },
   async ({ userId, code }: { userId: string; code: string }): Promise<{ success: boolean }> => {
     const success = await MFAService.verifyTOTP(userId, code);
     return { success };
-  }
+  },
 );
 
 export const setupWebAuthn = api(
-  { method: "POST", path: "/api/security/webauthn/register", auth: true },
+  { method: 'POST', path: '/api/security/webauthn/register', auth: true },
   async ({ userId, deviceName }: { userId: string; deviceName: string }): Promise<any> => {
     const validation = WebAuthnRegistrationSchema.parse({ userId, deviceName });
     const userEmail = 'user@example.com'; // Get from user service
     return await WebAuthnService.generateRegistrationOptions(userId, userEmail);
-  }
+  },
 );
 
 export const verifyWebAuthnRegistration = api(
-  { method: "POST", path: "/api/security/webauthn/verify-registration", auth: true },
+  { method: 'POST', path: '/api/security/webauthn/verify-registration', auth: true },
   async ({ userId, response, deviceName }: { userId: string; response: any; deviceName: string }): Promise<{ success: boolean }> => {
     const success = await WebAuthnService.verifyRegistration(userId, response, deviceName);
     return { success };
-  }
+  },
 );
 
 export const checkPermission = api(
-  { method: "POST", path: "/api/security/permissions/check", auth: true },
+  { method: 'POST', path: '/api/security/permissions/check', auth: true },
   async ({ userId, resource, action, context }: { 
     userId: string; 
     resource: string; 
@@ -982,24 +986,24 @@ export const checkPermission = api(
   }): Promise<{ allowed: boolean }> => {
     const allowed = await RBACService.hasPermission(userId, resource, action, context);
     return { allowed };
-  }
+  },
 );
 
 export const analyzeLoginRisk = api(
-  { method: "POST", path: "/api/security/analyze-login" },
+  { method: 'POST', path: '/api/security/analyze-login' },
   async ({ email, ipAddress, userAgent }: { 
     email: string; 
     ipAddress: string; 
     userAgent: string 
   }): Promise<{ riskScore: number; blocked: boolean; reasons: string[] }> => {
     return await ThreatDetectionService.analyzeLoginAttempt(email, ipAddress, userAgent);
-  }
+  },
 );
 
 export const getSecurityEvents = api(
-  { method: "GET", path: "/api/security/events", auth: true },
+  { method: 'GET', path: '/api/security/events', auth: true },
   async ({ limit = 100 }: { limit?: number }): Promise<SecurityEvent[]> => {
     const events = await redis.lrange('security:events', 0, limit - 1);
     return events.map(event => JSON.parse(event));
-  }
+  },
 );

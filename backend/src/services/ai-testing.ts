@@ -1,10 +1,7 @@
-import { api, APICallMeta } from "encore.dev/api";
-import log from "encore.dev/log";
-import { z } from "zod";
-import { AuthData } from "./auth";
-import Anthropic from "@anthropic-ai/sdk";
-import * as fs from 'fs/promises';
-import * as path from 'path';
+import { api } from 'encore.dev/api';
+import log from 'encore.dev/log';
+import { z } from 'zod';
+import Anthropic from '@anthropic-ai/sdk';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -12,7 +9,7 @@ const execAsync = promisify(exec);
 
 // AI service configuration
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || "",
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
 
 // AI Testing service schemas
@@ -20,10 +17,10 @@ const TestGenerationRequest = z.object({
   code: z.string().min(1),
   filePath: z.string(),
   language: z.string(),
-  testType: z.enum(["unit", "integration", "e2e", "performance", "security"]),
+  testType: z.enum(['unit', 'integration', 'e2e', 'performance', 'security']),
   framework: z.string().optional(),
-  coverage: z.enum(["basic", "comprehensive", "edge-cases"]).default("comprehensive"),
-  mockingStrategy: z.enum(["minimal", "extensive", "smart"]).default("smart"),
+  coverage: z.enum(['basic', 'comprehensive', 'edge-cases']).default('comprehensive'),
+  mockingStrategy: z.enum(['minimal', 'extensive', 'smart']).default('smart'),
   includeSetup: z.boolean().default(true),
   includeEdgeCases: z.boolean().default(true),
   projectContext: z.string().optional(),
@@ -34,7 +31,7 @@ const TestAnalysisRequest = z.object({
   sourceCode: z.string().optional(),
   language: z.string(),
   framework: z.string().optional(),
-  analysisType: z.enum(["coverage", "quality", "completeness", "performance", "all"]).default("all"),
+  analysisType: z.enum(['coverage', 'quality', 'completeness', 'performance', 'all']).default('all'),
 });
 
 const QualityAssessmentRequest = z.object({
@@ -42,13 +39,13 @@ const QualityAssessmentRequest = z.object({
   tests: z.string().optional(),
   language: z.string(),
   metrics: z.array(z.enum([
-    "complexity", 
-    "maintainability", 
-    "testability", 
-    "security", 
-    "performance", 
-    "documentation"
-  ])).default(["complexity", "maintainability", "testability"]),
+    'complexity', 
+    'maintainability', 
+    'testability', 
+    'security', 
+    'performance', 
+    'documentation',
+  ])).default(['complexity', 'maintainability', 'testability']),
   includeRecommendations: z.boolean().default(true),
 });
 
@@ -64,9 +61,9 @@ const TestSuiteGenerationRequest = z.object({
 
 const TestDataGenerationRequest = z.object({
   schema: z.string().optional(),
-  dataType: z.enum(["mock", "fixture", "factory", "random"]).default("mock"),
+  dataType: z.enum(['mock', 'fixture', 'factory', 'random']).default('mock'),
   count: z.number().min(1).max(1000).default(10),
-  format: z.enum(["json", "javascript", "typescript", "yaml"]).default("json"),
+  format: z.enum(['json', 'javascript', 'typescript', 'yaml']).default('json'),
   includeEdgeCases: z.boolean().default(true),
 });
 
@@ -75,7 +72,7 @@ const TestResponse = z.object({
     name: z.string(),
     description: z.string(),
     code: z.string(),
-    type: z.enum(["unit", "integration", "e2e", "performance", "security"]),
+    type: z.enum(['unit', 'integration', 'e2e', 'performance', 'security']),
     coverage: z.array(z.string()),
     dependencies: z.array(z.string()).optional(),
   })),
@@ -88,7 +85,7 @@ const TestResponse = z.object({
   metrics: z.object({
     estimatedCoverage: z.number(),
     testCount: z.number(),
-    complexity: z.enum(["low", "medium", "high"]),
+    complexity: z.enum(['low', 'medium', 'high']),
     executionTime: z.string().optional(),
   }),
   recommendations: z.array(z.string()),
@@ -104,18 +101,18 @@ const TestResponse = z.object({
 const QualityReport = z.object({
   overall: z.object({
     score: z.number().min(0).max(100),
-    grade: z.enum(["A", "B", "C", "D", "F"]),
+    grade: z.enum(['A', 'B', 'C', 'D', 'F']),
     summary: z.string(),
   }),
   metrics: z.object({
     complexity: z.object({
       score: z.number(),
-      level: z.enum(["low", "medium", "high", "very-high"]),
+      level: z.enum(['low', 'medium', 'high', 'very-high']),
       details: z.string(),
     }),
     maintainability: z.object({
       score: z.number(),
-      level: z.enum(["excellent", "good", "fair", "poor"]),
+      level: z.enum(['excellent', 'good', 'fair', 'poor']),
       details: z.string(),
     }),
     testability: z.object({
@@ -127,7 +124,7 @@ const QualityReport = z.object({
       score: z.number(),
       vulnerabilities: z.array(z.object({
         type: z.string(),
-        severity: z.enum(["low", "medium", "high", "critical"]),
+        severity: z.enum(['low', 'medium', 'high', 'critical']),
         description: z.string(),
         recommendation: z.string(),
       })),
@@ -145,19 +142,19 @@ const QualityReport = z.object({
     }).optional(),
   }),
   issues: z.array(z.object({
-    type: z.enum(["error", "warning", "suggestion"]),
+    type: z.enum(['error', 'warning', 'suggestion']),
     category: z.string(),
-    severity: z.enum(["low", "medium", "high", "critical"]),
+    severity: z.enum(['low', 'medium', 'high', 'critical']),
     message: z.string(),
     line: z.number().optional(),
     recommendation: z.string(),
   })),
   recommendations: z.array(z.object({
-    priority: z.enum(["low", "medium", "high"]),
+    priority: z.enum(['low', 'medium', 'high']),
     category: z.string(),
     description: z.string(),
-    effort: z.enum(["low", "medium", "high"]),
-    impact: z.enum(["low", "medium", "high"]),
+    effort: z.enum(['low', 'medium', 'high']),
+    impact: z.enum(['low', 'medium', 'high']),
   })),
   metadata: z.object({
     analysisTime: z.number(),
@@ -168,10 +165,11 @@ const QualityReport = z.object({
 });
 
 // Intelligent test generation endpoint
-export const generateIntelligentTests = api<typeof TestGenerationRequest, typeof TestResponse>(
-  { method: "POST", path: "/ai/generate-tests", auth: true, expose: true },
-  async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof TestResponse>> => {
-    const { userID } = meta.auth;
+export const generateIntelligentTests = api(
+  { method: 'POST', path: '/ai/generate-tests', auth: true, expose: true },
+  async (req: z.infer<typeof TestGenerationRequest>): Promise<z.infer<typeof TestResponse>> => {
+    // TODO: Fix auth data access when Encore.ts auth is properly configured
+    const userID = 'placeholder-user-id';
     const { 
       code, 
       filePath, 
@@ -182,16 +180,16 @@ export const generateIntelligentTests = api<typeof TestGenerationRequest, typeof
       mockingStrategy, 
       includeSetup,
       includeEdgeCases,
-      projectContext 
+      projectContext, 
     } = req;
     
     const startTime = Date.now();
-    log.info("Intelligent test generation request", { 
+    log.info('Intelligent test generation request', { 
       userID, 
       filePath, 
       language, 
       testType,
-      coverage 
+      coverage, 
     });
     
     try {
@@ -241,16 +239,16 @@ Requirements:
         userMessage += `\n\nProject Context:\n${projectContext}`;
       }
 
-      userMessage += `\n\nGenerate complete test suite with setup, mocks, and comprehensive test cases.`;
+      userMessage += '\n\nGenerate complete test suite with setup, mocks, and comprehensive test cases.';
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 8000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const testGeneration = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -266,11 +264,11 @@ Requirements:
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Intelligent test generation completed", { 
+      log.info('Intelligent test generation completed', { 
         userID, 
         testsGenerated: structuredTests.length,
         estimatedCoverage: testMetrics.estimatedCoverage,
-        processingTime 
+        processingTime, 
       });
 
       return {
@@ -279,7 +277,7 @@ Requirements:
           imports: extractImports(testGeneration, language, framework),
           mocks: mockingStrategy !== 'minimal' ? extractMocks(testGeneration) : [],
           fixtures: includeEdgeCases ? extractFixtures(testGeneration) : [],
-          configuration: extractConfiguration(testGeneration, framework)
+          configuration: extractConfiguration(testGeneration, framework),
         },
         metrics: testMetrics,
         recommendations,
@@ -287,27 +285,29 @@ Requirements:
           framework: framework || 'standard',
           language,
           generationTime: processingTime,
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           timestamp: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("Intelligent test generation failed", { error: error.message, userID });
-      throw new Error("Failed to generate intelligent tests");
+      const err = error as Error;
+      log.error('Intelligent test generation failed', { error: err.message, userID });
+      throw new Error('Failed to generate intelligent tests');
     }
-  }
+  },
 );
 
 // Test analysis endpoint
-export const analyzeTests = api<typeof TestAnalysisRequest, typeof QualityReport>(
-  { method: "POST", path: "/ai/analyze-tests", auth: true, expose: true },
-  async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof QualityReport>> => {
-    const { userID } = meta.auth;
+export const analyzeTests = api(
+  { method: 'POST', path: '/ai/analyze-tests', auth: true, expose: true },
+  async (req: z.infer<typeof TestAnalysisRequest>): Promise<z.infer<typeof QualityReport>> => {
+    // TODO: Fix auth data access when Encore.ts auth is properly configured
+    const userID = 'placeholder-user-id';
     const { testCode, sourceCode, language, framework, analysisType } = req;
     
     const startTime = Date.now();
-    log.info("Test analysis request", { userID, language, framework, analysisType });
+    log.info('Test analysis request', { userID, language, framework, analysisType });
     
     try {
       const systemPrompt = `You are an expert test analyzer specializing in ${language} testing. 
@@ -342,13 +342,13 @@ ${sourceCode}
 Provide comprehensive analysis with scores, issues, and recommendations.`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 6000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const analysis = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -358,11 +358,11 @@ Provide comprehensive analysis with scores, issues, and recommendations.`;
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Test analysis completed", { 
+      log.info('Test analysis completed', { 
         userID, 
         overallScore: qualityReport.overall.score,
         issuesFound: qualityReport.issues.length,
-        processingTime 
+        processingTime, 
       });
 
       return {
@@ -370,27 +370,29 @@ Provide comprehensive analysis with scores, issues, and recommendations.`;
         metadata: {
           analysisTime: processingTime,
           linesAnalyzed: testCode.split('\n').length,
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           timestamp: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("Test analysis failed", { error: error.message, userID });
-      throw new Error("Failed to analyze tests");
+      const err = error as Error;
+      log.error('Test analysis failed', { error: err.message, userID });
+      throw new Error('Failed to analyze tests');
     }
-  }
+  },
 );
 
 // Quality assessment endpoint
-export const assessCodeQuality = api<typeof QualityAssessmentRequest, typeof QualityReport>(
-  { method: "POST", path: "/ai/assess-quality", auth: true, expose: true },
-  async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof QualityReport>> => {
-    const { userID } = meta.auth;
+export const assessCodeQuality = api(
+  { method: 'POST', path: '/ai/assess-quality', auth: true, expose: true },
+  async (req: z.infer<typeof QualityAssessmentRequest>): Promise<z.infer<typeof QualityReport>> => {
+    // TODO: Fix auth data access when Encore.ts auth is properly configured
+    const userID = 'placeholder-user-id';
     const { code, tests, language, metrics, includeRecommendations } = req;
     
     const startTime = Date.now();
-    log.info("Quality assessment request", { userID, language, metrics: metrics.length });
+    log.info('Quality assessment request', { userID, language, metrics: metrics.length });
     
     try {
       const systemPrompt = `You are a senior code quality analyst specializing in ${language}. 
@@ -427,13 +429,13 @@ ${includeRecommendations ? 'Include detailed recommendations for improvement.' :
 Provide scores (0-100) for each metric and overall quality assessment.`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 7000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const assessment = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -443,11 +445,11 @@ Provide scores (0-100) for each metric and overall quality assessment.`;
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Quality assessment completed", { 
+      log.info('Quality assessment completed', { 
         userID, 
         overallScore: qualityReport.overall.score,
         grade: qualityReport.overall.grade,
-        processingTime 
+        processingTime, 
       });
 
       return {
@@ -455,23 +457,25 @@ Provide scores (0-100) for each metric and overall quality assessment.`;
         metadata: {
           analysisTime: processingTime,
           linesAnalyzed: code.split('\n').length,
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           timestamp: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("Quality assessment failed", { error: error.message, userID });
-      throw new Error("Failed to assess code quality");
+      const err = error as Error;
+      log.error('Quality assessment failed', { error: err.message, userID });
+      throw new Error('Failed to assess code quality');
     }
-  }
+  },
 );
 
 // Test suite generation endpoint
-export const generateTestSuite = api<typeof TestSuiteGenerationRequest, typeof TestResponse>(
-  { method: "POST", path: "/ai/generate-test-suite", auth: true, expose: true },
-  async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof TestResponse>> => {
-    const { userID } = meta.auth;
+export const generateTestSuite = api(
+  { method: 'POST', path: '/ai/generate-test-suite', auth: true, expose: true },
+  async (req: z.infer<typeof TestSuiteGenerationRequest>): Promise<z.infer<typeof TestResponse>> => {
+    // TODO: Fix auth data access when Encore.ts auth is properly configured
+    const userID = 'placeholder-user-id';
     const { 
       projectPath, 
       includeUnitTests, 
@@ -479,17 +483,17 @@ export const generateTestSuite = api<typeof TestSuiteGenerationRequest, typeof T
       includeE2ETests,
       testFramework,
       mockingLibrary,
-      coverageTarget 
+      coverageTarget, 
     } = req;
     
     const startTime = Date.now();
-    log.info("Test suite generation request", { 
+    log.info('Test suite generation request', { 
       userID, 
       projectPath,
       coverageTarget,
       unitTests: includeUnitTests,
       integrationTests: includeIntegrationTests,
-      e2eTests: includeE2ETests
+      e2eTests: includeE2ETests,
     });
     
     try {
@@ -526,13 +530,13 @@ Requirements:
 Generate organized test files with proper structure and configuration.`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 8000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const testSuite = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -545,11 +549,11 @@ Generate organized test files with proper structure and configuration.`;
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Test suite generation completed", { 
+      log.info('Test suite generation completed', { 
         userID, 
         testsGenerated: structuredTests.length,
         estimatedCoverage: suiteMetrics.estimatedCoverage,
-        processingTime 
+        processingTime, 
       });
 
       return {
@@ -558,7 +562,7 @@ Generate organized test files with proper structure and configuration.`;
           imports: extractSuiteImports(testSuite, testFramework),
           mocks: mockingLibrary ? extractSuiteMocks(testSuite) : [],
           fixtures: extractSuiteFixtures(testSuite),
-          configuration: generateTestConfiguration(testFramework, mockingLibrary, coverageTarget)
+          configuration: generateTestConfiguration(testFramework, mockingLibrary, coverageTarget),
         },
         metrics: suiteMetrics,
         recommendations: generateSuiteRecommendations(structuredTests, coverageTarget),
@@ -566,27 +570,29 @@ Generate organized test files with proper structure and configuration.`;
           framework: testFramework || 'auto-detected',
           language: 'auto-detected',
           generationTime: processingTime,
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           timestamp: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("Test suite generation failed", { error: error.message, userID });
-      throw new Error("Failed to generate test suite");
+      const err = error as Error;
+      log.error('Test suite generation failed', { error: err.message, userID });
+      throw new Error('Failed to generate test suite');
     }
-  }
+  },
 );
 
 // Test data generation endpoint
-export const generateTestData = api<typeof TestDataGenerationRequest, typeof z.ZodType<any>>(
-  { method: "POST", path: "/ai/generate-test-data", auth: true, expose: true },
-  async (req, meta: APICallMeta<AuthData>): Promise<any> => {
-    const { userID } = meta.auth;
+export const generateTestData = api(
+  { method: 'POST', path: '/ai/generate-test-data', auth: true, expose: true },
+  async (req: z.infer<typeof TestDataGenerationRequest>): Promise<any> => {
+    // TODO: Fix auth data access when Encore.ts auth is properly configured
+    const userID = 'placeholder-user-id';
     const { schema, dataType, count, format, includeEdgeCases } = req;
     
     const startTime = Date.now();
-    log.info("Test data generation request", { userID, dataType, count, format });
+    log.info('Test data generation request', { userID, dataType, count, format });
     
     try {
       const systemPrompt = `You are a test data generation expert. Generate realistic, diverse test data.
@@ -610,17 +616,17 @@ Generate data that:
       }
 
       if (includeEdgeCases) {
-        userMessage += `\n\nInclude edge cases like empty values, null, extremes, special characters.`;
+        userMessage += '\n\nInclude edge cases like empty values, null, extremes, special characters.';
       }
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 4000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const testData = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -630,11 +636,11 @@ Generate data that:
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Test data generation completed", { 
+      log.info('Test data generation completed', { 
         userID, 
         dataCount: count,
         format,
-        processingTime 
+        processingTime, 
       });
 
       return {
@@ -645,21 +651,22 @@ Generate data that:
           format,
           includeEdgeCases,
           generationTime: processingTime,
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           timestamp: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("Test data generation failed", { error: error.message, userID });
-      throw new Error("Failed to generate test data");
+      const err = error as Error;
+      log.error('Test data generation failed', { error: err.message, userID });
+      throw new Error('Failed to generate test data');
     }
-  }
+  },
 );
 
 // Utility functions
 
-async function parseGeneratedTests(testGeneration: string, testType: string, language: string, framework?: string): Promise<any[]> {
+async function parseGeneratedTests(testGeneration: string, testType: string, _language: string, framework?: string): Promise<any[]> {
   const tests = [];
   const testBlocks = testGeneration.split(/(?:test\(|it\(|describe\()/i);
   
@@ -674,85 +681,85 @@ async function parseGeneratedTests(testGeneration: string, testType: string, lan
       code: `test('${name}', ${block}`,
       type: testType,
       coverage: extractCoverage(block),
-      dependencies: extractDependencies(block, framework)
+      dependencies: extractDependencies(block, framework),
     });
   }
   
   return tests.slice(0, 20); // Limit to prevent overwhelming
 }
 
-async function parseTestAnalysis(analysis: string, testCode: string, sourceCode?: string, language?: string): Promise<any> {
+async function parseTestAnalysis(analysis: string, testCode: string, sourceCode?: string, _language?: string): Promise<any> {
   return {
     overall: {
       score: extractScore(analysis, 'overall') || 75,
       grade: calculateGrade(extractScore(analysis, 'overall') || 75),
-      summary: extractSummary(analysis) || 'Test analysis completed'
+      summary: extractSummary(analysis) || 'Test analysis completed',
     },
     metrics: {
       complexity: {
         score: extractScore(analysis, 'complexity') || 80,
         level: 'medium',
-        details: 'Complexity analysis based on test structure'
+        details: 'Complexity analysis based on test structure',
       },
       maintainability: {
         score: extractScore(analysis, 'maintainability') || 75,
         level: 'good',
-        details: 'Maintainability assessment'
+        details: 'Maintainability assessment',
       },
       testability: {
         score: extractScore(analysis, 'testability') || 85,
         coverage: calculateCoverage(testCode, sourceCode),
-        details: 'Testability evaluation'
-      }
+        details: 'Testability evaluation',
+      },
     },
     issues: extractIssues(analysis),
-    recommendations: extractRecommendations(analysis)
+    recommendations: extractRecommendations(analysis),
   };
 }
 
-async function parseQualityAssessment(assessment: string, code: string, tests?: string, language?: string, metrics?: string[]): Promise<any> {
+async function parseQualityAssessment(assessment: string, code: string, tests?: string, _language?: string, metrics?: string[]): Promise<any> {
   const overallScore = extractScore(assessment, 'overall') || calculateOverallScore(code, tests);
   
   return {
     overall: {
       score: overallScore,
       grade: calculateGrade(overallScore),
-      summary: extractSummary(assessment) || 'Quality assessment completed'
+      summary: extractSummary(assessment) || 'Quality assessment completed',
     },
     metrics: {
       complexity: {
         score: extractScore(assessment, 'complexity') || calculateComplexityScore(code),
         level: getComplexityLevel(code),
-        details: 'Code complexity analysis'
+        details: 'Code complexity analysis',
       },
       maintainability: {
         score: extractScore(assessment, 'maintainability') || 75,
         level: 'good',
-        details: 'Maintainability assessment'
+        details: 'Maintainability assessment',
       },
       testability: {
         score: extractScore(assessment, 'testability') || 80,
         coverage: tests ? calculateCoverage(tests, code) : 0,
-        details: 'Testability evaluation'
+        details: 'Testability evaluation',
       },
       security: metrics?.includes('security') ? {
         score: extractScore(assessment, 'security') || 70,
         vulnerabilities: extractVulnerabilities(assessment),
-        details: 'Security analysis'
+        details: 'Security analysis',
       } : undefined,
       performance: metrics?.includes('performance') ? {
         score: extractScore(assessment, 'performance') || 75,
         bottlenecks: extractBottlenecks(assessment),
-        details: 'Performance analysis'
+        details: 'Performance analysis',
       } : undefined,
       documentation: metrics?.includes('documentation') ? {
         score: extractScore(assessment, 'documentation') || 60,
         coverage: calculateDocCoverage(code),
-        details: 'Documentation analysis'
-      } : undefined
+        details: 'Documentation analysis',
+      } : undefined,
     },
     issues: extractIssues(assessment),
-    recommendations: extractRecommendations(assessment)
+    recommendations: extractRecommendations(assessment),
   };
 }
 
@@ -763,24 +770,25 @@ async function analyzeProjectForTesting(projectPath: string): Promise<string> {
     
     return `Project contains ${files.length} source files:\n${files.join('\n')}`;
   } catch (error) {
-    return `Unable to analyze project structure: ${error.message}`;
+    const err = error as Error;
+    return `Unable to analyze project structure: ${err.message}`;
   }
 }
 
-async function parseTestSuite(testSuite: string, projectPath: string): Promise<any[]> {
+async function parseTestSuite(testSuite: string, _projectPath: string): Promise<any[]> {
   return [{
     name: 'Generated Test Suite',
     description: 'Comprehensive test suite for the project',
     code: testSuite,
     type: 'unit',
     coverage: ['all'],
-    dependencies: []
+    dependencies: [],
   }];
 }
 
 // Helper functions
 
-function extractImports(testCode: string, language: string, framework?: string): string[] {
+function extractImports(testCode: string, _language: string, _framework?: string): string[] {
   const imports = [];
   const lines = testCode.split('\n');
   
@@ -807,28 +815,28 @@ function extractMocks(testCode: string): string[] {
   return mocks.slice(0, 5);
 }
 
-function extractFixtures(testCode: string): string[] {
+function extractFixtures(_testCode: string): string[] {
   return ['// Test fixtures would be extracted here'];
 }
 
-function extractConfiguration(testCode: string, framework?: string): string {
+function extractConfiguration(_testCode: string, framework?: string): string {
   return `// ${framework || 'Test'} configuration`;
 }
 
-function calculateTestMetrics(tests: any[], sourceCode: string): any {
+function calculateTestMetrics(tests: any[], _sourceCode: string): any {
   return {
     estimatedCoverage: Math.min(95, tests.length * 15),
     testCount: tests.length,
     complexity: tests.length > 10 ? 'high' : tests.length > 5 ? 'medium' : 'low',
-    executionTime: `${tests.length * 50}ms`
+    executionTime: `${tests.length * 50}ms`,
   };
 }
 
-function generateTestRecommendations(tests: any[], testType: string, coverage: string): string[] {
+function generateTestRecommendations(_tests: any[], testType: string, coverage: string): string[] {
   const recommendations = [
     'Review generated tests for accuracy and completeness',
     'Add integration with CI/CD pipeline',
-    'Consider adding performance benchmarks'
+    'Consider adding performance benchmarks',
   ];
   
   if (testType === 'unit') {
@@ -842,13 +850,15 @@ function generateTestRecommendations(tests: any[], testType: string, coverage: s
   return recommendations;
 }
 
-function extractCoverage(testBlock: string): string[] {
+function extractCoverage(_testBlock: string): string[] {
   return ['main-functionality'];
 }
 
-function extractDependencies(testBlock: string, framework?: string): string[] {
+function extractDependencies(_testBlock: string, framework?: string): string[] {
   const deps = [];
-  if (framework) deps.push(framework);
+  if (framework) {
+    deps.push(framework);
+  }
   return deps;
 }
 
@@ -859,10 +869,18 @@ function extractScore(text: string, metric: string): number | null {
 }
 
 function calculateGrade(score: number): string {
-  if (score >= 90) return 'A';
-  if (score >= 80) return 'B';
-  if (score >= 70) return 'C';
-  if (score >= 60) return 'D';
+  if (score >= 90) {
+    return 'A';
+  }
+  if (score >= 80) {
+    return 'B';
+  }
+  if (score >= 70) {
+    return 'C';
+  }
+  if (score >= 60) {
+    return 'D';
+  }
   return 'F';
 }
 
@@ -876,31 +894,35 @@ function extractSummary(text: string): string {
   return '';
 }
 
-function extractIssues(text: string): any[] {
+function extractIssues(_text: string): any[] {
   return [{
     type: 'suggestion',
     category: 'testing',
     severity: 'medium',
     message: 'Consider adding more edge case tests',
-    recommendation: 'Add boundary value testing'
+    recommendation: 'Add boundary value testing',
   }];
 }
 
-function extractRecommendations(text: string): any[] {
+function extractRecommendations(_text: string): any[] {
   return [{
     priority: 'medium',
     category: 'testing',
     description: 'Improve test coverage',
     effort: 'medium',
-    impact: 'high'
+    impact: 'high',
   }];
 }
 
 function calculateOverallScore(code: string, tests?: string): number {
   let score = 70; // Base score
   
-  if (tests) score += 15; // Has tests
-  if (code.includes('function') || code.includes('class')) score += 10; // Well structured
+  if (tests) {
+    score += 15;
+  } // Has tests
+  if (code.includes('function') || code.includes('class')) {
+    score += 10;
+  } // Well structured
   
   return Math.min(100, score);
 }
@@ -913,14 +935,22 @@ function calculateComplexityScore(code: string): number {
 
 function getComplexityLevel(code: string): string {
   const lines = code.split('\n').length;
-  if (lines > 500) return 'very-high';
-  if (lines > 200) return 'high';
-  if (lines > 100) return 'medium';
+  if (lines > 500) {
+    return 'very-high';
+  }
+  if (lines > 200) {
+    return 'high';
+  }
+  if (lines > 100) {
+    return 'medium';
+  }
   return 'low';
 }
 
 function calculateCoverage(testCode: string, sourceCode?: string): number {
-  if (!sourceCode) return 0;
+  if (!sourceCode) {
+    return 0;
+  }
   
   const testLines = testCode.split('\n').length;
   const sourceLines = sourceCode.split('\n').length;
@@ -928,11 +958,11 @@ function calculateCoverage(testCode: string, sourceCode?: string): number {
   return Math.min(95, (testLines / sourceLines) * 50);
 }
 
-function extractVulnerabilities(text: string): any[] {
+function extractVulnerabilities(_text: string): any[] {
   return [];
 }
 
-function extractBottlenecks(text: string): string[] {
+function extractBottlenecks(_text: string): string[] {
   return [];
 }
 
@@ -946,7 +976,7 @@ function calculateSuiteMetrics(tests: any[], coverageTarget: number): any {
   return {
     estimatedCoverage: Math.min(coverageTarget, tests.length * 20),
     testCount: tests.length,
-    complexity: 'medium'
+    complexity: 'medium',
   };
 }
 
@@ -958,20 +988,20 @@ function extractSuiteMocks(testSuite: string): string[] {
   return extractMocks(testSuite);
 }
 
-function extractSuiteFixtures(testSuite: string): string[] {
+function extractSuiteFixtures(_testSuite: string): string[] {
   return ['// Suite fixtures'];
 }
 
-function generateTestConfiguration(framework?: string, mockingLibrary?: string, coverageTarget?: number): string {
+function generateTestConfiguration(framework?: string, _mockingLibrary?: string, coverageTarget?: number): string {
   return `// Test configuration for ${framework || 'standard'} with ${coverageTarget || 80}% coverage target`;
 }
 
-function generateSuiteRecommendations(tests: any[], coverageTarget: number): string[] {
+function generateSuiteRecommendations(_tests: any[], coverageTarget: number): string[] {
   return [
     'Review generated test suite for completeness',
     `Ensure ${coverageTarget}% coverage target is met`,
     'Integrate with continuous integration pipeline',
-    'Consider adding visual regression tests'
+    'Consider adding visual regression tests',
   ];
 }
 

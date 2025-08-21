@@ -1,11 +1,11 @@
-import { api, APICallMeta } from "encore.dev/api";
-import log from "encore.dev/log";
-import { z } from "zod";
-import { AuthData } from "./auth";
-import { v4 as uuidv4 } from "uuid";
-import Docker from "dockerode";
-import { promisify } from "util";
-import { exec } from "child_process";
+import { api, APICallMeta } from 'encore.dev/api';
+import log from 'encore.dev/log';
+import { z } from 'zod';
+import { AuthData } from './auth';
+import { v4 as uuidv4 } from 'uuid';
+import Docker from 'dockerode';
+import { promisify } from 'util';
+import { exec } from 'child_process';
 
 const docker = new Docker();
 const execAsync = promisify(exec);
@@ -80,7 +80,7 @@ export interface DiskMetrics {
 }
 
 export interface HealthMetrics {
-  status: "healthy" | "unhealthy" | "starting" | "unknown";
+  status: 'healthy' | 'unhealthy' | 'starting' | 'unknown';
   checks: HealthCheck[];
   uptime: number; // seconds
   restarts: number;
@@ -89,7 +89,7 @@ export interface HealthMetrics {
 
 export interface HealthCheck {
   name: string;
-  status: "pass" | "fail" | "warn";
+  status: 'pass' | 'fail' | 'warn';
   timestamp: Date;
   duration: number; // milliseconds
   output?: string;
@@ -103,7 +103,7 @@ export interface AlertRule {
   description?: string;
   condition: AlertCondition;
   enabled: boolean;
-  severity: "low" | "medium" | "high" | "critical";
+  severity: 'low' | 'medium' | 'high' | 'critical';
   channels: NotificationChannel[];
   cooldownPeriod: number; // seconds
   lastTriggered?: Date;
@@ -114,14 +114,14 @@ export interface AlertRule {
 
 export interface AlertCondition {
   metric: string; // e.g., "cpu.usage", "memory.usagePercent", "disk.usagePercent"
-  operator: ">" | "<" | ">=" | "<=" | "==" | "!=";
+  operator: '>' | '<' | '>=' | '<=' | '==' | '!=';
   threshold: number;
   duration: number; // seconds - how long condition must persist
-  aggregation?: "avg" | "max" | "min" | "sum";
+  aggregation?: 'avg' | 'max' | 'min' | 'sum';
 }
 
 export interface NotificationChannel {
-  type: "email" | "slack" | "webhook" | "sms";
+  type: 'email' | 'slack' | 'webhook' | 'sms';
   endpoint: string;
   enabled: boolean;
   config?: { [key: string]: any };
@@ -131,10 +131,10 @@ export interface Alert {
   id: string;
   ruleId: string;
   containerId: string;
-  severity: "low" | "medium" | "high" | "critical";
+  severity: 'low' | 'medium' | 'high' | 'critical';
   title: string;
   description: string;
-  status: "firing" | "resolved" | "acknowledged";
+  status: 'firing' | 'resolved' | 'acknowledged';
   triggeredAt: Date;
   resolvedAt?: Date;
   acknowledgedAt?: Date;
@@ -160,8 +160,8 @@ export interface PerformanceAnalysis {
     restarts: number;
   };
   trends: {
-    cpuTrend: "increasing" | "decreasing" | "stable";
-    memoryTrend: "increasing" | "decreasing" | "stable";
+    cpuTrend: 'increasing' | 'decreasing' | 'stable';
+    memoryTrend: 'increasing' | 'decreasing' | 'stable';
     errorRate: number;
   };
   recommendations: Recommendation[];
@@ -169,8 +169,8 @@ export interface PerformanceAnalysis {
 }
 
 export interface Recommendation {
-  type: "resource_optimization" | "scaling" | "configuration" | "performance" | "security";
-  priority: "low" | "medium" | "high";
+  type: 'resource_optimization' | 'scaling' | 'configuration' | 'performance' | 'security';
+  priority: 'low' | 'medium' | 'high';
   title: string;
   description: string;
   impact: string;
@@ -184,8 +184,8 @@ export interface Recommendation {
 
 export interface Anomaly {
   timestamp: Date;
-  type: "cpu_spike" | "memory_leak" | "network_spike" | "disk_spike" | "error_burst";
-  severity: "low" | "medium" | "high";
+  type: 'cpu_spike' | 'memory_leak' | 'network_spike' | 'disk_spike' | 'error_burst';
+  severity: 'low' | 'medium' | 'high';
   description: string;
   metrics: { [key: string]: number };
   duration: number; // seconds
@@ -193,11 +193,11 @@ export interface Anomaly {
 
 export interface LogEntry {
   timestamp: Date;
-  level: "debug" | "info" | "warn" | "error" | "fatal";
+  level: 'debug' | 'info' | 'warn' | 'error' | 'fatal';
   message: string;
   source: string;
   containerId: string;
-  stream: "stdout" | "stderr";
+  stream: 'stdout' | 'stderr';
   tags?: string[];
   metadata?: { [key: string]: any };
 }
@@ -220,7 +220,7 @@ const GetMetricsRequest = z.object({
     start: z.string().datetime(),
     end: z.string().datetime(),
   }).optional(),
-  granularity: z.enum(["1m", "5m", "15m", "1h", "6h", "24h"]).default("5m"),
+  granularity: z.enum(['1m', '5m', '15m', '1h', '6h', '24h']).default('5m'),
 });
 
 const CreateAlertRuleRequest = z.object({
@@ -229,14 +229,14 @@ const CreateAlertRuleRequest = z.object({
   description: z.string().max(500).optional(),
   condition: z.object({
     metric: z.string(),
-    operator: z.enum([">", "<", ">=", "<=", "==", "!="]),
+    operator: z.enum(['>', '<', '>=', '<=', '==', '!=']),
     threshold: z.number(),
     duration: z.number().min(30).max(3600), // 30 seconds to 1 hour
-    aggregation: z.enum(["avg", "max", "min", "sum"]).optional(),
+    aggregation: z.enum(['avg', 'max', 'min', 'sum']).optional(),
   }),
-  severity: z.enum(["low", "medium", "high", "critical"]),
+  severity: z.enum(['low', 'medium', 'high', 'critical']),
   channels: z.array(z.object({
-    type: z.enum(["email", "slack", "webhook", "sms"]),
+    type: z.enum(['email', 'slack', 'webhook', 'sms']),
     endpoint: z.string(),
     enabled: z.boolean().default(true),
   })),
@@ -244,7 +244,7 @@ const CreateAlertRuleRequest = z.object({
 });
 
 const GetLogsRequest = z.object({
-  level: z.enum(["debug", "info", "warn", "error", "fatal"]).optional(),
+  level: z.enum(['debug', 'info', 'warn', 'error', 'fatal']).optional(),
   search: z.string().optional(),
   timeRange: z.object({
     start: z.string().datetime(),
@@ -269,7 +269,7 @@ export function startContainerMonitoring(containerId: string): void {
     return; // Already monitoring
   }
 
-  log.info("Starting container monitoring", { containerId });
+  log.info('Starting container monitoring', { containerId });
 
   // Collect metrics every 30 seconds
   const collector = setInterval(async () => {
@@ -281,7 +281,7 @@ export function startContainerMonitoring(containerId: string): void {
       await checkAlertRules(containerId, metrics);
       
     } catch (error) {
-      log.error("Failed to collect metrics", { error: error.message, containerId });
+      log.error('Failed to collect metrics', { error: error.message, containerId });
     }
   }, 30000);
 
@@ -294,7 +294,7 @@ export function stopContainerMonitoring(containerId: string): void {
   if (collector) {
     clearInterval(collector);
     metricsCollectors.delete(containerId);
-    log.info("Stopped container monitoring", { containerId });
+    log.info('Stopped container monitoring', { containerId });
   }
 }
 
@@ -305,7 +305,7 @@ async function collectContainerMetrics(containerId: string): Promise<ContainerMe
   try {
     const [stats, info] = await Promise.all([
       dockerContainer.stats({ stream: false }),
-      dockerContainer.inspect()
+      dockerContainer.inspect(),
     ]);
 
     const timestamp = new Date();
@@ -332,13 +332,13 @@ async function collectContainerMetrics(containerId: string): Promise<ContainerMe
       memory,
       network,
       disk,
-      health
+      health,
     };
 
     return metrics;
 
   } catch (error) {
-    log.error("Failed to collect container metrics", { error: error.message, containerId });
+    log.error('Failed to collect container metrics', { error: error.message, containerId });
     throw error;
   }
 }
@@ -446,15 +446,23 @@ async function calculateDiskMetrics(stats: any, info: any): Promise<DiskMetrics>
 
   if (blkioStats.io_service_bytes_recursive) {
     for (const stat of blkioStats.io_service_bytes_recursive) {
-      if (stat.op === "Read") readBytes += stat.value;
-      if (stat.op === "Write") writeBytes += stat.value;
+      if (stat.op === 'Read') {
+        readBytes += stat.value;
+      }
+      if (stat.op === 'Write') {
+        writeBytes += stat.value;
+      }
     }
   }
 
   if (blkioStats.io_serviced_recursive) {
     for (const stat of blkioStats.io_serviced_recursive) {
-      if (stat.op === "Read") readOps += stat.value;
-      if (stat.op === "Write") writeOps += stat.value;
+      if (stat.op === 'Read') {
+        readOps += stat.value;
+      }
+      if (stat.op === 'Write') {
+        writeOps += stat.value;
+      }
     }
   }
 
@@ -496,33 +504,33 @@ function calculateHealthMetrics(info: any): HealthMetrics {
   const state = info.State || {};
   const config = info.Config || {};
   
-  let status: HealthMetrics["status"] = "unknown";
+  let status: HealthMetrics['status'] = 'unknown';
   if (state.Health) {
     switch (state.Health.Status) {
-      case "healthy":
-        status = "healthy";
+      case 'healthy':
+        status = 'healthy';
         break;
-      case "unhealthy":
-        status = "unhealthy";
+      case 'unhealthy':
+        status = 'unhealthy';
         break;
-      case "starting":
-        status = "starting";
+      case 'starting':
+        status = 'starting';
         break;
       default:
-        status = "unknown";
+        status = 'unknown';
     }
   } else if (state.Running) {
-    status = "healthy";
+    status = 'healthy';
   } else {
-    status = "unhealthy";
+    status = 'unhealthy';
   }
 
   const healthChecks: HealthCheck[] = [];
-  if (state.Health && state.Health.Log) {
+  if (state.Health?.Log) {
     for (const logEntry of state.Health.Log.slice(-5)) { // Last 5 checks
       healthChecks.push({
-        name: "container_health",
-        status: logEntry.ExitCode === 0 ? "pass" : "fail",
+        name: 'container_health',
+        status: logEntry.ExitCode === 0 ? 'pass' : 'fail',
         timestamp: new Date(logEntry.Start),
         duration: new Date(logEntry.End).getTime() - new Date(logEntry.Start).getTime(),
         output: logEntry.Output,
@@ -560,7 +568,7 @@ function storeMetrics(containerId: string, metrics: ContainerMetrics): void {
 
 async function checkAlertRules(containerId: string, metrics: ContainerMetrics): Promise<void> {
   const rules = Array.from(alertRules.values()).filter(rule => 
-    rule.containerId === containerId && rule.enabled
+    rule.containerId === containerId && rule.enabled,
   );
 
   for (const rule of rules) {
@@ -580,28 +588,28 @@ async function evaluateAlertRule(rule: AlertRule, metrics: ContainerMetrics): Pr
   // Evaluate condition
   let conditionMet = false;
   switch (condition.operator) {
-    case ">":
+    case '>':
       conditionMet = metricValue > condition.threshold;
       break;
-    case "<":
+    case '<':
       conditionMet = metricValue < condition.threshold;
       break;
-    case ">=":
+    case '>=':
       conditionMet = metricValue >= condition.threshold;
       break;
-    case "<=":
+    case '<=':
       conditionMet = metricValue <= condition.threshold;
       break;
-    case "==":
+    case '==':
       conditionMet = metricValue === condition.threshold;
       break;
-    case "!=":
+    case '!=':
       conditionMet = metricValue !== condition.threshold;
       break;
   }
 
   const existingAlert = Array.from(activeAlerts.values()).find(alert => 
-    alert.ruleId === rule.id && alert.status === "firing"
+    alert.ruleId === rule.id && alert.status === 'firing',
   );
 
   if (conditionMet) {
@@ -616,18 +624,18 @@ async function evaluateAlertRule(rule: AlertRule, metrics: ContainerMetrics): Pr
 }
 
 function getMetricValue(metrics: ContainerMetrics, metricPath: string): number | null {
-  const parts = metricPath.split(".");
+  const parts = metricPath.split('.');
   let value: any = metrics;
 
   for (const part of parts) {
-    if (value && typeof value === "object" && part in value) {
+    if (value && typeof value === 'object' && part in value) {
       value = value[part];
     } else {
       return null;
     }
   }
 
-  return typeof value === "number" ? value : null;
+  return typeof value === 'number' ? value : null;
 }
 
 async function createAlert(rule: AlertRule, metrics: ContainerMetrics, metricValue: number): Promise<void> {
@@ -641,7 +649,7 @@ async function createAlert(rule: AlertRule, metrics: ContainerMetrics, metricVal
     severity: rule.severity,
     title: `${rule.name}`,
     description: `${rule.condition.metric} is ${metricValue} (threshold: ${rule.condition.operator} ${rule.condition.threshold})`,
-    status: "firing",
+    status: 'firing',
     triggeredAt: now,
     metrics: {
       [rule.condition.metric]: metricValue,
@@ -659,7 +667,7 @@ async function createAlert(rule: AlertRule, metrics: ContainerMetrics, metricVal
   // Send notifications
   await sendAlertNotifications(alert, rule);
 
-  log.warn("Alert triggered", { alertId, ruleId: rule.id, containerId: rule.containerId });
+  log.warn('Alert triggered', { alertId, ruleId: rule.id, containerId: rule.containerId });
 }
 
 async function resolveAlert(alertId: string): Promise<void> {
@@ -668,11 +676,11 @@ async function resolveAlert(alertId: string): Promise<void> {
     return;
   }
 
-  alert.status = "resolved";
+  alert.status = 'resolved';
   alert.resolvedAt = new Date();
   activeAlerts.set(alertId, alert);
 
-  log.info("Alert resolved", { alertId, containerId: alert.containerId });
+  log.info('Alert resolved', { alertId, containerId: alert.containerId });
 }
 
 async function sendAlertNotifications(alert: Alert, rule: AlertRule): Promise<void> {
@@ -684,7 +692,7 @@ async function sendAlertNotifications(alert: Alert, rule: AlertRule): Promise<vo
     try {
       await sendNotification(channel, alert, rule);
     } catch (error) {
-      log.error("Failed to send alert notification", {
+      log.error('Failed to send alert notification', {
         error: error.message,
         channel: channel.type,
         alertId: alert.id,
@@ -696,21 +704,21 @@ async function sendAlertNotifications(alert: Alert, rule: AlertRule): Promise<vo
 async function sendNotification(
   channel: NotificationChannel,
   alert: Alert,
-  rule: AlertRule
+  rule: AlertRule,
 ): Promise<void> {
   const message = formatAlertMessage(alert, rule);
 
   switch (channel.type) {
-    case "webhook":
+    case 'webhook':
       await sendWebhookNotification(channel.endpoint, alert, message);
       break;
-    case "email":
+    case 'email':
       await sendEmailNotification(channel.endpoint, alert, message);
       break;
-    case "slack":
+    case 'slack':
       await sendSlackNotification(channel.endpoint, alert, message);
       break;
-    case "sms":
+    case 'sms':
       await sendSmsNotification(channel.endpoint, alert, message);
       break;
   }
@@ -732,38 +740,38 @@ Please investigate and resolve this issue.`;
 
 async function sendWebhookNotification(url: string, alert: Alert, message: string): Promise<void> {
   // Implementation would use fetch or axios to send webhook
-  log.info("Webhook notification sent", { url, alertId: alert.id });
+  log.info('Webhook notification sent', { url, alertId: alert.id });
 }
 
 async function sendEmailNotification(email: string, alert: Alert, message: string): Promise<void> {
   // Implementation would use email service (SendGrid, SES, etc.)
-  log.info("Email notification sent", { email, alertId: alert.id });
+  log.info('Email notification sent', { email, alertId: alert.id });
 }
 
 async function sendSlackNotification(webhookUrl: string, alert: Alert, message: string): Promise<void> {
   // Implementation would send to Slack webhook
-  log.info("Slack notification sent", { alertId: alert.id });
+  log.info('Slack notification sent', { alertId: alert.id });
 }
 
 async function sendSmsNotification(phoneNumber: string, alert: Alert, message: string): Promise<void> {
   // Implementation would use SMS service (Twilio, etc.)
-  log.info("SMS notification sent", { phoneNumber, alertId: alert.id });
+  log.info('SMS notification sent', { phoneNumber, alertId: alert.id });
 }
 
 // Performance analysis functions
 async function analyzeContainerPerformance(
   containerId: string,
-  timeRange: { start: Date; end: Date }
+  timeRange: { start: Date; end: Date },
 ): Promise<PerformanceAnalysis> {
   const containerMetrics = metricsStorage.get(containerId) || [];
   
   // Filter metrics by time range
   const filteredMetrics = containerMetrics.filter(m => 
-    m.timestamp >= timeRange.start && m.timestamp <= timeRange.end
+    m.timestamp >= timeRange.start && m.timestamp <= timeRange.end,
   );
 
   if (filteredMetrics.length === 0) {
-    throw new Error("No metrics found for the specified time range");
+    throw new Error('No metrics found for the specified time range');
   }
 
   // Calculate summary statistics
@@ -802,11 +810,11 @@ async function analyzeContainerPerformance(
   };
 }
 
-function analyzeTrends(metrics: ContainerMetrics[]): PerformanceAnalysis["trends"] {
+function analyzeTrends(metrics: ContainerMetrics[]): PerformanceAnalysis['trends'] {
   if (metrics.length < 2) {
     return {
-      cpuTrend: "stable",
-      memoryTrend: "stable",
+      cpuTrend: 'stable',
+      memoryTrend: 'stable',
       errorRate: 0,
     };
   }
@@ -821,7 +829,7 @@ function analyzeTrends(metrics: ContainerMetrics[]): PerformanceAnalysis["trends
   // Calculate error rate based on health checks
   const totalChecks = metrics.reduce((sum, m) => sum + m.health.checks.length, 0);
   const failedChecks = metrics.reduce((sum, m) => 
-    sum + m.health.checks.filter(c => c.status === "fail").length, 0
+    sum + m.health.checks.filter(c => c.status === 'fail').length, 0,
   );
   const errorRate = totalChecks > 0 ? (failedChecks / totalChecks) * 100 : 0;
 
@@ -832,8 +840,10 @@ function analyzeTrends(metrics: ContainerMetrics[]): PerformanceAnalysis["trends
   };
 }
 
-function calculateTrend(values: number[]): "increasing" | "decreasing" | "stable" {
-  if (values.length < 2) return "stable";
+function calculateTrend(values: number[]): 'increasing' | 'decreasing' | 'stable' {
+  if (values.length < 2) {
+    return 'stable';
+  }
 
   const firstHalf = values.slice(0, Math.floor(values.length / 2));
   const secondHalf = values.slice(Math.floor(values.length / 2));
@@ -843,36 +853,40 @@ function calculateTrend(values: number[]): "increasing" | "decreasing" | "stable
 
   const percentChange = ((secondAvg - firstAvg) / firstAvg) * 100;
 
-  if (percentChange > 10) return "increasing";
-  if (percentChange < -10) return "decreasing";
-  return "stable";
+  if (percentChange > 10) {
+    return 'increasing';
+  }
+  if (percentChange < -10) {
+    return 'decreasing';
+  }
+  return 'stable';
 }
 
 function generateRecommendations(
-  summary: PerformanceAnalysis["summary"],
-  trends: PerformanceAnalysis["trends"]
+  summary: PerformanceAnalysis['summary'],
+  trends: PerformanceAnalysis['trends'],
 ): Recommendation[] {
   const recommendations: Recommendation[] = [];
 
   // CPU recommendations
   if (summary.avgCpuUsage > 80) {
     recommendations.push({
-      type: "scaling",
-      priority: "high",
-      title: "High CPU Usage Detected",
-      description: "Container is consistently using high CPU resources",
-      impact: "May cause performance degradation and slower response times",
-      implementation: "Consider scaling up CPU resources or optimizing application code",
+      type: 'scaling',
+      priority: 'high',
+      title: 'High CPU Usage Detected',
+      description: 'Container is consistently using high CPU resources',
+      impact: 'May cause performance degradation and slower response times',
+      implementation: 'Consider scaling up CPU resources or optimizing application code',
       estimatedSavings: { cpu: 30 },
     });
   } else if (summary.avgCpuUsage < 20) {
     recommendations.push({
-      type: "resource_optimization",
-      priority: "medium",
-      title: "Low CPU Utilization",
-      description: "Container is using less CPU than allocated",
-      impact: "Potential cost savings by reducing allocated resources",
-      implementation: "Consider reducing CPU limits to optimize costs",
+      type: 'resource_optimization',
+      priority: 'medium',
+      title: 'Low CPU Utilization',
+      description: 'Container is using less CPU than allocated',
+      impact: 'Potential cost savings by reducing allocated resources',
+      implementation: 'Consider reducing CPU limits to optimize costs',
       estimatedSavings: { cost: 25 },
     });
   }
@@ -880,12 +894,12 @@ function generateRecommendations(
   // Memory recommendations
   if (summary.avgMemoryUsage > 85) {
     recommendations.push({
-      type: "scaling",
-      priority: "high",
-      title: "High Memory Usage",
-      description: "Container is approaching memory limits",
-      impact: "Risk of out-of-memory errors and container restarts",
-      implementation: "Increase memory limits or optimize memory usage",
+      type: 'scaling',
+      priority: 'high',
+      title: 'High Memory Usage',
+      description: 'Container is approaching memory limits',
+      impact: 'Risk of out-of-memory errors and container restarts',
+      implementation: 'Increase memory limits or optimize memory usage',
       estimatedSavings: { memory: 20 },
     });
   }
@@ -893,24 +907,24 @@ function generateRecommendations(
   // Restart recommendations
   if (summary.restarts > 3) {
     recommendations.push({
-      type: "configuration",
-      priority: "high",
-      title: "Frequent Container Restarts",
-      description: "Container has restarted multiple times",
-      impact: "Service interruptions and potential data loss",
-      implementation: "Investigate application stability and health check configuration",
+      type: 'configuration',
+      priority: 'high',
+      title: 'Frequent Container Restarts',
+      description: 'Container has restarted multiple times',
+      impact: 'Service interruptions and potential data loss',
+      implementation: 'Investigate application stability and health check configuration',
     });
   }
 
   // Trend-based recommendations
-  if (trends.memoryTrend === "increasing") {
+  if (trends.memoryTrend === 'increasing') {
     recommendations.push({
-      type: "performance",
-      priority: "medium",
-      title: "Memory Usage Increasing",
-      description: "Memory usage shows an upward trend",
-      impact: "Potential memory leak or increased workload",
-      implementation: "Monitor for memory leaks and optimize memory usage patterns",
+      type: 'performance',
+      priority: 'medium',
+      title: 'Memory Usage Increasing',
+      description: 'Memory usage shows an upward trend',
+      impact: 'Potential memory leak or increased workload',
+      implementation: 'Monitor for memory leaks and optimize memory usage patterns',
     });
   }
 
@@ -924,15 +938,15 @@ function detectAnomalies(metrics: ContainerMetrics[]): Anomaly[] {
   const cpuValues = metrics.map(m => m.cpu.usage);
   const avgCpu = cpuValues.reduce((sum, val) => sum + val, 0) / cpuValues.length;
   const cpuStdDev = Math.sqrt(
-    cpuValues.reduce((sum, val) => sum + Math.pow(val - avgCpu, 2), 0) / cpuValues.length
+    cpuValues.reduce((sum, val) => sum + Math.pow(val - avgCpu, 2), 0) / cpuValues.length,
   );
 
   metrics.forEach((metric, index) => {
     if (metric.cpu.usage > avgCpu + 2 * cpuStdDev) {
       anomalies.push({
         timestamp: metric.timestamp,
-        type: "cpu_spike",
-        severity: metric.cpu.usage > avgCpu + 3 * cpuStdDev ? "high" : "medium",
+        type: 'cpu_spike',
+        severity: metric.cpu.usage > avgCpu + 3 * cpuStdDev ? 'high' : 'medium',
         description: `CPU usage spike: ${metric.cpu.usage.toFixed(2)}%`,
         metrics: { cpu_usage: metric.cpu.usage },
         duration: 30, // Assuming 30-second intervals
@@ -944,15 +958,15 @@ function detectAnomalies(metrics: ContainerMetrics[]): Anomaly[] {
   const memoryValues = metrics.map(m => m.memory.usagePercent);
   const avgMemory = memoryValues.reduce((sum, val) => sum + val, 0) / memoryValues.length;
   const memoryStdDev = Math.sqrt(
-    memoryValues.reduce((sum, val) => sum + Math.pow(val - avgMemory, 2), 0) / memoryValues.length
+    memoryValues.reduce((sum, val) => sum + Math.pow(val - avgMemory, 2), 0) / memoryValues.length,
   );
 
   metrics.forEach(metric => {
     if (metric.memory.usagePercent > avgMemory + 2 * memoryStdDev) {
       anomalies.push({
         timestamp: metric.timestamp,
-        type: "memory_leak",
-        severity: metric.memory.usagePercent > avgMemory + 3 * memoryStdDev ? "high" : "medium",
+        type: 'memory_leak',
+        severity: metric.memory.usagePercent > avgMemory + 3 * memoryStdDev ? 'high' : 'medium',
         description: `Memory usage spike: ${metric.memory.usagePercent.toFixed(2)}%`,
         metrics: { memory_usage: metric.memory.usagePercent },
         duration: 30,
@@ -986,7 +1000,7 @@ async function collectContainerLogs(containerId: string, query: LogQuery): Promi
     return parseLogEntries(logText, containerId, query);
     
   } catch (error) {
-    log.error("Failed to collect container logs", { error: error.message, containerId });
+    log.error('Failed to collect container logs', { error: error.message, containerId });
     return [];
   }
 }
@@ -1024,17 +1038,17 @@ function parseLogLine(line: string, containerId: string): LogEntry | null {
   const message = rest.replace(/^[\u0001\u0002].*?\u0000\u0000\u0000./, '').trim();
 
   // Try to parse log level from message
-  let level: LogEntry["level"] = "info";
+  let level: LogEntry['level'] = 'info';
   const levelMatch = message.match(/\b(DEBUG|INFO|WARN|ERROR|FATAL)\b/i);
   if (levelMatch) {
-    level = levelMatch[1].toLowerCase() as LogEntry["level"];
+    level = levelMatch[1].toLowerCase() as LogEntry['level'];
   }
 
   return {
     timestamp,
     level,
     message,
-    source: "container",
+    source: 'container',
     containerId,
     stream,
   };
@@ -1062,7 +1076,7 @@ function matchesLogQuery(entry: LogEntry, query: LogQuery): boolean {
 
 // Get container metrics
 export const getContainerMetrics = api<typeof GetMetricsRequest>(
-  { method: "GET", path: "/containers/:id/metrics", auth: true, expose: true },
+  { method: 'GET', path: '/containers/:id/metrics', auth: true, expose: true },
   async (req: z.infer<typeof GetMetricsRequest> & { id: string }, meta: APICallMeta<AuthData>): Promise<{ metrics: ContainerMetrics[]; summary: any }> => {
     const { id: containerId, timeRange, granularity } = req;
     
@@ -1073,18 +1087,18 @@ export const getContainerMetrics = api<typeof GetMetricsRequest>(
       const start = new Date(timeRange.start);
       const end = new Date(timeRange.end);
       filteredMetrics = containerMetrics.filter(m => 
-        m.timestamp >= start && m.timestamp <= end
+        m.timestamp >= start && m.timestamp <= end,
       );
     }
 
     // Apply granularity (simple downsampling)
     const granularityMs = {
-      "1m": 60000,
-      "5m": 300000,
-      "15m": 900000,
-      "1h": 3600000,
-      "6h": 21600000,
-      "24h": 86400000,
+      '1m': 60000,
+      '5m': 300000,
+      '15m': 900000,
+      '1h': 3600000,
+      '6h': 21600000,
+      '24h': 86400000,
     }[granularity];
 
     const downsampledMetrics = downsampleMetrics(filteredMetrics, granularityMs);
@@ -1100,11 +1114,13 @@ export const getContainerMetrics = api<typeof GetMetricsRequest>(
       metrics: downsampledMetrics,
       summary,
     };
-  }
+  },
 );
 
 function downsampleMetrics(metrics: ContainerMetrics[], intervalMs: number): ContainerMetrics[] {
-  if (metrics.length === 0) return [];
+  if (metrics.length === 0) {
+    return [];
+  }
 
   const downsampled: ContainerMetrics[] = [];
   const startTime = metrics[0].timestamp.getTime();
@@ -1158,7 +1174,7 @@ function aggregateMetrics(metrics: ContainerMetrics[]): ContainerMetrics {
 
 // Create alert rule
 export const createAlertRule = api<typeof CreateAlertRuleRequest>(
-  { method: "POST", path: "/containers/:id/alerts", auth: true, expose: true },
+  { method: 'POST', path: '/containers/:id/alerts', auth: true, expose: true },
   async (req: z.infer<typeof CreateAlertRuleRequest> & { id: string }, meta: APICallMeta<AuthData>): Promise<AlertRule> => {
     const { userID } = meta.auth;
     const { id: containerId, name, description, condition, severity, channels, cooldownPeriod } = req;
@@ -1183,15 +1199,15 @@ export const createAlertRule = api<typeof CreateAlertRuleRequest>(
     
     alertRules.set(ruleId, rule);
     
-    log.info("Alert rule created", { ruleId, containerId, name });
+    log.info('Alert rule created', { ruleId, containerId, name });
     
     return rule;
-  }
+  },
 );
 
 // Get container logs
 export const getContainerLogs = api<typeof GetLogsRequest>(
-  { method: "GET", path: "/containers/:id/logs", auth: true, expose: true },
+  { method: 'GET', path: '/containers/:id/logs', auth: true, expose: true },
   async (req: z.infer<typeof GetLogsRequest> & { id: string }, meta: APICallMeta<AuthData>): Promise<{ logs: LogEntry[]; total: number }> => {
     const { id: containerId, level, search, timeRange, limit, offset } = req;
     
@@ -1213,12 +1229,12 @@ export const getContainerLogs = api<typeof GetLogsRequest>(
       logs,
       total: logs.length,
     };
-  }
+  },
 );
 
 // Get performance analysis
 export const getPerformanceAnalysis = api(
-  { method: "GET", path: "/containers/:id/analysis", auth: true, expose: true },
+  { method: 'GET', path: '/containers/:id/analysis', auth: true, expose: true },
   async (req: { id: string; start?: string; end?: string }, meta: APICallMeta<AuthData>): Promise<PerformanceAnalysis> => {
     const { id: containerId, start, end } = req;
     
@@ -1228,17 +1244,17 @@ export const getPerformanceAnalysis = api(
     };
     
     return await analyzeContainerPerformance(containerId, timeRange);
-  }
+  },
 );
 
 // Get alerts
 export const getContainerAlerts = api(
-  { method: "GET", path: "/containers/:id/alerts", auth: true, expose: true },
+  { method: 'GET', path: '/containers/:id/alerts', auth: true, expose: true },
   async (req: { id: string; status?: string }, meta: APICallMeta<AuthData>): Promise<{ alerts: Alert[]; rules: AlertRule[] }> => {
     const { id: containerId, status } = req;
     
     let alerts = Array.from(activeAlerts.values()).filter(alert => 
-      alert.containerId === containerId
+      alert.containerId === containerId,
     );
     
     if (status) {
@@ -1246,33 +1262,33 @@ export const getContainerAlerts = api(
     }
     
     const rules = Array.from(alertRules.values()).filter(rule => 
-      rule.containerId === containerId
+      rule.containerId === containerId,
     );
     
     return { alerts, rules };
-  }
+  },
 );
 
 // Acknowledge alert
 export const acknowledgeAlert = api(
-  { method: "POST", path: "/alerts/:id/acknowledge", auth: true, expose: true },
+  { method: 'POST', path: '/alerts/:id/acknowledge', auth: true, expose: true },
   async (req: { id: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean }> => {
     const { userID } = meta.auth;
     const { id: alertId } = req;
     
     const alert = activeAlerts.get(alertId);
     if (!alert) {
-      throw new Error("Alert not found");
+      throw new Error('Alert not found');
     }
     
-    alert.status = "acknowledged";
+    alert.status = 'acknowledged';
     alert.acknowledgedAt = new Date();
     alert.acknowledgedBy = userID;
     
     activeAlerts.set(alertId, alert);
     
-    log.info("Alert acknowledged", { alertId, acknowledgedBy: userID });
+    log.info('Alert acknowledged', { alertId, acknowledgedBy: userID });
     
     return { success: true };
-  }
+  },
 );

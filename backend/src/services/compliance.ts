@@ -12,18 +12,18 @@
  * - Privacy by Design
  */
 
-import { api } from "encore.dev/api";
-import { secret } from "encore.dev/config";
-import { Redis } from "ioredis";
-import winston from "winston";
-import crypto from "crypto";
-import { z } from "zod";
-import schedule from "node-schedule";
+import { api } from 'encore.dev/api';
+import { secret } from 'encore.dev/config';
+import { Redis } from 'ioredis';
+import winston from 'winston';
+import crypto from 'crypto';
+import { z } from 'zod';
+import schedule from 'node-schedule';
 
 // Configuration
-const ENCRYPTION_KEY = secret("ENCRYPTION_KEY");
-const AUDIT_RETENTION_DAYS = parseInt(process.env.AUDIT_RETENTION_DAYS || "2555"); // 7 years default
-const DATA_RETENTION_DAYS = parseInt(process.env.DATA_RETENTION_DAYS || "365"); // 1 year default
+const ENCRYPTION_KEY = secret('ENCRYPTION_KEY');
+const AUDIT_RETENTION_DAYS = parseInt(process.env.AUDIT_RETENTION_DAYS || '2555'); // 7 years default
+const DATA_RETENTION_DAYS = parseInt(process.env.DATA_RETENTION_DAYS || '365'); // 1 year default
 
 // Redis for audit and compliance data
 const redis = new Redis({
@@ -39,7 +39,7 @@ const complianceLogger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
-    winston.format.json()
+    winston.format.json(),
   ),
   defaultMeta: { service: 'compliance' },
   transports: [
@@ -230,7 +230,7 @@ export class GDPRService {
     category: string,
     granted: boolean,
     method: 'explicit' | 'implicit' | 'legitimate_interest',
-    evidence: string
+    evidence: string,
   ): Promise<ConsentRecord> {
     try {
       const consent: ConsentRecord = {
@@ -290,7 +290,7 @@ export class GDPRService {
   static async withdrawConsent(
     userId: string,
     consentId: string,
-    reason?: string
+    reason?: string,
   ): Promise<boolean> {
     try {
       const consentData = await redis.hget(`gdpr:consent:${userId}`, consentId);
@@ -346,7 +346,7 @@ export class GDPRService {
   static async handleDataSubjectRequest(
     userId: string,
     type: DataSubjectRequest['type'],
-    reason?: string
+    reason?: string,
   ): Promise<DataSubjectRequest> {
     try {
       const request: DataSubjectRequest = {
@@ -698,7 +698,7 @@ export class AuditService {
       // Store in persistent storage with encryption
       const encryptedEntry = this.encryptAuditEntry(auditEntry);
       await redis.hset(`audit:${auditEntry.timestamp.getFullYear()}:${auditEntry.timestamp.getMonth()}`, 
-                      auditEntry.id, encryptedEntry);
+        auditEntry.id, encryptedEntry);
 
       // Log to compliance logger
       complianceLogger.info('Audit event logged', {
@@ -781,7 +781,7 @@ export class AuditService {
   static async generateAuditReport(
     startDate: Date,
     endDate: Date,
-    reportType: 'security' | 'access' | 'data' | 'compliance'
+    reportType: 'security' | 'access' | 'data' | 'compliance',
   ): Promise<Record<string, any>> {
     try {
       const auditEntries = await this.searchAuditLogs({ startDate, endDate });
@@ -851,7 +851,7 @@ export class AuditService {
     let encrypted = cipher.update(JSON.stringify(entry), 'utf8', 'hex');
     encrypted += cipher.final('hex');
     
-    return iv.toString('hex') + ':' + encrypted;
+    return `${iv.toString('hex')  }:${  encrypted}`;
   }
 
   /**
@@ -999,7 +999,7 @@ schedule.scheduleJob('0 6 * * 0', async () => {
 // API Endpoints
 
 export const recordConsent = api(
-  { method: "POST", path: "/api/compliance/gdpr/consent", auth: true },
+  { method: 'POST', path: '/api/compliance/gdpr/consent', auth: true },
   async ({ userId, purpose, category, granted, method, evidence }: {
     userId: string;
     purpose: string;
@@ -1010,11 +1010,11 @@ export const recordConsent = api(
   }): Promise<ConsentRecord> => {
     const validation = ConsentSchema.parse({ purpose, category, granted, method, evidence });
     return await GDPRService.recordConsent(userId, purpose, category, granted, method, evidence);
-  }
+  },
 );
 
 export const withdrawConsent = api(
-  { method: "POST", path: "/api/compliance/gdpr/consent/:consentId/withdraw", auth: true },
+  { method: 'POST', path: '/api/compliance/gdpr/consent/:consentId/withdraw', auth: true },
   async ({ userId, consentId, reason }: {
     userId: string;
     consentId: string;
@@ -1022,11 +1022,11 @@ export const withdrawConsent = api(
   }): Promise<{ success: boolean }> => {
     const success = await GDPRService.withdrawConsent(userId, consentId, reason);
     return { success };
-  }
+  },
 );
 
 export const submitDataSubjectRequest = api(
-  { method: "POST", path: "/api/compliance/gdpr/request", auth: true },
+  { method: 'POST', path: '/api/compliance/gdpr/request', auth: true },
   async ({ userId, type, reason }: {
     userId: string;
     type: 'access' | 'rectification' | 'erasure' | 'portability' | 'restriction' | 'objection';
@@ -1034,18 +1034,18 @@ export const submitDataSubjectRequest = api(
   }): Promise<DataSubjectRequest> => {
     const validation = DataSubjectRequestSchema.parse({ type, reason });
     return await GDPRService.handleDataSubjectRequest(userId, type, reason);
-  }
+  },
 );
 
 export const exportUserData = api(
-  { method: "GET", path: "/api/compliance/gdpr/export", auth: true },
+  { method: 'GET', path: '/api/compliance/gdpr/export', auth: true },
   async ({ userId }: { userId: string }): Promise<Record<string, any>> => {
     return await GDPRService.exportUserData(userId);
-  }
+  },
 );
 
 export const searchAuditLogs = api(
-  { method: "GET", path: "/api/compliance/audit/search", auth: true },
+  { method: 'GET', path: '/api/compliance/audit/search', auth: true },
   async (criteria: {
     startDate?: string;
     endDate?: string;
@@ -1063,11 +1063,11 @@ export const searchAuditLogs = api(
     };
     
     return await AuditService.searchAuditLogs(searchCriteria);
-  }
+  },
 );
 
 export const generateAuditReport = api(
-  { method: "POST", path: "/api/compliance/audit/report", auth: true },
+  { method: 'POST', path: '/api/compliance/audit/report', auth: true },
   async ({ startDate, endDate, reportType }: {
     startDate: string;
     endDate: string;
@@ -1076,13 +1076,13 @@ export const generateAuditReport = api(
     return await AuditService.generateAuditReport(
       new Date(startDate),
       new Date(endDate),
-      reportType
+      reportType,
     );
-  }
+  },
 );
 
 export const getSOC2Report = api(
-  { method: "GET", path: "/api/compliance/soc2/report", auth: true },
+  { method: 'GET', path: '/api/compliance/soc2/report', auth: true },
   async ({ startDate, endDate }: {
     startDate: string;
     endDate: string;
@@ -1091,11 +1091,11 @@ export const getSOC2Report = api(
       start: new Date(startDate),
       end: new Date(endDate),
     });
-  }
+  },
 );
 
 export const getComplianceStatus = api(
-  { method: "GET", path: "/api/compliance/status" },
+  { method: 'GET', path: '/api/compliance/status' },
   async (): Promise<Record<string, any>> => {
     const [soc2Controls, auditSummary] = await Promise.all([
       SOC2Service.monitorSecurityControls(),
@@ -1120,5 +1120,5 @@ export const getComplianceStatus = api(
         }, {} as Record<string, number>),
       },
     };
-  }
+  },
 );

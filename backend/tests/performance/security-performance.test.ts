@@ -62,7 +62,7 @@ describe('Security Performance Tests', () => {
       const startTime = performance.now();
       
       const promises = Array.from({ length: iterations }, (_, i) => 
-        MFAService.setupTOTP(`user-${i}`, `user${i}@example.com`)
+        MFAService.setupTOTP(`user-${i}`, `user${i}@example.com`),
       );
       
       await Promise.all(promises);
@@ -82,7 +82,7 @@ describe('Security Performance Tests', () => {
       const startTime = performance.now();
       
       const promises = Array.from({ length: iterations }, (_, i) => 
-        MFAService.verifyTOTP(`user-${i}`, '123456')
+        MFAService.verifyTOTP(`user-${i}`, '123456'),
       );
       
       await Promise.all(promises);
@@ -141,7 +141,7 @@ describe('Security Performance Tests', () => {
       const startTime = performance.now();
       
       const promises = Array.from({ length: iterations }, (_, i) => 
-        RBACService.hasPermission(`user-${i % 100}`, 'projects', 'read')
+        RBACService.hasPermission(`user-${i % 100}`, 'projects', 'read'),
       );
       
       await Promise.all(promises);
@@ -168,7 +168,7 @@ describe('Security Performance Tests', () => {
         for (let r = 0; r < resources; r += 5) { // Test every 5th resource
           for (let a = 0; a < actions; a += 2) { // Test every 2nd action
             promises.push(
-              RBACService.hasPermission(`user-${u}`, `resource-${r}`, `action-${a}`)
+              RBACService.hasPermission(`user-${u}`, `resource-${r}`, `action-${a}`),
             );
           }
         }
@@ -195,7 +195,7 @@ describe('Security Performance Tests', () => {
         const startTime = performance.now();
         
         const promises = Array.from({ length: 100 }, (_, i) => 
-          RBACService.hasPermission(`user-with-${roleCount}-roles`, 'test-resource', 'test-action')
+          RBACService.hasPermission(`user-with-${roleCount}-roles`, 'test-resource', 'test-action'),
         );
         
         await Promise.all(promises);
@@ -224,8 +224,8 @@ describe('Security Performance Tests', () => {
         ThreatDetectionService.analyzeLoginAttempt(
           `user${i % 100}@example.com`,
           `192.168.1.${i % 255}`,
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        )
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        ),
       );
       
       await Promise.all(promises);
@@ -251,9 +251,9 @@ describe('Security Performance Tests', () => {
           { 
             ipAddress: `10.0.0.${i % 255}`,
             userAgent: 'test-agent',
-            resource: `project-${i % 10}`
-          }
-        )
+            resource: `project-${i % 10}`,
+          },
+        ),
       );
       
       await Promise.all(promises);
@@ -284,16 +284,16 @@ describe('Security Performance Tests', () => {
             ThreatDetectionService.analyzeLoginAttempt(
               `burst-user-${i % 100}@example.com`,
               `192.168.${Math.floor(i / 255)}.${i % 255}`,
-              'test-agent'
-            )
+              'test-agent',
+            ),
           );
         } else {
           promises.push(
             ThreatDetectionService.detectAnomalies(
               `burst-user-${i % 100}`,
               'burst_action',
-              { ipAddress: `192.168.1.${i % 255}` }
-            )
+              { ipAddress: `192.168.1.${i % 255}` },
+            ),
           );
         }
         
@@ -320,7 +320,7 @@ describe('Security Performance Tests', () => {
       const startTime = performance.now();
       
       const promises = Array.from({ length: iterations }, (_, i) => 
-        WebAuthnService.generateRegistrationOptions(`user-${i}`, `user${i}@example.com`)
+        WebAuthnService.generateRegistrationOptions(`user-${i}`, `user${i}@example.com`),
       );
       
       await Promise.all(promises);
@@ -350,7 +350,7 @@ describe('Security Performance Tests', () => {
       const startTime = performance.now();
       
       const promises = Array.from({ length: iterations }, (_, i) => 
-        WebAuthnService.verifyRegistration(`user-${i}`, mockResponse, `device-${i}`)
+        WebAuthnService.verifyRegistration(`user-${i}`, mockResponse, `device-${i}`),
       );
       
       await Promise.all(promises);
@@ -415,8 +415,8 @@ describe('Security Performance Tests', () => {
           ThreatDetectionService.analyzeLoginAttempt(
             `test${i}@example.com`,
             `192.168.1.${i % 255}`,
-            'test-agent'
-          )
+            'test-agent',
+          ),
         );
       }
       
@@ -463,13 +463,13 @@ describe('Security Performance Tests', () => {
               await ThreatDetectionService.analyzeLoginAttempt(
                 `load${requestCount % 10}@example.com`,
                 `192.168.1.${requestCount % 255}`,
-                'load-test-agent'
+                'load-test-agent',
               );
               break;
             case 3:
               await WebAuthnService.generateRegistrationOptions(
                 `load-user-${requestCount % 10}`,
-                `load${requestCount % 10}@example.com`
+                `load${requestCount % 10}@example.com`,
               );
               break;
           }
@@ -529,7 +529,7 @@ describe('Security Performance Tests', () => {
       await ThreatDetectionService.analyzeLoginAttempt(
         'db-test@example.com',
         '192.168.1.1',
-        'test-agent'
+        'test-agent',
       );
       expect(queryCount).toBeLessThanOrEqual(maxQueriesPerOperation * 2); // More complex analysis allowed
     });
@@ -548,7 +548,7 @@ describe('Security Performance Tests', () => {
       // Subsequent calls should be faster (cache hit)
       const startTime2 = performance.now();
       const promises = Array.from({ length: iterations }, () => 
-        RBACService.hasPermission(userId, 'cached-resource', 'read')
+        RBACService.hasPermission(userId, 'cached-resource', 'read'),
       );
       await Promise.all(promises);
       const cachedCallsTime = performance.now() - startTime2;

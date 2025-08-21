@@ -159,11 +159,11 @@ interface PreloadConfig {
 // Production optimization service
 @Service('production-optimization')
 export class ProductionOptimizationService {
-  private cacheStrategies: Map<string, CacheStrategy> = new Map();
+  private readonly cacheStrategies: Map<string, CacheStrategy> = new Map();
   private compressionConfig: CompressionConfig;
   private preloadConfig: PreloadConfig;
-  private optimizationTasks: Set<string> = new Set();
-  private performanceThresholds: Map<string, number> = new Map();
+  private readonly optimizationTasks: Set<string> = new Set();
+  private readonly performanceThresholds: Map<string, number> = new Map();
 
   constructor() {
     this.initializeOptimization();

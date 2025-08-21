@@ -236,7 +236,7 @@ describe('API Security Integration Tests', () => {
           .post('/api/security/webauthn/verify-registration')
           .send({ 
             response: mockResponse, 
-            deviceName: 'Test Device' 
+            deviceName: 'Test Device', 
           })
           .expect(200);
 
@@ -253,7 +253,7 @@ describe('API Security Integration Tests', () => {
           .send({ 
             resource: 'projects', 
             action: 'read',
-            context: { ipAddress: '192.168.1.100' }
+            context: { ipAddress: '192.168.1.100' },
           })
           .expect(200);
 
@@ -265,7 +265,7 @@ describe('API Security Integration Tests', () => {
           .post('/api/security/permissions/check')
           .send({ 
             resource: 'admin', 
-            action: 'write' 
+            action: 'write', 
           })
           .expect(200);
 
@@ -597,7 +597,7 @@ describe('API Security Integration Tests', () => {
       // Simple CORS middleware
       corsApp.use((req: any, res: any, next: any) => {
         const allowedOrigins = ['https://app.vaporform.com', 'http://localhost:3000'];
-        const origin = req.headers.origin;
+        const {origin} = req.headers;
         
         if (allowedOrigins.includes(origin)) {
           res.setHeader('Access-Control-Allow-Origin', origin);

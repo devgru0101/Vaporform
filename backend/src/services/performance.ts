@@ -12,20 +12,20 @@
  * - Code Splitting and Lazy Loading
  */
 
-import { api } from "encore.dev/api";
-import { secret } from "encore.dev/config";
-import { Redis } from "ioredis";
-import winston from "winston";
-import crypto from "crypto";
-import { z } from "zod";
-import cluster from "cluster";
-import os from "os";
+import { api } from 'encore.dev/api';
+import { secret } from 'encore.dev/config';
+import { Redis } from 'ioredis';
+import winston from 'winston';
+import crypto from 'crypto';
+import { z } from 'zod';
+import cluster from 'cluster';
+import os from 'os';
 
 // Configuration
-const CDN_ENDPOINT = secret("CDN_ENDPOINT");
-const CACHE_TTL_DEFAULT = parseInt(process.env.CACHE_TTL_DEFAULT || "3600"); // 1 hour
-const MAX_CONNECTIONS = parseInt(process.env.MAX_CONNECTIONS || "100");
-const OPTIMIZATION_THRESHOLD = parseFloat(process.env.OPTIMIZATION_THRESHOLD || "0.8");
+const CDN_ENDPOINT = secret('CDN_ENDPOINT');
+const CACHE_TTL_DEFAULT = parseInt(process.env.CACHE_TTL_DEFAULT || '3600'); // 1 hour
+const MAX_CONNECTIONS = parseInt(process.env.MAX_CONNECTIONS || '100');
+const OPTIMIZATION_THRESHOLD = parseFloat(process.env.OPTIMIZATION_THRESHOLD || '0.8');
 
 // Redis instances for different caching layers
 const cacheRedis = new Redis({
@@ -51,7 +51,7 @@ const performanceLogger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
-    winston.format.json()
+    winston.format.json(),
   ),
   defaultMeta: { service: 'performance' },
   transports: [
@@ -64,7 +64,7 @@ const performanceLogger = winston.createLogger({
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
-        winston.format.simple()
+        winston.format.simple(),
       ),
     }),
   ],
@@ -164,9 +164,9 @@ const OptimizationRuleSchema = z.object({
  * Backend Performance Optimizer
  */
 export class BackendPerformanceOptimizer {
-  private static queryCache = new Map<string, any>();
-  private static connectionPools = new Map<string, ConnectionPool>();
-  private static optimizationRules: OptimizationRule[] = [];
+  private static readonly queryCache = new Map<string, any>();
+  private static readonly connectionPools = new Map<string, ConnectionPool>();
+  private static readonly optimizationRules: OptimizationRule[] = [];
 
   /**
    * Record performance metrics
@@ -209,7 +209,7 @@ export class BackendPerformanceOptimizer {
   static async optimizeResponse<T>(
     key: string,
     dataFunction: () => Promise<T>,
-    strategy: Partial<CacheStrategy> = {}
+    strategy: Partial<CacheStrategy> = {},
   ): Promise<T> {
     const fullStrategy: CacheStrategy = {
       ttl: CACHE_TTL_DEFAULT,
@@ -255,7 +255,7 @@ export class BackendPerformanceOptimizer {
   static async optimizeQuery<T>(
     query: string,
     params: any[],
-    executor: (query: string, params: any[]) => Promise<T>
+    executor: (query: string, params: any[]) => Promise<T>,
   ): Promise<T> {
     try {
       const queryKey = this.generateQueryKey(query, params);
@@ -315,7 +315,7 @@ export class BackendPerformanceOptimizer {
     config: {
       minConnections: number;
       maxConnections: number;
-    }
+    },
   ): void {
     const pool: ConnectionPool = {
       id: poolId,
@@ -450,7 +450,7 @@ export class BackendPerformanceOptimizer {
    */
   private static async setCachedData<T>(strategy: CacheStrategy, data: T): Promise<void> {
     try {
-      let dataToCache = JSON.stringify(data);
+      const dataToCache = JSON.stringify(data);
 
       if (strategy.compressionEnabled) {
         // Would compress data
@@ -530,7 +530,7 @@ export class BackendPerformanceOptimizer {
    */
   private static async triggerOptimization(trigger: string, context: Record<string, any>): Promise<void> {
     const applicableRules = this.optimizationRules.filter(rule => 
-      rule.enabled && rule.condition.includes(trigger)
+      rule.enabled && rule.condition.includes(trigger),
     ).sort((a, b) => b.priority - a.priority);
 
     for (const rule of applicableRules) {
@@ -861,7 +861,7 @@ export class FrontendPerformanceOptimizer {
     // Identify components that should be in common chunk
     const sharedPatterns = ['Button', 'Input', 'Card', 'Modal', 'Layout'];
     return components.filter(component => 
-      sharedPatterns.some(pattern => component.includes(pattern))
+      sharedPatterns.some(pattern => component.includes(pattern)),
     );
   }
 
@@ -1001,7 +1001,9 @@ export class PerformanceMonitoringService {
     };
     
     const match = timeRange.match(/^(\d+)([mhd])$/);
-    if (!match) return 60 * 60 * 1000; // Default 1 hour
+    if (!match) {
+      return 60 * 60 * 1000;
+    } // Default 1 hour
     
     const value = parseInt(match[1]);
     const unit = match[2] as keyof typeof units;
@@ -1154,7 +1156,9 @@ export class PerformanceMonitoringService {
   }
 
   private static calculateTrendChange(trendData: any[]): number {
-    if (trendData.length < 2) return 0;
+    if (trendData.length < 2) {
+      return 0;
+    }
     
     const first = trendData[0].value;
     const last = trendData[trendData.length - 1].value;
@@ -1191,30 +1195,30 @@ export class PerformanceMonitoringService {
 // API Endpoints
 
 export const recordPerformanceMetrics = api(
-  { method: "POST", path: "/api/performance/metrics" },
+  { method: 'POST', path: '/api/performance/metrics' },
   async (metrics: Omit<PerformanceMetrics, 'timestamp'>): Promise<{ success: boolean }> => {
     const validation = PerformanceMetricsSchema.parse(metrics);
     await BackendPerformanceOptimizer.recordMetrics(validation);
     return { success: true };
-  }
+  },
 );
 
 export const getPerformanceDashboard = api(
-  { method: "GET", path: "/api/performance/dashboard" },
+  { method: 'GET', path: '/api/performance/dashboard' },
   async ({ timeRange = '1h' }: { timeRange?: string }): Promise<Record<string, any>> => {
     return await PerformanceMonitoringService.getDashboardData(timeRange);
-  }
+  },
 );
 
 export const getPerformanceTrends = api(
-  { method: "GET", path: "/api/performance/trends" },
+  { method: 'GET', path: '/api/performance/trends' },
   async ({ timeRange = '24h' }: { timeRange?: string }): Promise<Record<string, any>> => {
     return await PerformanceMonitoringService.analyzePerformanceTrends(timeRange);
-  }
+  },
 );
 
 export const optimizeResources = api(
-  { method: "POST", path: "/api/performance/optimize/resources" },
+  { method: 'POST', path: '/api/performance/optimize/resources' },
   async ({ resources }: {
     resources: {
       type: 'javascript' | 'css' | 'image' | 'font';
@@ -1223,11 +1227,11 @@ export const optimizeResources = api(
     }[];
   }): Promise<ResourceOptimization[]> => {
     return await FrontendPerformanceOptimizer.optimizeResources(resources);
-  }
+  },
 );
 
 export const generateCodeSplittingConfig = api(
-  { method: "POST", path: "/api/performance/optimize/code-splitting" },
+  { method: 'POST', path: '/api/performance/optimize/code-splitting' },
   async ({ analysis }: {
     analysis: {
       routes: string[];
@@ -1236,11 +1240,11 @@ export const generateCodeSplittingConfig = api(
     };
   }): Promise<Record<string, any>> => {
     return FrontendPerformanceOptimizer.generateCodeSplittingConfig(analysis);
-  }
+  },
 );
 
 export const generateCDNConfig = api(
-  { method: "POST", path: "/api/performance/optimize/cdn" },
+  { method: 'POST', path: '/api/performance/optimize/cdn' },
   async ({ assets }: {
     assets: {
       path: string;
@@ -1250,18 +1254,18 @@ export const generateCDNConfig = api(
     }[];
   }): Promise<Record<string, any>> => {
     return FrontendPerformanceOptimizer.generateCDNConfig(assets);
-  }
+  },
 );
 
 export const getConnectionPoolStatus = api(
-  { method: "GET", path: "/api/performance/connection-pools" },
+  { method: 'GET', path: '/api/performance/connection-pools' },
   async (): Promise<ConnectionPool[]> => {
     return Array.from(BackendPerformanceOptimizer['connectionPools'].values());
-  }
+  },
 );
 
 export const createOptimizationRule = api(
-  { method: "POST", path: "/api/performance/optimization-rules", auth: true },
+  { method: 'POST', path: '/api/performance/optimization-rules', auth: true },
   async (ruleData: Omit<OptimizationRule, 'id' | 'enabled' | 'metrics'>): Promise<OptimizationRule> => {
     const validation = OptimizationRuleSchema.parse(ruleData);
     
@@ -1285,14 +1289,14 @@ export const createOptimizationRule = api(
     });
 
     return rule;
-  }
+  },
 );
 
 export const getOptimizationRules = api(
-  { method: "GET", path: "/api/performance/optimization-rules" },
+  { method: 'GET', path: '/api/performance/optimization-rules' },
   async (): Promise<OptimizationRule[]> => {
     return BackendPerformanceOptimizer['optimizationRules'];
-  }
+  },
 );
 
 // Initialize default optimization rules

@@ -1,14 +1,14 @@
-import { api, APICallMeta } from "encore.dev/api";
-import log from "encore.dev/log";
-import { z } from "zod";
-import { AuthData } from "./auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { api, APICallMeta } from 'encore.dev/api';
+import log from 'encore.dev/log';
+import { z } from 'zod';
+import { AuthData } from './auth';
+import Anthropic from '@anthropic-ai/sdk';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
 // AI service configuration
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || "",
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
 
 // Real-time code analysis schemas
@@ -17,13 +17,13 @@ const CodeAnalysisRequest = z.object({
   filePath: z.string(),
   language: z.string(),
   analysisType: z.enum([
-    "syntax", 
-    "quality", 
-    "security", 
-    "performance", 
-    "accessibility", 
-    "all"
-  ]).default("all"),
+    'syntax', 
+    'quality', 
+    'security', 
+    'performance', 
+    'accessibility', 
+    'all',
+  ]).default('all'),
   projectContext: z.string().optional(),
   realTime: z.boolean().default(true),
   includeAutoFix: z.boolean().default(true),
@@ -62,28 +62,28 @@ const SmartSuggestionsRequest = z.object({
     variables: z.array(z.string()).optional(),
   }).optional(),
   suggestionType: z.enum([
-    "completion", 
-    "refactor", 
-    "optimize", 
-    "fix", 
-    "document"
-  ]).default("completion"),
+    'completion', 
+    'refactor', 
+    'optimize', 
+    'fix', 
+    'document',
+  ]).default('completion'),
 });
 
 const CodeAnalysisResponse = z.object({
   issues: z.array(z.object({
     id: z.string(),
-    type: z.enum(["error", "warning", "info", "suggestion"]),
+    type: z.enum(['error', 'warning', 'info', 'suggestion']),
     category: z.enum([
-      "syntax", 
-      "logic", 
-      "performance", 
-      "security", 
-      "style", 
-      "accessibility", 
-      "maintainability"
+      'syntax', 
+      'logic', 
+      'performance', 
+      'security', 
+      'style', 
+      'accessibility', 
+      'maintainability',
     ]),
-    severity: z.enum(["low", "medium", "high", "critical"]),
+    severity: z.enum(['low', 'medium', 'high', 'critical']),
     message: z.string(),
     description: z.string().optional(),
     line: z.number().optional(),
@@ -105,7 +105,7 @@ const CodeAnalysisResponse = z.object({
   })),
   suggestions: z.array(z.object({
     id: z.string(),
-    type: z.enum(["completion", "refactor", "optimize", "alternative"]),
+    type: z.enum(['completion', 'refactor', 'optimize', 'alternative']),
     title: z.string(),
     description: z.string(),
     code: z.string().optional(),
@@ -114,7 +114,7 @@ const CodeAnalysisResponse = z.object({
       end: z.object({ line: z.number(), column: z.number() }),
     }).optional(),
     confidence: z.number().min(0).max(1),
-    impact: z.enum(["low", "medium", "high"]),
+    impact: z.enum(['low', 'medium', 'high']),
   })),
   metrics: z.object({
     complexity: z.number(),
@@ -137,7 +137,7 @@ const CodeAnalysisResponse = z.object({
 const SmartSuggestionsResponse = z.object({
   suggestions: z.array(z.object({
     id: z.string(),
-    type: z.enum(["method", "property", "variable", "import", "snippet"]),
+    type: z.enum(['method', 'property', 'variable', 'import', 'snippet']),
     label: z.string(),
     detail: z.string().optional(),
     documentation: z.string().optional(),
@@ -149,7 +149,7 @@ const SmartSuggestionsResponse = z.object({
     sortText: z.string().optional(),
     filterText: z.string().optional(),
     confidence: z.number().min(0).max(1),
-    source: z.enum(["ai", "intellisense", "snippet", "import"]),
+    source: z.enum(['ai', 'intellisense', 'snippet', 'import']),
   })),
   context: z.object({
     currentScope: z.string().optional(),
@@ -165,19 +165,19 @@ const SmartSuggestionsResponse = z.object({
 
 // Real-time code analysis endpoint
 export const analyzeCodeRealTime = api<typeof CodeAnalysisRequest, typeof CodeAnalysisResponse>(
-  { method: "POST", path: "/ai/analyze-code-realtime", auth: true, expose: true },
+  { method: 'POST', path: '/ai/analyze-code-realtime', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof CodeAnalysisResponse>> => {
     const { userID } = meta.auth;
     const { code, filePath, language, analysisType, projectContext, realTime, includeAutoFix } = req;
     
     const startTime = Date.now();
-    log.info("Real-time code analysis request", { 
+    log.info('Real-time code analysis request', { 
       userID, 
       filePath, 
       language, 
       analysisType,
       codeLength: code.length,
-      realTime 
+      realTime, 
     });
     
     try {
@@ -218,13 +218,13 @@ ${code}
 Provide detailed analysis with specific line numbers and actionable fixes.`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: realTime ? 3000 : 5000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const analysisResult = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -240,11 +240,11 @@ Provide detailed analysis with specific line numbers and actionable fixes.`;
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Real-time code analysis completed", { 
+      log.info('Real-time code analysis completed', { 
         userID, 
         issuesFound: structuredAnalysis.issues.length,
         suggestionsGenerated: suggestions.length,
-        processingTime 
+        processingTime, 
       });
 
       return {
@@ -255,31 +255,31 @@ Provide detailed analysis with specific line numbers and actionable fixes.`;
         metadata: {
           analysisTime: processingTime,
           linesAnalyzed: code.split('\n').length,
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           timestamp: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("Real-time code analysis failed", { error: error.message, userID });
-      throw new Error("Failed to analyze code in real-time");
+      log.error('Real-time code analysis failed', { error: error.message, userID });
+      throw new Error('Failed to analyze code in real-time');
     }
-  }
+  },
 );
 
 // Live quality assessment endpoint
 export const assessQualityLive = api<typeof LiveQualityAssessmentRequest, typeof CodeAnalysisResponse>(
-  { method: "POST", path: "/ai/assess-quality-live", auth: true, expose: true },
+  { method: 'POST', path: '/ai/assess-quality-live', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof CodeAnalysisResponse>> => {
     const { userID } = meta.auth;
     const { code, filePath, language, cursorPosition, recentChanges } = req;
     
     const startTime = Date.now();
-    log.info("Live quality assessment request", { 
+    log.info('Live quality assessment request', { 
       userID, 
       filePath, 
       language,
-      hasRecentChanges: !!recentChanges?.length 
+      hasRecentChanges: !!recentChanges?.length, 
     });
     
     try {
@@ -304,20 +304,20 @@ ${code}
 \`\`\``;
 
       if (recentChanges && recentChanges.length > 0) {
-        userMessage += `\n\nRecent changes:`;
+        userMessage += '\n\nRecent changes:';
         recentChanges.forEach((change, index) => {
           userMessage += `\n${index + 1}. Lines ${change.range.start.line}-${change.range.end.line}: "${change.text}"`;
         });
       }
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 2500,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const qualityAssessment = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -333,11 +333,11 @@ ${code}
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Live quality assessment completed", { 
+      log.info('Live quality assessment completed', { 
         userID, 
         issuesFound: structuredAssessment.issues.length,
         qualityScore: metrics.qualityScore,
-        processingTime 
+        processingTime, 
       });
 
       return {
@@ -348,32 +348,32 @@ ${code}
         metadata: {
           analysisTime: processingTime,
           linesAnalyzed: code.split('\n').length,
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           timestamp: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("Live quality assessment failed", { error: error.message, userID });
-      throw new Error("Failed to assess code quality live");
+      log.error('Live quality assessment failed', { error: error.message, userID });
+      throw new Error('Failed to assess code quality live');
     }
-  }
+  },
 );
 
 // Smart suggestions endpoint
 export const getSmartSuggestions = api<typeof SmartSuggestionsRequest, typeof SmartSuggestionsResponse>(
-  { method: "POST", path: "/ai/smart-suggestions", auth: true, expose: true },
+  { method: 'POST', path: '/ai/smart-suggestions', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof SmartSuggestionsResponse>> => {
     const { userID } = meta.auth;
     const { code, filePath, language, cursorPosition, context, suggestionType } = req;
     
     const startTime = Date.now();
-    log.info("Smart suggestions request", { 
+    log.info('Smart suggestions request', { 
       userID, 
       filePath, 
       language, 
       suggestionType,
-      cursorLine: cursorPosition.line 
+      cursorLine: cursorPosition.line, 
     });
     
     try {
@@ -423,13 +423,13 @@ ${getContextAroundPosition(codeLines, cursorPosition, 5)}
       userMessage += `\n\nProvide ${suggestionType} suggestions that are contextually relevant and helpful.`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 2000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const suggestionsResult = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -440,15 +440,15 @@ ${getContextAroundPosition(codeLines, cursorPosition, 5)}
         code, 
         language, 
         cursorPosition, 
-        suggestionType
+        suggestionType,
       );
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Smart suggestions completed", { 
+      log.info('Smart suggestions completed', { 
         userID, 
         suggestionsCount: structuredSuggestions.suggestions.length,
-        processingTime 
+        processingTime, 
       });
 
       return {
@@ -456,16 +456,16 @@ ${getContextAroundPosition(codeLines, cursorPosition, 5)}
         context: structuredSuggestions.context,
         metadata: {
           processingTime,
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           timestamp: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("Smart suggestions failed", { error: error.message, userID });
-      throw new Error("Failed to generate smart suggestions");
+      log.error('Smart suggestions failed', { error: error.message, userID });
+      throw new Error('Failed to generate smart suggestions');
     }
-  }
+  },
 );
 
 // Utility functions
@@ -542,7 +542,7 @@ async function parseSmartSuggestions(
   code: string, 
   language: string, 
   cursorPosition: any, 
-  suggestionType: string
+  suggestionType: string,
 ): Promise<any> {
   const structuredSuggestions = [];
   const lines = suggestions.split('\n');
@@ -567,7 +567,7 @@ async function parseSmartSuggestions(
     context: {
       currentScope: detectCurrentScope(code, cursorPosition),
       availableSymbols: extractAvailableSymbols(code, language),
-    }
+    },
   };
 }
 
@@ -659,19 +659,35 @@ async function generateContextualSuggestions(code: string, language: string, cur
 
 function detectCategory(text: string): string {
   const lowerText = text.toLowerCase();
-  if (lowerText.includes('security')) return 'security';
-  if (lowerText.includes('performance')) return 'performance';
-  if (lowerText.includes('syntax')) return 'syntax';
-  if (lowerText.includes('style')) return 'style';
-  if (lowerText.includes('accessibility')) return 'accessibility';
+  if (lowerText.includes('security')) {
+    return 'security';
+  }
+  if (lowerText.includes('performance')) {
+    return 'performance';
+  }
+  if (lowerText.includes('syntax')) {
+    return 'syntax';
+  }
+  if (lowerText.includes('style')) {
+    return 'style';
+  }
+  if (lowerText.includes('accessibility')) {
+    return 'accessibility';
+  }
   return 'logic';
 }
 
 function detectSeverity(text: string): string {
   const lowerText = text.toLowerCase();
-  if (lowerText.includes('critical')) return 'critical';
-  if (lowerText.includes('high')) return 'high';
-  if (lowerText.includes('medium')) return 'medium';
+  if (lowerText.includes('critical')) {
+    return 'critical';
+  }
+  if (lowerText.includes('high')) {
+    return 'high';
+  }
+  if (lowerText.includes('medium')) {
+    return 'medium';
+  }
   return 'low';
 }
 
@@ -681,12 +697,20 @@ function extractLineNumber(text: string): number | undefined {
 }
 
 function detectSuggestionType(text: string, requestedType: string): string {
-  if (requestedType !== 'completion') return requestedType;
+  if (requestedType !== 'completion') {
+    return requestedType;
+  }
   
   const lowerText = text.toLowerCase();
-  if (lowerText.includes('function') || lowerText.includes('method')) return 'method';
-  if (lowerText.includes('import')) return 'import';
-  if (lowerText.includes('variable')) return 'variable';
+  if (lowerText.includes('function') || lowerText.includes('method')) {
+    return 'method';
+  }
+  if (lowerText.includes('import')) {
+    return 'import';
+  }
+  if (lowerText.includes('variable')) {
+    return 'variable';
+  }
   return 'snippet';
 }
 
@@ -771,7 +795,7 @@ function calculateMaintainabilityIndex(code: string, complexity: number): number
   
   // Simplified maintainability index calculation
   const maintainability = Math.max(0, 
-    100 - (complexity * 2) - (lines * 0.1) - (volume * 0.001)
+    100 - (complexity * 2) - (lines * 0.1) - (volume * 0.001),
   );
   
   return Math.min(100, maintainability) / 100; // Normalize to 0-1

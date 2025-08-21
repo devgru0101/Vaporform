@@ -1,8 +1,8 @@
-import { api, APICallMeta } from "encore.dev/api";
-import log from "encore.dev/log";
-import { z } from "zod";
-import { AuthData } from "./auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { api, APICallMeta } from 'encore.dev/api';
+import log from 'encore.dev/log';
+import { z } from 'zod';
+import { AuthData } from './auth';
+import Anthropic from '@anthropic-ai/sdk';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { exec } from 'child_process';
@@ -12,7 +12,7 @@ const execAsync = promisify(exec);
 
 // AI service configuration
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || "",
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
 
 // Request/Response schemas
@@ -27,7 +27,7 @@ const CodeGenerationRequest = z.object({
 const CodeReviewRequest = z.object({
   code: z.string().min(1),
   language: z.string(),
-  focus: z.array(z.enum(["security", "performance", "style", "bugs", "all"])).default(["all"]),
+  focus: z.array(z.enum(['security', 'performance', 'style', 'bugs', 'all'])).default(['all']),
   projectId: z.string().optional(),
 });
 
@@ -42,7 +42,7 @@ const DebuggingRequest = z.object({
 const TestGenerationRequest = z.object({
   code: z.string().min(1),
   language: z.string(),
-  testType: z.enum(["unit", "integration", "e2e"]).default("unit"),
+  testType: z.enum(['unit', 'integration', 'e2e']).default('unit'),
   framework: z.string().optional(),
   projectId: z.string().optional(),
 });
@@ -50,7 +50,7 @@ const TestGenerationRequest = z.object({
 // Advanced AI service schemas
 const ProjectAnalysisRequest = z.object({
   projectPath: z.string(),
-  analysisType: z.enum(["structure", "dependencies", "performance", "security", "architecture", "all"]).default("all"),
+  analysisType: z.enum(['structure', 'dependencies', 'performance', 'security', 'architecture', 'all']).default('all'),
   includeRecommendations: z.boolean().default(true),
 });
 
@@ -59,7 +59,7 @@ const CodeIntelligenceRequest = z.object({
   filePath: z.string(),
   language: z.string(),
   projectContext: z.string().optional(),
-  analysisDepth: z.enum(["quick", "detailed", "comprehensive"]).default("detailed"),
+  analysisDepth: z.enum(['quick', 'detailed', 'comprehensive']).default('detailed'),
 });
 
 const ArchitectureAnalysisRequest = z.object({
@@ -72,14 +72,14 @@ const ArchitectureAnalysisRequest = z.object({
 const PerformanceAnalysisRequest = z.object({
   code: z.string().min(1),
   language: z.string(),
-  analysisType: z.enum(["bottlenecks", "optimization", "memory", "algorithms", "all"]).default("all"),
+  analysisType: z.enum(['bottlenecks', 'optimization', 'memory', 'algorithms', 'all']).default('all'),
   includeMetrics: z.boolean().default(true),
 });
 
 const RefactoringRequest = z.object({
   code: z.string().min(1),
   language: z.string(),
-  refactoringGoals: z.array(z.enum(["performance", "readability", "maintainability", "modularity", "testing"])),
+  refactoringGoals: z.array(z.enum(['performance', 'readability', 'maintainability', 'modularity', 'testing'])),
   preserveBehavior: z.boolean().default(true),
   modernizeCode: z.boolean().default(true),
 });
@@ -87,9 +87,9 @@ const RefactoringRequest = z.object({
 const DocumentationGenerationRequest = z.object({
   code: z.string().min(1),
   language: z.string(),
-  docType: z.enum(["api", "inline", "readme", "tutorial"]).default("api"),
+  docType: z.enum(['api', 'inline', 'readme', 'tutorial']).default('api'),
   includeExamples: z.boolean().default(true),
-  audience: z.enum(["developers", "end-users", "both"]).default("developers"),
+  audience: z.enum(['developers', 'end-users', 'both']).default('developers'),
 });
 
 const AIResponse = z.object({
@@ -104,7 +104,7 @@ const EnhancedAIResponse = z.object({
   analysis: z.object({
     issues: z.array(z.object({
       type: z.string(),
-      severity: z.enum(["low", "medium", "high", "critical"]),
+      severity: z.enum(['low', 'medium', 'high', 'critical']),
       message: z.string(),
       line: z.number().optional(),
       suggestion: z.string().optional(),
@@ -112,8 +112,8 @@ const EnhancedAIResponse = z.object({
     improvements: z.array(z.object({
       type: z.string(),
       description: z.string(),
-      impact: z.enum(["low", "medium", "high"]),
-      effort: z.enum(["low", "medium", "high"]),
+      impact: z.enum(['low', 'medium', 'high']),
+      effort: z.enum(['low', 'medium', 'high']),
       code: z.string().optional(),
     })),
     metrics: z.record(z.any()).optional(),
@@ -125,12 +125,12 @@ const EnhancedAIResponse = z.object({
 
 // Code generation endpoint
 export const generateCode = api<typeof CodeGenerationRequest, typeof AIResponse>(
-  { method: "POST", path: "/ai/generate", auth: true, expose: true },
+  { method: 'POST', path: '/ai/generate', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof AIResponse>> => {
     const { userID } = meta.auth;
     const { prompt, language, framework, context, projectId } = req;
     
-    log.info("Code generation request", { userID, language, framework, projectId });
+    log.info('Code generation request', { userID, language, framework, projectId });
     
     try {
       // Build the system prompt
@@ -138,7 +138,7 @@ export const generateCode = api<typeof CodeGenerationRequest, typeof AIResponse>
       if (framework) {
         systemPrompt += ` specializing in ${framework}`;
       }
-      systemPrompt += `. Generate clean, efficient, and well-documented code based on the user's requirements.`;
+      systemPrompt += '. Generate clean, efficient, and well-documented code based on the user\'s requirements.';
       
       // Build the user message
       let userMessage = `Generate ${language} code for: ${prompt}`;
@@ -150,53 +150,53 @@ export const generateCode = api<typeof CodeGenerationRequest, typeof AIResponse>
       }
       
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 4000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
       
       const generatedCode = response.content[0]?.type === 'text' ? response.content[0].text : '';
       
-      log.info("Code generation completed", { userID, codeLength: generatedCode.length });
+      log.info('Code generation completed', { userID, codeLength: generatedCode.length });
       
       return {
         result: generatedCode,
         suggestions: [
-          "Consider adding error handling",
-          "Add unit tests for this code",
-          "Review for security best practices"
+          'Consider adding error handling',
+          'Add unit tests for this code',
+          'Review for security best practices',
         ],
         confidence: 0.85,
         metadata: {
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           language,
           framework,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
       
     } catch (error) {
-      log.error("Code generation failed", { error: error.message, userID });
-      throw new Error("Failed to generate code");
+      log.error('Code generation failed', { error: error.message, userID });
+      throw new Error('Failed to generate code');
     }
-  }
+  },
 );
 
 // Code review endpoint
 export const reviewCode = api<typeof CodeReviewRequest, typeof AIResponse>(
-  { method: "POST", path: "/ai/review", auth: true, expose: true },
+  { method: 'POST', path: '/ai/review', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof AIResponse>> => {
     const { userID } = meta.auth;
     const { code, language, focus, projectId } = req;
     
-    log.info("Code review request", { userID, language, focus, projectId });
+    log.info('Code review request', { userID, language, focus, projectId });
     
     try {
-      const focusAreas = focus.join(", ");
+      const focusAreas = focus.join(', ');
       const systemPrompt = `You are an expert code reviewer specializing in ${language}. 
         Provide a thorough code review focusing on: ${focusAreas}.
         Identify issues, suggest improvements, and provide specific recommendations.`;
@@ -210,50 +210,50 @@ ${code}
 Focus areas: ${focusAreas}`;
       
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 3000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
       
       const review = response.content[0]?.type === 'text' ? response.content[0].text : '';
       
-      log.info("Code review completed", { userID, reviewLength: review.length });
+      log.info('Code review completed', { userID, reviewLength: review.length });
       
       return {
         result: review,
         suggestions: [
-          "Consider implementing suggested changes",
-          "Run additional tests after modifications",
-          "Document any architectural decisions"
+          'Consider implementing suggested changes',
+          'Run additional tests after modifications',
+          'Document any architectural decisions',
         ],
         confidence: 0.90,
         metadata: {
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           language,
           focusAreas,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
       
     } catch (error) {
-      log.error("Code review failed", { error: error.message, userID });
-      throw new Error("Failed to review code");
+      log.error('Code review failed', { error: error.message, userID });
+      throw new Error('Failed to review code');
     }
-  }
+  },
 );
 
 // Debugging assistance endpoint
 export const debugCode = api<typeof DebuggingRequest, typeof AIResponse>(
-  { method: "POST", path: "/ai/debug", auth: true, expose: true },
+  { method: 'POST', path: '/ai/debug', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof AIResponse>> => {
     const { userID } = meta.auth;
     const { code, error, language, context, projectId } = req;
     
-    log.info("Debugging request", { userID, language, projectId });
+    log.info('Debugging request', { userID, language, projectId });
     
     try {
       const systemPrompt = `You are an expert ${language} developer and debugger. 
@@ -273,57 +273,57 @@ Error: ${error}`;
       }
       
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 3000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
       
       const debugging = response.content[0]?.type === 'text' ? response.content[0].text : '';
       
-      log.info("Debugging completed", { userID, solutionLength: debugging.length });
+      log.info('Debugging completed', { userID, solutionLength: debugging.length });
       
       return {
         result: debugging,
         suggestions: [
-          "Test the proposed solution thoroughly",
-          "Consider adding error handling",
-          "Add logging for future debugging"
+          'Test the proposed solution thoroughly',
+          'Consider adding error handling',
+          'Add logging for future debugging',
         ],
         confidence: 0.88,
         metadata: {
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           language,
           errorType: error.slice(0, 100),
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
       
     } catch (error) {
-      log.error("Debugging failed", { error: error.message, userID });
-      throw new Error("Failed to debug code");
+      log.error('Debugging failed', { error: error.message, userID });
+      throw new Error('Failed to debug code');
     }
-  }
+  },
 );
 
 // Test generation endpoint
 export const generateTests = api<typeof TestGenerationRequest, typeof AIResponse>(
-  { method: "POST", path: "/ai/tests", auth: true, expose: true },
+  { method: 'POST', path: '/ai/tests', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof AIResponse>> => {
     const { userID } = meta.auth;
     const { code, language, testType, framework, projectId } = req;
     
-    log.info("Test generation request", { userID, language, testType, framework, projectId });
+    log.info('Test generation request', { userID, language, testType, framework, projectId });
     
     try {
       let systemPrompt = `You are an expert in ${language} testing. Generate comprehensive ${testType} tests for the provided code.`;
       if (framework) {
         systemPrompt += ` Use ${framework} testing framework.`;
       }
-      systemPrompt += ` Focus on edge cases, error handling, and complete coverage.`;
+      systemPrompt += ' Focus on edge cases, error handling, and complete coverage.';
       
       let userMessage = `Generate ${testType} tests for this ${language} code:
 
@@ -336,51 +336,51 @@ ${code}
       }
       
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 4000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
       
       const tests = response.content[0]?.type === 'text' ? response.content[0].text : '';
       
-      log.info("Test generation completed", { userID, testsLength: tests.length });
+      log.info('Test generation completed', { userID, testsLength: tests.length });
       
       return {
         result: tests,
         suggestions: [
-          "Run the generated tests to verify they pass",
-          "Consider adding performance tests",
-          "Add integration tests for complex workflows"
+          'Run the generated tests to verify they pass',
+          'Consider adding performance tests',
+          'Add integration tests for complex workflows',
         ],
         confidence: 0.87,
         metadata: {
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           language,
           testType,
           framework,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
       
     } catch (error) {
-      log.error("Test generation failed", { error: error.message, userID });
-      throw new Error("Failed to generate tests");
+      log.error('Test generation failed', { error: error.message, userID });
+      throw new Error('Failed to generate tests');
     }
-  }
+  },
 );
 
 // Advanced project analysis endpoint
 export const analyzeProject = api<typeof ProjectAnalysisRequest, typeof EnhancedAIResponse>(
-  { method: "POST", path: "/ai/analyze-project", auth: true, expose: true },
+  { method: 'POST', path: '/ai/analyze-project', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof EnhancedAIResponse>> => {
     const { userID } = meta.auth;
     const { projectPath, analysisType, includeRecommendations } = req;
     
-    log.info("Project analysis request", { userID, projectPath, analysisType });
+    log.info('Project analysis request', { userID, projectPath, analysisType });
     
     try {
       // Analyze project structure
@@ -412,13 +412,13 @@ ${JSON.stringify(codeMetrics, null, 2)}
 Please provide detailed analysis and ${includeRecommendations ? 'include specific recommendations for improvement' : 'focus on identifying issues'}.`;
       
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 6000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
       
       const analysis = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -426,42 +426,42 @@ Please provide detailed analysis and ${includeRecommendations ? 'include specifi
       // Extract structured information from the analysis
       const structuredAnalysis = extractStructuredAnalysis(analysis);
       
-      log.info("Project analysis completed", { userID, analysisLength: analysis.length });
+      log.info('Project analysis completed', { userID, analysisLength: analysis.length });
       
       return {
         result: analysis,
         analysis: structuredAnalysis,
         suggestions: [
-          "Consider implementing CI/CD pipeline improvements",
-          "Review security configurations and dependencies",
-          "Optimize performance bottlenecks identified",
-          "Update documentation and code comments"
+          'Consider implementing CI/CD pipeline improvements',
+          'Review security configurations and dependencies',
+          'Optimize performance bottlenecks identified',
+          'Update documentation and code comments',
         ],
         confidence: 0.92,
         metadata: {
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           analysisType,
           projectPath,
           metricsIncluded: true,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
       
     } catch (error) {
-      log.error("Project analysis failed", { error: error.message, userID });
-      throw new Error("Failed to analyze project");
+      log.error('Project analysis failed', { error: error.message, userID });
+      throw new Error('Failed to analyze project');
     }
-  }
+  },
 );
 
 // Code intelligence endpoint
 export const analyzeCodeIntelligence = api<typeof CodeIntelligenceRequest, typeof EnhancedAIResponse>(
-  { method: "POST", path: "/ai/code-intelligence", auth: true, expose: true },
+  { method: 'POST', path: '/ai/code-intelligence', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof EnhancedAIResponse>> => {
     const { userID } = meta.auth;
     const { code, filePath, language, projectContext, analysisDepth } = req;
     
-    log.info("Code intelligence request", { userID, filePath, language, analysisDepth });
+    log.info('Code intelligence request', { userID, filePath, language, analysisDepth });
     
     try {
       const systemPrompt = `You are an expert code analyst with deep knowledge of ${language}. Provide comprehensive code intelligence including:
@@ -488,55 +488,55 @@ ${code}
       }
       
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 5000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
       
       const intelligence = response.content[0]?.type === 'text' ? response.content[0].text : '';
       const structuredAnalysis = extractCodeIntelligence(intelligence, code);
       
-      log.info("Code intelligence completed", { userID, intelligenceLength: intelligence.length });
+      log.info('Code intelligence completed', { userID, intelligenceLength: intelligence.length });
       
       return {
         result: intelligence,
         analysis: structuredAnalysis,
         suggestions: [
-          "Apply suggested refactoring improvements",
-          "Consider performance optimizations",
-          "Add comprehensive error handling",
-          "Implement suggested security measures"
+          'Apply suggested refactoring improvements',
+          'Consider performance optimizations',
+          'Add comprehensive error handling',
+          'Implement suggested security measures',
         ],
         confidence: 0.89,
         metadata: {
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           language,
           filePath,
           analysisDepth,
           linesAnalyzed: code.split('\n').length,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
       
     } catch (error) {
-      log.error("Code intelligence failed", { error: error.message, userID });
-      throw new Error("Failed to analyze code intelligence");
+      log.error('Code intelligence failed', { error: error.message, userID });
+      throw new Error('Failed to analyze code intelligence');
     }
-  }
+  },
 );
 
 // Architecture analysis endpoint
 export const analyzeArchitecture = api<typeof ArchitectureAnalysisRequest, typeof EnhancedAIResponse>(
-  { method: "POST", path: "/ai/analyze-architecture", auth: true, expose: true },
+  { method: 'POST', path: '/ai/analyze-architecture', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof EnhancedAIResponse>> => {
     const { userID } = meta.auth;
     const { projectPath, includePatterns, includeMetrics, targetFramework } = req;
     
-    log.info("Architecture analysis request", { userID, projectPath, targetFramework });
+    log.info('Architecture analysis request', { userID, projectPath, targetFramework });
     
     try {
       const projectStructure = await analyzeProjectStructure(projectPath);
@@ -574,55 +574,55 @@ ${dependencies}`;
       }
       
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 6000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
       
       const architectureAnalysis = response.content[0]?.type === 'text' ? response.content[0].text : '';
       const structuredAnalysis = extractArchitectureAnalysis(architectureAnalysis);
       
-      log.info("Architecture analysis completed", { userID, analysisLength: architectureAnalysis.length });
+      log.info('Architecture analysis completed', { userID, analysisLength: architectureAnalysis.length });
       
       return {
         result: architectureAnalysis,
         analysis: structuredAnalysis,
         suggestions: [
-          "Consider implementing identified architectural improvements",
-          "Review component boundaries and responsibilities",
-          "Optimize data flow and reduce coupling",
-          "Plan migration strategy if framework upgrade needed"
+          'Consider implementing identified architectural improvements',
+          'Review component boundaries and responsibilities',
+          'Optimize data flow and reduce coupling',
+          'Plan migration strategy if framework upgrade needed',
         ],
         confidence: 0.91,
         metadata: {
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           projectPath,
           patternsIncluded: includePatterns,
           metricsIncluded: includeMetrics,
           targetFramework,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
       
     } catch (error) {
-      log.error("Architecture analysis failed", { error: error.message, userID });
-      throw new Error("Failed to analyze architecture");
+      log.error('Architecture analysis failed', { error: error.message, userID });
+      throw new Error('Failed to analyze architecture');
     }
-  }
+  },
 );
 
 // Performance analysis endpoint
 export const analyzePerformance = api<typeof PerformanceAnalysisRequest, typeof EnhancedAIResponse>(
-  { method: "POST", path: "/ai/analyze-performance", auth: true, expose: true },
+  { method: 'POST', path: '/ai/analyze-performance', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof EnhancedAIResponse>> => {
     const { userID } = meta.auth;
     const { code, language, analysisType, includeMetrics } = req;
     
-    log.info("Performance analysis request", { userID, language, analysisType });
+    log.info('Performance analysis request', { userID, language, analysisType });
     
     try {
       const systemPrompt = `You are a performance optimization expert specializing in ${language}. Analyze the code for:
@@ -645,58 +645,58 @@ Analysis type: ${analysisType}
 ${includeMetrics ? 'Please include performance metrics and measurements.' : ''}`;
       
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 4000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
       
       const performanceAnalysis = response.content[0]?.type === 'text' ? response.content[0].text : '';
       const structuredAnalysis = extractPerformanceAnalysis(performanceAnalysis);
       
-      log.info("Performance analysis completed", { userID, analysisLength: performanceAnalysis.length });
+      log.info('Performance analysis completed', { userID, analysisLength: performanceAnalysis.length });
       
       return {
         result: performanceAnalysis,
         analysis: structuredAnalysis,
         suggestions: [
-          "Implement suggested performance optimizations",
-          "Add performance monitoring and profiling",
-          "Consider algorithm complexity improvements",
-          "Optimize memory usage patterns"
+          'Implement suggested performance optimizations',
+          'Add performance monitoring and profiling',
+          'Consider algorithm complexity improvements',
+          'Optimize memory usage patterns',
         ],
         confidence: 0.87,
         metadata: {
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           language,
           analysisType,
           metricsIncluded: includeMetrics,
           codeLength: code.length,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
       
     } catch (error) {
-      log.error("Performance analysis failed", { error: error.message, userID });
-      throw new Error("Failed to analyze performance");
+      log.error('Performance analysis failed', { error: error.message, userID });
+      throw new Error('Failed to analyze performance');
     }
-  }
+  },
 );
 
 // Advanced refactoring endpoint
 export const refactorCode = api<typeof RefactoringRequest, typeof EnhancedAIResponse>(
-  { method: "POST", path: "/ai/refactor", auth: true, expose: true },
+  { method: 'POST', path: '/ai/refactor', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof EnhancedAIResponse>> => {
     const { userID } = meta.auth;
     const { code, language, refactoringGoals, preserveBehavior, modernizeCode } = req;
     
-    log.info("Refactoring request", { userID, language, refactoringGoals });
+    log.info('Refactoring request', { userID, language, refactoringGoals });
     
     try {
-      const goals = refactoringGoals.join(", ");
+      const goals = refactoringGoals.join(', ');
       const systemPrompt = `You are an expert code refactoring specialist for ${language}. Perform intelligent refactoring with these goals: ${goals}.
         
         Guidelines:
@@ -717,56 +717,56 @@ Requirements:
 - Modernize code: ${modernizeCode}`;
       
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 5000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
       
       const refactoredResult = response.content[0]?.type === 'text' ? response.content[0].text : '';
       const structuredAnalysis = extractRefactoringAnalysis(refactoredResult);
       
-      log.info("Refactoring completed", { userID, resultLength: refactoredResult.length });
+      log.info('Refactoring completed', { userID, resultLength: refactoredResult.length });
       
       return {
         result: refactoredResult,
         analysis: structuredAnalysis,
         suggestions: [
-          "Test refactored code thoroughly",
-          "Update related documentation",
-          "Consider additional optimizations",
-          "Review team coding standards compliance"
+          'Test refactored code thoroughly',
+          'Update related documentation',
+          'Consider additional optimizations',
+          'Review team coding standards compliance',
         ],
         confidence: 0.90,
         metadata: {
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           language,
           refactoringGoals,
           preserveBehavior,
           modernizeCode,
           originalLength: code.length,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
       
     } catch (error) {
-      log.error("Refactoring failed", { error: error.message, userID });
-      throw new Error("Failed to refactor code");
+      log.error('Refactoring failed', { error: error.message, userID });
+      throw new Error('Failed to refactor code');
     }
-  }
+  },
 );
 
 // Documentation generation endpoint
 export const generateDocumentation = api<typeof DocumentationGenerationRequest, typeof AIResponse>(
-  { method: "POST", path: "/ai/generate-docs", auth: true, expose: true },
+  { method: 'POST', path: '/ai/generate-docs', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof AIResponse>> => {
     const { userID } = meta.auth;
     const { code, language, docType, includeExamples, audience } = req;
     
-    log.info("Documentation generation request", { userID, language, docType, audience });
+    log.info('Documentation generation request', { userID, language, docType, audience });
     
     try {
       const systemPrompt = `You are a technical documentation expert specializing in ${language}. Generate comprehensive ${docType} documentation for the provided code.
@@ -795,44 +795,44 @@ Target audience: ${audience}`;
       }
       
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 4000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
       
       const documentation = response.content[0]?.type === 'text' ? response.content[0].text : '';
       
-      log.info("Documentation generation completed", { userID, docLength: documentation.length });
+      log.info('Documentation generation completed', { userID, docLength: documentation.length });
       
       return {
         result: documentation,
         suggestions: [
-          "Review generated documentation for accuracy",
-          "Add any missing domain-specific details",
-          "Consider adding diagrams or flowcharts",
-          "Update documentation regularly with code changes"
+          'Review generated documentation for accuracy',
+          'Add any missing domain-specific details',
+          'Consider adding diagrams or flowcharts',
+          'Update documentation regularly with code changes',
         ],
         confidence: 0.88,
         metadata: {
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           language,
           docType,
           audience,
           includeExamples,
           codeLength: code.length,
-          timestamp: new Date().toISOString()
-        }
+          timestamp: new Date().toISOString(),
+        },
       };
       
     } catch (error) {
-      log.error("Documentation generation failed", { error: error.message, userID });
-      throw new Error("Failed to generate documentation");
+      log.error('Documentation generation failed', { error: error.message, userID });
+      throw new Error('Failed to generate documentation');
     }
-  }
+  },
 );
 
 // Utility functions for project analysis
@@ -858,11 +858,11 @@ async function analyzeProjectStructure(projectPath: string): Promise<string> {
     
     return JSON.stringify({
       ...structure,
-      directories: Array.from(structure.directories).slice(0, 20)
+      directories: Array.from(structure.directories).slice(0, 20),
     }, null, 2);
   } catch (error) {
-    log.warn("Failed to analyze project structure", { error: error.message, projectPath });
-    return "Unable to analyze project structure";
+    log.warn('Failed to analyze project structure', { error: error.message, projectPath });
+    return 'Unable to analyze project structure';
   }
 }
 
@@ -880,8 +880,8 @@ async function analyzeDependencies(projectPath: string): Promise<string> {
       version: parsed.version,
     }, null, 2);
   } catch (error) {
-    log.warn("Failed to analyze dependencies", { error: error.message, projectPath });
-    return "No package.json found or unable to read dependencies";
+    log.warn('Failed to analyze dependencies', { error: error.message, projectPath });
+    return 'No package.json found or unable to read dependencies';
   }
 }
 
@@ -897,10 +897,10 @@ async function analyzeCodeMetrics(projectPath: string): Promise<any> {
       totalLines,
       totalFiles: files,
       averageLinesPerFile: files > 0 ? Math.round(totalLines / files) : 0,
-      estimatedComplexity: totalLines > 10000 ? 'high' : totalLines > 5000 ? 'medium' : 'low'
+      estimatedComplexity: totalLines > 10000 ? 'high' : totalLines > 5000 ? 'medium' : 'low',
     };
   } catch (error) {
-    log.warn("Failed to analyze code metrics", { error: error.message, projectPath });
+    log.warn('Failed to analyze code metrics', { error: error.message, projectPath });
     return { totalLines: 0, totalFiles: 0, averageLinesPerFile: 0, estimatedComplexity: 'unknown' };
   }
 }
@@ -919,7 +919,7 @@ async function identifyArchitecturalPatterns(projectPath: string): Promise<any> 
     
     return patterns;
   } catch (error) {
-    log.warn("Failed to identify architectural patterns", { error: error.message, projectPath });
+    log.warn('Failed to identify architectural patterns', { error: error.message, projectPath });
     return {};
   }
 }
@@ -935,10 +935,10 @@ async function calculateArchitectureMetrics(projectPath: string): Promise<any> {
     return {
       directoryCount: directories,
       maxNestingDepth: maxDepth,
-      organizationScore: directories > 10 && maxDepth < 8 ? 'good' : directories < 5 ? 'simple' : 'complex'
+      organizationScore: directories > 10 && maxDepth < 8 ? 'good' : directories < 5 ? 'simple' : 'complex',
     };
   } catch (error) {
-    log.warn("Failed to calculate architecture metrics", { error: error.message, projectPath });
+    log.warn('Failed to calculate architecture metrics', { error: error.message, projectPath });
     return {};
   }
 }
@@ -951,16 +951,16 @@ function extractStructuredAnalysis(analysis: string): any {
   
   // Simple pattern matching to extract structured data
   const lines = analysis.split('\n');
-  let currentSection = '';
+  const currentSection = '';
   
   for (const line of lines) {
     if (line.toLowerCase().includes('issue') || line.toLowerCase().includes('problem')) {
       issues.push({
         type: 'general',
         severity: line.toLowerCase().includes('critical') ? 'critical' : 
-                 line.toLowerCase().includes('high') ? 'high' : 'medium',
+          line.toLowerCase().includes('high') ? 'high' : 'medium',
         message: line.trim(),
-        suggestion: 'Review and address this issue'
+        suggestion: 'Review and address this issue',
       });
     }
     
@@ -969,7 +969,7 @@ function extractStructuredAnalysis(analysis: string): any {
         type: 'optimization',
         description: line.trim(),
         impact: 'medium',
-        effort: 'medium'
+        effort: 'medium',
       });
     }
   }
@@ -993,7 +993,7 @@ function extractCodeIntelligence(intelligence: string, code: string): any {
         type: 'bug',
         severity: 'medium',
         message: line.trim(),
-        suggestion: 'Fix identified issue'
+        suggestion: 'Fix identified issue',
       });
     }
     
@@ -1002,7 +1002,7 @@ function extractCodeIntelligence(intelligence: string, code: string): any {
         type: 'performance',
         description: line.trim(),
         impact: 'medium',
-        effort: 'low'
+        effort: 'low',
       });
     }
   }
@@ -1012,8 +1012,8 @@ function extractCodeIntelligence(intelligence: string, code: string): any {
     improvements,
     metrics: {
       codeComplexity: codeLines.length > 100 ? 'high' : codeLines.length > 50 ? 'medium' : 'low',
-      readabilityScore: 0.8
-    }
+      readabilityScore: 0.8,
+    },
   };
 }
 
@@ -1025,13 +1025,13 @@ function extractArchitectureAnalysis(analysis: string): any {
         type: 'architecture',
         description: 'Consider implementing identified architectural improvements',
         impact: 'high',
-        effort: 'medium'
-      }
+        effort: 'medium',
+      },
     ],
     metrics: {
       architecturalScore: 0.85,
-      maintainabilityIndex: 0.78
-    }
+      maintainabilityIndex: 0.78,
+    },
   };
 }
 
@@ -1043,13 +1043,13 @@ function extractPerformanceAnalysis(analysis: string): any {
         type: 'performance',
         description: 'Apply performance optimization suggestions',
         impact: 'high',
-        effort: 'medium'
-      }
+        effort: 'medium',
+      },
     ],
     metrics: {
       performanceScore: 0.75,
-      bottleneckCount: 2
-    }
+      bottleneckCount: 2,
+    },
   };
 }
 
@@ -1061,12 +1061,12 @@ function extractRefactoringAnalysis(refactoring: string): any {
         type: 'refactoring',
         description: 'Code has been refactored according to specified goals',
         impact: 'high',
-        effort: 'completed'
-      }
+        effort: 'completed',
+      },
     ],
     metrics: {
       refactoringScore: 0.92,
-      qualityImprovement: 0.25
-    }
+      qualityImprovement: 0.25,
+    },
   };
 }

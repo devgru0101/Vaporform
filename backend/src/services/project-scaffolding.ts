@@ -1,7 +1,7 @@
-import { api } from "encore.dev/api";
-import { ProjectFiles } from "./project-templates";
-import { TechnologyRecommendation } from "./project-analyzer";
-import { ai } from "./ai";
+import { api } from 'encore.dev/api';
+import { ProjectFiles } from './project-templates';
+import { TechnologyRecommendation } from './project-analyzer';
+import { ai } from './ai';
 
 export interface ScaffoldingConfig {
   projectName: string;
@@ -62,7 +62,7 @@ export interface ComponentSpec {
 class ProjectScaffoldingService {
   async enhanceProjectFiles(
     baseFiles: ProjectFiles,
-    recommendations: TechnologyRecommendation
+    recommendations: TechnologyRecommendation,
   ): Promise<ProjectFiles> {
     const enhancedFiles = { ...baseFiles };
 
@@ -313,11 +313,17 @@ export default router;`;
       .map(([key, schema]: [string, any]) => {
         let validation = `body('${key}')`;
         
-        if (schema.type === 'string') validation += '.isString()';
-        else if (schema.type === 'number') validation += '.isNumeric()';
-        else if (schema.type === 'email') validation += '.isEmail()';
+        if (schema.type === 'string') {
+          validation += '.isString()';
+        } else if (schema.type === 'number') {
+          validation += '.isNumeric()';
+        } else if (schema.type === 'email') {
+          validation += '.isEmail()';
+        }
         
-        if (schema.required) validation += '.notEmpty()';
+        if (schema.required) {
+          validation += '.notEmpty()';
+        }
         
         return validation;
       })
@@ -353,7 +359,7 @@ export default ${component.name};`;
 
   private generatePropsInterface(props: any[]): string {
     const propsStr = props.map(prop => 
-      `  ${prop.name}${prop.required ? '' : '?'}: ${prop.type};`
+      `  ${prop.name}${prop.required ? '' : '?'}: ${prop.type};`,
     ).join('\n');
 
     return `interface ${props[0]?.name || 'Component'}Props {
@@ -374,9 +380,15 @@ ${propsStr}
     const columns = model.fields.map(field => {
       let columnDef = `  @Column({ type: '${this.mapTypeToSQL(field.type)}'`;
       
-      if (!field.required) columnDef += ', nullable: true';
-      if (field.unique) columnDef += ', unique: true';
-      if (field.default !== undefined) columnDef += `, default: ${JSON.stringify(field.default)}`;
+      if (!field.required) {
+        columnDef += ', nullable: true';
+      }
+      if (field.unique) {
+        columnDef += ', unique: true';
+      }
+      if (field.default !== undefined) {
+        columnDef += `, default: ${JSON.stringify(field.default)}`;
+      }
       
       columnDef += ' })';
       
@@ -414,7 +426,7 @@ ${relationships}
       boolean: 'boolean',
       date: 'timestamp',
       object: 'json',
-      array: 'json'
+      array: 'json',
     };
     return typeMap[type] || 'varchar';
   }
@@ -426,7 +438,7 @@ ${relationships}
       boolean: 'boolean',
       date: 'Date',
       object: 'object',
-      array: 'any[]'
+      array: 'any[]',
     };
     return typeMap[type] || 'string';
   }
@@ -792,8 +804,8 @@ SENTRY_DSN=your-sentry-dsn`;
   private generateTSConfigFile(): string {
     return JSON.stringify({
       compilerOptions: {
-        target: "es2018",
-        lib: ["dom", "dom.iterable", "esnext"],
+        target: 'es2018',
+        lib: ['dom', 'dom.iterable', 'esnext'],
         allowJs: true,
         skipLibCheck: true,
         esModuleInterop: true,
@@ -801,23 +813,23 @@ SENTRY_DSN=your-sentry-dsn`;
         strict: true,
         forceConsistentCasingInFileNames: true,
         noFallthroughCasesInSwitch: true,
-        module: "esnext",
-        moduleResolution: "node",
+        module: 'esnext',
+        moduleResolution: 'node',
         resolveJsonModule: true,
         isolatedModules: true,
         noEmit: true,
-        jsx: "react-jsx",
-        baseUrl: "src",
+        jsx: 'react-jsx',
+        baseUrl: 'src',
         paths: {
-          "@/*": ["*"],
-          "@/components/*": ["components/*"],
-          "@/utils/*": ["utils/*"],
-          "@/types/*": ["types/*"],
-          "@/services/*": ["services/*"]
-        }
+          '@/*': ['*'],
+          '@/components/*': ['components/*'],
+          '@/utils/*': ['utils/*'],
+          '@/types/*': ['types/*'],
+          '@/services/*': ['services/*'],
+        },
       },
-      include: ["src/**/*"],
-      exclude: ["node_modules", "build", "dist"]
+      include: ['src/**/*'],
+      exclude: ['node_modules', 'build', 'dist'],
     }, null, 2);
   }
 
@@ -862,11 +874,11 @@ SENTRY_DSN=your-sentry-dsn`;
   private generatePrettierConfig(): string {
     return JSON.stringify({
       semi: true,
-      trailingComma: "es5",
+      trailingComma: 'es5',
       singleQuote: true,
       printWidth: 80,
       tabWidth: 2,
-      useTabs: false
+      useTabs: false,
     }, null, 2);
   }
 
@@ -1208,7 +1220,7 @@ test.describe('User Flow E2E Tests', () => {
   }
 
   private generateFastAPIMain(endpoints: APIEndpoint[]): string {
-    return `# FastAPI Main application`;
+    return '# FastAPI Main application';
   }
 
   private generatePydanticModel(model: DataModel): string {
@@ -1316,21 +1328,21 @@ export const projectScaffolding = new ProjectScaffoldingService();
 
 // API endpoints
 export const enhanceProjectFiles = api(
-  { method: "POST", path: "/scaffolding/enhance" },
+  { method: 'POST', path: '/scaffolding/enhance' },
   async ({ 
     baseFiles, 
-    recommendations 
+    recommendations, 
   }: { 
     baseFiles: ProjectFiles; 
     recommendations: TechnologyRecommendation 
   }): Promise<ProjectFiles> => {
     return await projectScaffolding.enhanceProjectFiles(baseFiles, recommendations);
-  }
+  },
 );
 
 export const generateProjectScaffolding = api(
-  { method: "POST", path: "/scaffolding/generate" },
+  { method: 'POST', path: '/scaffolding/generate' },
   async (config: ScaffoldingConfig): Promise<ProjectFiles> => {
     return await projectScaffolding.generateProjectScaffolding(config);
-  }
+  },
 );

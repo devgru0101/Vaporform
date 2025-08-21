@@ -1,14 +1,14 @@
-import { api, APICallMeta } from "encore.dev/api";
-import log from "encore.dev/log";
-import { z } from "zod";
-import { AuthData } from "./auth";
-import Docker from "dockerode";
-import { v4 as uuidv4 } from "uuid";
-import * as fs from "fs/promises";
-import * as path from "path";
-import { promisify } from "util";
-import { exec } from "child_process";
-import crypto from "crypto";
+import { api, APICallMeta } from 'encore.dev/api';
+import log from 'encore.dev/log';
+import { z } from 'zod';
+import { AuthData } from './auth';
+import Docker from 'dockerode';
+import { v4 as uuidv4 } from 'uuid';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { promisify } from 'util';
+import { exec } from 'child_process';
+import crypto from 'crypto';
 
 // Docker client instance
 const docker = new Docker();
@@ -20,7 +20,7 @@ export interface Container {
   dockerContainerId?: string;
   name: string;
   image: string;
-  status: "creating" | "running" | "stopped" | "error" | "removed" | "building" | "deploying" | "scaling" | "updating";
+  status: 'creating' | 'running' | 'stopped' | 'error' | 'removed' | 'building' | 'deploying' | 'scaling' | 'updating';
   ports: ContainerPort[];
   environment: Record<string, string>;
   volumes: ContainerVolume[];
@@ -39,7 +39,7 @@ export interface Container {
 export interface ContainerPort {
   internal: number;
   external: number;
-  protocol: "tcp" | "udp";
+  protocol: 'tcp' | 'udp';
 }
 
 export interface ContainerVolume {
@@ -60,7 +60,7 @@ export interface ContainerResources {
 }
 
 export interface ContainerHealth {
-  status: "healthy" | "unhealthy" | "starting" | "unknown";
+  status: 'healthy' | 'unhealthy' | 'starting' | 'unknown';
   lastCheck: Date;
   failureCount: number;
   checks: ContainerHealthCheck[];
@@ -68,14 +68,14 @@ export interface ContainerHealth {
 
 export interface ContainerHealthCheck {
   timestamp: Date;
-  status: "pass" | "fail";
+  status: 'pass' | 'fail';
   output?: string;
   latency: number;
 }
 
 // New advanced container interfaces
 export interface ContainerNetworking {
-  networkMode: "bridge" | "host" | "overlay" | "macvlan" | "none";
+  networkMode: 'bridge' | 'host' | 'overlay' | 'macvlan' | 'none';
   dnsConfig?: {
     nameservers: string[];
     search: string[];
@@ -97,7 +97,7 @@ export interface ContainerNetworking {
 export interface ContainerService {
   name: string;
   port: number;
-  protocol: "http" | "https" | "tcp" | "udp" | "grpc";
+  protocol: 'http' | 'https' | 'tcp' | 'udp' | 'grpc';
   healthCheck?: {
     path?: string;
     interval: number;
@@ -105,7 +105,7 @@ export interface ContainerService {
     retries: number;
   };
   loadBalancing?: {
-    strategy: "round_robin" | "least_connections" | "ip_hash";
+    strategy: 'round_robin' | 'least_connections' | 'ip_hash';
     enabled: boolean;
   };
 }
@@ -153,7 +153,7 @@ export interface ContainerScaling {
 
 export interface ScalingMetric {
   name: string;
-  type: "cpu" | "memory" | "network" | "custom";
+  type: 'cpu' | 'memory' | 'network' | 'custom';
   targetValue: number;
   currentValue?: number;
 }
@@ -161,7 +161,7 @@ export interface ScalingMetric {
 export interface ContainerMonitoring {
   metricsEnabled: boolean;
   loggingEnabled: boolean;
-  logLevel: "debug" | "info" | "warn" | "error";
+  logLevel: 'debug' | 'info' | 'warn' | 'error';
   logRetentionDays: number;
   metricsRetentionDays: number;
   alerting?: {
@@ -180,7 +180,7 @@ export interface AlertRule {
   condition: string;
   threshold: number;
   duration: number; // seconds
-  severity: "low" | "medium" | "high" | "critical";
+  severity: 'low' | 'medium' | 'high' | 'critical';
   channels: string[]; // notification channels
 }
 
@@ -214,8 +214,8 @@ export interface BuildInfo {
 }
 
 export interface DeploymentInfo {
-  strategy: "rolling" | "blue_green" | "canary" | "recreate";
-  rolloutStatus?: "progressing" | "complete" | "failed" | "paused";
+  strategy: 'rolling' | 'blue_green' | 'canary' | 'recreate';
+  rolloutStatus?: 'progressing' | 'complete' | 'failed' | 'paused';
   revision?: number;
   progressDeadlineSeconds?: number;
   minReadySeconds?: number;
@@ -229,7 +229,7 @@ const CreateContainerRequest = z.object({
   ports: z.array(z.object({
     internal: z.number().min(1).max(65535),
     external: z.number().min(1).max(65535),
-    protocol: z.enum(["tcp", "udp"]).default("tcp"),
+    protocol: z.enum(['tcp', 'udp']).default('tcp'),
   })).default([]),
   environment: z.record(z.string()).default({}),
   volumes: z.array(z.object({
@@ -248,7 +248,7 @@ const CreateContainerRequest = z.object({
     iopsLimit: z.number().min(100).max(100000).optional(),
   }).default({}),
   networking: z.object({
-    networkMode: z.enum(["bridge", "host", "overlay", "macvlan", "none"]).default("bridge"),
+    networkMode: z.enum(['bridge', 'host', 'overlay', 'macvlan', 'none']).default('bridge'),
     hostname: z.string().optional(),
     domainname: z.string().optional(),
     dnsConfig: z.object({
@@ -276,7 +276,7 @@ const CreateContainerRequest = z.object({
   monitoring: z.object({
     metricsEnabled: z.boolean().default(true),
     loggingEnabled: z.boolean().default(true),
-    logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
+    logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
     logRetentionDays: z.number().min(1).max(365).default(30),
     metricsRetentionDays: z.number().min(1).max(365).default(30),
   }).optional(),
@@ -293,7 +293,7 @@ const UpdateContainerRequest = z.object({
 });
 
 const ContainerActionRequest = z.object({
-  action: z.enum(["start", "stop", "restart", "pause", "unpause"]),
+  action: z.enum(['start', 'stop', 'restart', 'pause', 'unpause']),
 });
 
 const ContainerResponse = z.object({
@@ -302,11 +302,11 @@ const ContainerResponse = z.object({
   dockerContainerId: z.string().optional(),
   name: z.string(),
   image: z.string(),
-  status: z.enum(["creating", "running", "stopped", "error", "removed"]),
+  status: z.enum(['creating', 'running', 'stopped', 'error', 'removed']),
   ports: z.array(z.object({
     internal: z.number(),
     external: z.number(),
-    protocol: z.enum(["tcp", "udp"]),
+    protocol: z.enum(['tcp', 'udp']),
   })),
   environment: z.record(z.string()),
   volumes: z.array(z.object({
@@ -320,7 +320,7 @@ const ContainerResponse = z.object({
     storageLimit: z.number(),
   }),
   health: z.object({
-    status: z.enum(["healthy", "unhealthy", "starting", "unknown"]),
+    status: z.enum(['healthy', 'unhealthy', 'starting', 'unknown']),
     lastCheck: z.date(),
     failureCount: z.number(),
   }),
@@ -358,20 +358,20 @@ function allocatePort(preferredPort?: number): number {
     }
   }
   
-  throw new Error("No available ports");
+  throw new Error('No available ports');
 }
 
 // Advanced helper functions for container orchestration
 const execAsync = promisify(exec);
 
 // Docker network management
-async function createContainerNetwork(projectId: string, networkMode: string = "bridge"): Promise<string> {
+async function createContainerNetwork(projectId: string, networkMode: string = 'bridge'): Promise<string> {
   const networkName = `vaporform_${projectId}_network`;
   
   try {
     // Check if network already exists
     const networks = await docker.listNetworks({
-      filters: { name: [networkName] }
+      filters: { name: [networkName] },
     });
     
     if (networks.length > 0) {
@@ -381,22 +381,22 @@ async function createContainerNetwork(projectId: string, networkMode: string = "
     // Create new network
     const network = await docker.createNetwork({
       Name: networkName,
-      Driver: networkMode === "bridge" ? "bridge" : networkMode,
+      Driver: networkMode === 'bridge' ? 'bridge' : networkMode,
       Labels: {
         'vaporform.project.id': projectId,
-        'vaporform.managed': 'true'
+        'vaporform.managed': 'true',
       },
       IPAM: {
         Config: [{
           Subnet: '172.20.0.0/16',
-          Gateway: '172.20.0.1'
-        }]
-      }
+          Gateway: '172.20.0.1',
+        }],
+      },
     });
     
     return network.id;
   } catch (error) {
-    log.error("Failed to create container network", { error: error.message, projectId });
+    log.error('Failed to create container network', { error: error.message, projectId });
     throw new Error(`Failed to create network: ${error.message}`);
   }
 }
@@ -405,20 +405,20 @@ async function createContainerNetwork(projectId: string, networkMode: string = "
 async function generateDockerfile(techStack: TechStack, projectPath: string): Promise<string> {
   const { language, framework, runtime, packageManager } = techStack;
   
-  let dockerfile = "";
+  let dockerfile = '';
   
   switch (language.toLowerCase()) {
-    case "javascript":
-    case "typescript":
+    case 'javascript':
+    case 'typescript':
       dockerfile = await generateNodeDockerfile(framework, runtime, packageManager);
       break;
-    case "python":
+    case 'python':
       dockerfile = await generatePythonDockerfile(framework, runtime);
       break;
-    case "java":
+    case 'java':
       dockerfile = await generateJavaDockerfile(framework, runtime);
       break;
-    case "go":
+    case 'go':
       dockerfile = await generateGoDockerfile(framework);
       break;
     default:
@@ -426,13 +426,13 @@ async function generateDockerfile(techStack: TechStack, projectPath: string): Pr
   }
   
   // Write Dockerfile to project directory
-  const dockerfilePath = path.join(projectPath, "Dockerfile");
+  const dockerfilePath = path.join(projectPath, 'Dockerfile');
   await fs.writeFile(dockerfilePath, dockerfile);
   
   return dockerfilePath;
 }
 
-async function generateNodeDockerfile(framework?: string, runtime: string = "18", packageManager: string = "npm"): Promise<string> {
+async function generateNodeDockerfile(framework?: string, runtime: string = '18', packageManager: string = 'npm'): Promise<string> {
   return `# Multi-stage build for Node.js application
 FROM node:${runtime}-alpine AS builder
 
@@ -440,8 +440,8 @@ WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
-${packageManager === "yarn" ? "COPY yarn.lock ./" : ""}
-${packageManager === "pnpm" ? "COPY pnpm-lock.yaml ./" : ""}
+${packageManager === 'yarn' ? 'COPY yarn.lock ./' : ''}
+${packageManager === 'pnpm' ? 'COPY pnpm-lock.yaml ./' : ''}
 
 # Install dependencies
 RUN ${packageManager} install --frozen-lockfile
@@ -462,7 +462,7 @@ RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
 # Copy package files
 COPY package*.json ./
-${packageManager === "yarn" ? "COPY yarn.lock ./" : ""}
+${packageManager === 'yarn' ? 'COPY yarn.lock ./' : ''}
 
 # Install production dependencies only
 RUN ${packageManager} install --production --frozen-lockfile && ${packageManager} cache clean --force
@@ -487,7 +487,7 @@ CMD ["${packageManager}", "start"]
 `;
 }
 
-async function generatePythonDockerfile(framework?: string, runtime: string = "3.11"): Promise<string> {
+async function generatePythonDockerfile(framework?: string, runtime: string = '3.11'): Promise<string> {
   return `# Multi-stage build for Python application
 FROM python:${runtime}-slim AS builder
 
@@ -530,14 +530,14 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \\
 
 EXPOSE 8000
 
-${framework === "django" ? 'CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]' : 
-  framework === "flask" ? 'CMD ["python", "app.py"]' :
-  framework === "fastapi" ? 'CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]' :
-  'CMD ["python", "main.py"]'}
+${framework === 'django' ? 'CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]' : 
+    framework === 'flask' ? 'CMD ["python", "app.py"]' :
+      framework === 'fastapi' ? 'CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]' :
+        'CMD ["python", "main.py"]'}
 `;
 }
 
-async function generateJavaDockerfile(framework?: string, runtime: string = "17"): Promise<string> {
+async function generateJavaDockerfile(framework?: string, runtime: string = '17'): Promise<string> {
   return `# Multi-stage build for Java application
 FROM openjdk:${runtime}-jdk-slim AS builder
 
@@ -649,8 +649,8 @@ CMD ["echo", "Configure your application startup command"]
 // Container health monitoring
 async function checkContainerHealth(containerId: string): Promise<ContainerHealth> {
   const container = containers.get(containerId);
-  if (!container || !container.dockerContainerId) {
-    throw new Error("Container not found or not initialized");
+  if (!container?.dockerContainerId) {
+    throw new Error('Container not found or not initialized');
   }
 
   try {
@@ -663,16 +663,16 @@ async function checkContainerHealth(containerId: string): Promise<ContainerHealt
     
     const healthCheck: ContainerHealthCheck = {
       timestamp: now,
-      status: isHealthy ? "pass" : "fail",
-      output: info.State.Health?.Log?.[0]?.Output || "",
-      latency: 0
+      status: isHealthy ? 'pass' : 'fail',
+      output: info.State.Health?.Log?.[0]?.Output || '',
+      latency: 0,
     };
 
     const health: ContainerHealth = {
-      status: isHealthy ? "healthy" : "unhealthy",
+      status: isHealthy ? 'healthy' : 'unhealthy',
       lastCheck: now,
       failureCount: info.State.Health?.FailingStreak || 0,
-      checks: [healthCheck, ...(container.health.checks || [])].slice(0, 10)
+      checks: [healthCheck, ...(container.health.checks || [])].slice(0, 10),
     };
 
     // Update container health
@@ -681,18 +681,18 @@ async function checkContainerHealth(containerId: string): Promise<ContainerHealt
 
     return health;
   } catch (error) {
-    log.error("Health check failed", { error: error.message, containerId });
+    log.error('Health check failed', { error: error.message, containerId });
     
     const failedHealth: ContainerHealth = {
-      status: "unhealthy",
+      status: 'unhealthy',
       lastCheck: new Date(),
       failureCount: (container.health.failureCount || 0) + 1,
       checks: [{
         timestamp: new Date(),
-        status: "fail",
+        status: 'fail',
         output: error.message,
-        latency: 0
-      }, ...(container.health.checks || [])].slice(0, 10)
+        latency: 0,
+      }, ...(container.health.checks || [])].slice(0, 10),
     };
 
     container.health = failedHealth;
@@ -706,7 +706,7 @@ async function checkContainerHealth(containerId: string): Promise<ContainerHealt
 async function scaleContainer(containerId: string, replicas: number): Promise<void> {
   const container = containers.get(containerId);
   if (!container) {
-    throw new Error("Container not found");
+    throw new Error('Container not found');
   }
 
   const currentReplicas = containerReplicas.get(containerId) || [];
@@ -730,7 +730,7 @@ async function scaleContainer(containerId: string, replicas: number): Promise<vo
         id: replicaId,
         name: replicaName,
         dockerContainerId: undefined,
-        status: "creating",
+        status: 'creating',
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -738,7 +738,7 @@ async function scaleContainer(containerId: string, replicas: number): Promise<vo
       // Allocate new ports for replica
       replicaContainer.ports = container.ports.map(port => ({
         ...port,
-        external: allocatePort()
+        external: allocatePort(),
       }));
 
       const dockerContainerId = await createDockerContainer(replicaContainer);
@@ -747,7 +747,7 @@ async function scaleContainer(containerId: string, replicas: number): Promise<vo
       const dockerContainer = docker.getContainer(dockerContainerId);
       await dockerContainer.start();
 
-      replicaContainer.status = "running";
+      replicaContainer.status = 'running';
       containers.set(replicaId, replicaContainer);
       newReplicas.push(replicaId);
     }
@@ -760,13 +760,13 @@ async function scaleContainer(containerId: string, replicas: number): Promise<vo
 
     for (const replicaId of replicasToDelete) {
       const replica = containers.get(replicaId);
-      if (replica && replica.dockerContainerId) {
+      if (replica?.dockerContainerId) {
         const dockerContainer = docker.getContainer(replica.dockerContainerId);
         try {
           await dockerContainer.stop();
           await dockerContainer.remove();
         } catch (error) {
-          log.warn("Failed to remove replica", { error: error.message, replicaId });
+          log.warn('Failed to remove replica', { error: error.message, replicaId });
         }
 
         // Release ports
@@ -821,18 +821,18 @@ async function checkAutoScaling(containerId: string): Promise<void> {
         shouldScaleDown = true;
       }
 
-      const currentReplicas = scaling.currentReplicas;
+      const {currentReplicas} = scaling;
 
       if (shouldScaleUp && currentReplicas < maxReplicas) {
         await scaleContainer(containerId, Math.min(currentReplicas + 1, maxReplicas));
-        log.info("Auto-scaled up", { containerId, newReplicas: currentReplicas + 1 });
+        log.info('Auto-scaled up', { containerId, newReplicas: currentReplicas + 1 });
       } else if (shouldScaleDown && currentReplicas > minReplicas) {
         await scaleContainer(containerId, Math.max(currentReplicas - 1, minReplicas));
-        log.info("Auto-scaled down", { containerId, newReplicas: currentReplicas - 1 });
+        log.info('Auto-scaled down', { containerId, newReplicas: currentReplicas - 1 });
       }
     }
   } catch (error) {
-    log.error("Auto-scaling check failed", { error: error.message, containerId });
+    log.error('Auto-scaling check failed', { error: error.message, containerId });
   }
 }
 
@@ -859,9 +859,9 @@ async function scanContainerSecurity(image: string): Promise<any> {
   try {
     // Use Docker Scout or similar tool for security scanning
     const { stdout } = await execAsync(`docker scout cves ${image} --format json || echo "{}"`);
-    return JSON.parse(stdout || "{}");
+    return JSON.parse(stdout || '{}');
   } catch (error) {
-    log.warn("Security scan failed", { error: error.message, image });
+    log.warn('Security scan failed', { error: error.message, image });
     return {};
   }
 }
@@ -880,17 +880,17 @@ async function createDockerContainer(container: Container): Promise<string> {
   
   // Setup volume bindings
   const binds = container.volumes.map(vol => 
-    `${vol.hostPath}:${vol.containerPath}${vol.readOnly ? ':ro' : ''}`
+    `${vol.hostPath}:${vol.containerPath}${vol.readOnly ? ':ro' : ''}`,
   );
   
   // Setup environment variables
   const envVars = Object.entries(container.environment).map(
-    ([key, value]) => `${key}=${value}`
+    ([key, value]) => `${key}=${value}`,
   );
 
   // Setup networking
-  const networkMode = container.networking?.networkMode || "bridge";
-  const networkId = networkMode === "bridge" ? 
+  const networkMode = container.networking?.networkMode || 'bridge';
+  const networkId = networkMode === 'bridge' ? 
     await createContainerNetwork(container.projectId, networkMode) : 
     undefined;
 
@@ -909,11 +909,11 @@ async function createDockerContainer(container: Container): Promise<string> {
   }
 
   // Setup capability drops and adds
-  const capDrop = container.security?.dropCapabilities || ["ALL"];
+  const capDrop = container.security?.dropCapabilities || ['ALL'];
   const capAdd = container.security?.addCapabilities || [];
 
   // Setup resource limits
-  const resources = container.resources;
+  const {resources} = container;
   const hostConfig: any = {
     PortBindings: portBindings,
     Binds: binds,
@@ -922,7 +922,7 @@ async function createDockerContainer(container: Container): Promise<string> {
     CpuQuota: Math.floor(resources.cpuLimit * 100000), // Convert to quota
     CpuReservation: resources.cpuReservation ? Math.floor(resources.cpuReservation * 100000) : undefined,
     CpuPeriod: 100000,
-    RestartPolicy: { Name: "unless-stopped" },
+    RestartPolicy: { Name: 'unless-stopped' },
     SecurityOpt: securityOpts,
     CapDrop: capDrop,
     CapAdd: capAdd,
@@ -934,28 +934,28 @@ async function createDockerContainer(container: Container): Promise<string> {
   // Add storage limit if specified
   if (resources.storageLimit) {
     hostConfig.StorageOpt = {
-      size: `${resources.storageLimit}M`
+      size: `${resources.storageLimit}M`,
     };
   }
 
   // Add GPU support if specified
   if (resources.gpuLimit && resources.gpuLimit > 0) {
     hostConfig.DeviceRequests = [{
-      Driver: "nvidia",
+      Driver: 'nvidia',
       Count: resources.gpuLimit,
-      Capabilities: [["gpu"]]
+      Capabilities: [['gpu']],
     }];
   }
 
   // Add IOPS limits if specified
   if (resources.iopsLimit) {
     hostConfig.BlkioDeviceReadIOps = [{
-      Path: "/dev/sda",
-      Rate: resources.iopsLimit
+      Path: '/dev/sda',
+      Rate: resources.iopsLimit,
     }];
     hostConfig.BlkioDeviceWriteIOps = [{
-      Path: "/dev/sda", 
-      Rate: resources.iopsLimit
+      Path: '/dev/sda', 
+      Rate: resources.iopsLimit,
     }];
   }
 
@@ -977,10 +977,10 @@ async function createDockerContainer(container: Container): Promise<string> {
       'vaporform.managed': 'true',
       'vaporform.tech.stack': container.metadata?.techStack?.language || 'unknown',
       'vaporform.monitoring.enabled': container.monitoring?.metricsEnabled ? 'true' : 'false',
-      ...container.metadata?.labels
+      ...container.metadata?.labels,
     },
     User: container.security?.runAsUser ? 
-      `${container.security.runAsUser}${container.security.runAsGroup ? ':' + container.security.runAsGroup : ''}` : 
+      `${container.security.runAsUser}${container.security.runAsGroup ? `:${  container.security.runAsGroup}` : ''}` : 
       undefined,
   };
 
@@ -1015,11 +1015,11 @@ async function createDockerContainer(container: Container): Promise<string> {
   // Add health check if monitoring is enabled
   if (container.monitoring?.metricsEnabled) {
     containerConfig.Healthcheck = {
-      Test: ["CMD-SHELL", "curl -f http://localhost:3000/health || exit 1"],
+      Test: ['CMD-SHELL', 'curl -f http://localhost:3000/health || exit 1'],
       Interval: 30000000000, // 30 seconds in nanoseconds
       Timeout: 3000000000,   // 3 seconds in nanoseconds
       StartPeriod: 5000000000, // 5 seconds in nanoseconds
-      Retries: 3
+      Retries: 3,
     };
   }
 
@@ -1028,9 +1028,9 @@ async function createDockerContainer(container: Container): Promise<string> {
     if (container.security) {
       const securityScanResult = await scanContainerSecurity(container.image);
       if (securityScanResult.critical > 0) {
-        log.warn("Critical vulnerabilities found in image", { 
+        log.warn('Critical vulnerabilities found in image', { 
           image: container.image, 
-          critical: securityScanResult.critical 
+          critical: securityScanResult.critical, 
         });
       }
     }
@@ -1038,34 +1038,34 @@ async function createDockerContainer(container: Container): Promise<string> {
     const dockerContainer = await docker.createContainer(containerConfig);
     
     // Connect to custom network if specified
-    if (networkId && container.networking?.networkMode === "bridge") {
+    if (networkId && container.networking?.networkMode === 'bridge') {
       const network = docker.getNetwork(networkId);
       await network.connect({
         Container: dockerContainer.id,
         EndpointConfig: {
           IPAMConfig: container.networking.ipAddress ? {
-            IPv4Address: container.networking.ipAddress
+            IPv4Address: container.networking.ipAddress,
           } : undefined,
-          Aliases: container.networking.aliases || []
-        }
+          Aliases: container.networking.aliases || [],
+        },
       });
     }
     
     return dockerContainer.id;
   } catch (error) {
-    log.error("Failed to create Docker container", { error: error.message });
+    log.error('Failed to create Docker container', { error: error.message });
     throw new Error(`Failed to create container: ${error.message}`);
   }
 }
 
 // Create container endpoint
 export const createContainer = api<typeof CreateContainerRequest, typeof ContainerResponse>(
-  { method: "POST", path: "/containers", auth: true, expose: true },
+  { method: 'POST', path: '/containers', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof ContainerResponse>> => {
     const { userID } = meta.auth;
     const { projectId, name, image, ports, environment, volumes, resources } = req;
     
-    log.info("Creating container", { projectId, name, image, userID });
+    log.info('Creating container', { projectId, name, image, userID });
     
     const containerId = uuidv4();
     const now = new Date();
@@ -1082,7 +1082,7 @@ export const createContainer = api<typeof CreateContainerRequest, typeof Contain
       projectId,
       name,
       image,
-      status: "creating",
+      status: 'creating',
       ports: allocatedPortMappings,
       environment: {
         ...environment,
@@ -1096,7 +1096,7 @@ export const createContainer = api<typeof CreateContainerRequest, typeof Contain
         storageLimit: resources.storageLimit || 1024,
       },
       health: {
-        status: "starting",
+        status: 'starting',
         lastCheck: now,
         failureCount: 0,
         checks: [],
@@ -1115,47 +1115,47 @@ export const createContainer = api<typeof CreateContainerRequest, typeof Contain
       const dockerContainer = docker.getContainer(dockerContainerId);
       await dockerContainer.start();
       
-      container.status = "running";
-      container.health.status = "healthy";
+      container.status = 'running';
+      container.health.status = 'healthy';
       
       containers.set(containerId, container);
       
-      log.info("Container created successfully", { 
+      log.info('Container created successfully', { 
         containerId, 
         dockerContainerId, 
-        ports: allocatedPortMappings 
+        ports: allocatedPortMappings, 
       });
       
       return container;
       
     } catch (error) {
-      log.error("Container creation failed", { 
+      log.error('Container creation failed', { 
         error: error.message, 
         containerId, 
-        projectId 
+        projectId, 
       });
       
       // Release allocated ports on failure
       allocatedPortMappings.forEach(port => allocatedPorts.delete(port.external));
       
-      container.status = "error";
+      container.status = 'error';
       containers.set(containerId, container);
       
       throw new Error(`Failed to create container: ${error.message}`);
     }
-  }
+  },
 );
 
 // Get container endpoint
 export const getContainer = api(
-  { method: "GET", path: "/containers/:id", auth: true, expose: true },
+  { method: 'GET', path: '/containers/:id', auth: true, expose: true },
   async (req: { id: string }, meta: APICallMeta<AuthData>): Promise<Container> => {
     const { userID } = meta.auth;
     const { id } = req;
     
     const container = containers.get(id);
     if (!container) {
-      throw new Error("Container not found");
+      throw new Error('Container not found');
     }
     
     // TODO: Add permission check based on project access
@@ -1166,7 +1166,7 @@ export const getContainer = api(
         const dockerContainer = docker.getContainer(container.dockerContainerId);
         const info = await dockerContainer.inspect();
         
-        const statusMapping: Record<string, Container["status"]> = {
+        const statusMapping: Record<string, Container['status']> = {
           'running': 'running',
           'exited': 'stopped',
           'created': 'stopped',
@@ -1187,20 +1187,20 @@ export const getContainer = api(
         
         containers.set(id, container);
       } catch (error) {
-        log.error("Failed to inspect Docker container", { 
+        log.error('Failed to inspect Docker container', { 
           error: error.message, 
-          containerId: id 
+          containerId: id, 
         });
       }
     }
     
     return container;
-  }
+  },
 );
 
 // List containers endpoint
 export const listContainers = api(
-  { method: "GET", path: "/containers", auth: true, expose: true },
+  { method: 'GET', path: '/containers', auth: true, expose: true },
   async (req: { projectId?: string; status?: string }, meta: APICallMeta<AuthData>): Promise<{ containers: Container[]; total: number }> => {
     const { userID } = meta.auth;
     const { projectId, status } = req;
@@ -1223,50 +1223,50 @@ export const listContainers = api(
       containers: filteredContainers,
       total: filteredContainers.length,
     };
-  }
+  },
 );
 
 // Container action endpoint (start, stop, restart, etc.)
 export const containerAction = api<typeof ContainerActionRequest>(
-  { method: "POST", path: "/containers/:id/actions", auth: true, expose: true },
+  { method: 'POST', path: '/containers/:id/actions', auth: true, expose: true },
   async (req: z.infer<typeof ContainerActionRequest> & { id: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean; status: string }> => {
     const { userID } = meta.auth;
     const { id, action } = req;
     
-    log.info("Container action requested", { containerId: id, action, userID });
+    log.info('Container action requested', { containerId: id, action, userID });
     
     const container = containers.get(id);
     if (!container) {
-      throw new Error("Container not found");
+      throw new Error('Container not found');
     }
     
     if (!container.dockerContainerId) {
-      throw new Error("Container not properly initialized");
+      throw new Error('Container not properly initialized');
     }
     
     try {
       const dockerContainer = docker.getContainer(container.dockerContainerId);
       
       switch (action) {
-        case "start":
+        case 'start':
           await dockerContainer.start();
-          container.status = "running";
+          container.status = 'running';
           break;
-        case "stop":
+        case 'stop':
           await dockerContainer.stop();
-          container.status = "stopped";
+          container.status = 'stopped';
           break;
-        case "restart":
+        case 'restart':
           await dockerContainer.restart();
-          container.status = "running";
+          container.status = 'running';
           break;
-        case "pause":
+        case 'pause':
           await dockerContainer.pause();
-          container.status = "stopped";
+          container.status = 'stopped';
           break;
-        case "unpause":
+        case 'unpause':
           await dockerContainer.unpause();
-          container.status = "running";
+          container.status = 'running';
           break;
         default:
           throw new Error(`Unknown action: ${action}`);
@@ -1275,38 +1275,38 @@ export const containerAction = api<typeof ContainerActionRequest>(
       container.updatedAt = new Date();
       containers.set(id, container);
       
-      log.info("Container action completed", { containerId: id, action, status: container.status });
+      log.info('Container action completed', { containerId: id, action, status: container.status });
       
       return { success: true, status: container.status };
       
     } catch (error) {
-      log.error("Container action failed", { 
+      log.error('Container action failed', { 
         error: error.message, 
         containerId: id, 
-        action 
+        action, 
       });
       
-      container.status = "error";
+      container.status = 'error';
       container.updatedAt = new Date();
       containers.set(id, container);
       
       throw new Error(`Action failed: ${error.message}`);
     }
-  }
+  },
 );
 
 // Delete container endpoint
 export const deleteContainer = api(
-  { method: "DELETE", path: "/containers/:id", auth: true, expose: true },
+  { method: 'DELETE', path: '/containers/:id', auth: true, expose: true },
   async (req: { id: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean }> => {
     const { userID } = meta.auth;
     const { id } = req;
     
-    log.info("Deleting container", { containerId: id, userID });
+    log.info('Deleting container', { containerId: id, userID });
     
     const container = containers.get(id);
     if (!container) {
-      throw new Error("Container not found");
+      throw new Error('Container not found');
     }
     
     try {
@@ -1318,7 +1318,7 @@ export const deleteContainer = api(
           await dockerContainer.stop();
         } catch (error) {
           // Container might already be stopped
-          log.warn("Container stop failed during deletion", { error: error.message });
+          log.warn('Container stop failed during deletion', { error: error.message });
         }
         
         await dockerContainer.remove({ force: true });
@@ -1330,35 +1330,35 @@ export const deleteContainer = api(
       // Remove from storage
       containers.delete(id);
       
-      log.info("Container deleted successfully", { containerId: id });
+      log.info('Container deleted successfully', { containerId: id });
       
       return { success: true };
       
     } catch (error) {
-      log.error("Container deletion failed", { 
+      log.error('Container deletion failed', { 
         error: error.message, 
-        containerId: id 
+        containerId: id, 
       });
       
       throw new Error(`Failed to delete container: ${error.message}`);
     }
-  }
+  },
 );
 
 // Get container logs endpoint
 export const getContainerLogs = api(
-  { method: "GET", path: "/containers/:id/logs", auth: true, expose: true },
+  { method: 'GET', path: '/containers/:id/logs', auth: true, expose: true },
   async (req: { id: string; tail?: number; since?: string }, meta: APICallMeta<AuthData>): Promise<{ logs: string }> => {
     const { userID } = meta.auth;
     const { id, tail = 100, since } = req;
     
     const container = containers.get(id);
     if (!container) {
-      throw new Error("Container not found");
+      throw new Error('Container not found');
     }
     
     if (!container.dockerContainerId) {
-      throw new Error("Container not properly initialized");
+      throw new Error('Container not properly initialized');
     }
     
     try {
@@ -1381,30 +1381,30 @@ export const getContainerLogs = api(
       return { logs };
       
     } catch (error) {
-      log.error("Failed to get container logs", { 
+      log.error('Failed to get container logs', { 
         error: error.message, 
-        containerId: id 
+        containerId: id, 
       });
       
       throw new Error(`Failed to get logs: ${error.message}`);
     }
-  }
+  },
 );
 
 // Get container stats endpoint
 export const getContainerStats = api(
-  { method: "GET", path: "/containers/:id/stats", auth: true, expose: true },
+  { method: 'GET', path: '/containers/:id/stats', auth: true, expose: true },
   async (req: { id: string }, meta: APICallMeta<AuthData>): Promise<{ stats: any }> => {
     const { userID } = meta.auth;
     const { id } = req;
     
     const container = containers.get(id);
     if (!container) {
-      throw new Error("Container not found");
+      throw new Error('Container not found');
     }
     
     if (!container.dockerContainerId) {
-      throw new Error("Container not properly initialized");
+      throw new Error('Container not properly initialized');
     }
     
     try {
@@ -1414,12 +1414,12 @@ export const getContainerStats = api(
       return { stats };
       
     } catch (error) {
-      log.error("Failed to get container stats", { 
+      log.error('Failed to get container stats', { 
         error: error.message, 
-        containerId: id 
+        containerId: id, 
       });
       
       throw new Error(`Failed to get stats: ${error.message}`);
     }
-  }
+  },
 );

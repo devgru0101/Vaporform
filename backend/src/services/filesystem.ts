@@ -1,12 +1,12 @@
-import { api, APICallMeta } from "encore.dev/api";
-import log from "encore.dev/log";
-import { z } from "zod";
-import { AuthData } from "./auth";
-import { v4 as uuidv4 } from "uuid";
-import * as fs from "fs/promises";
-import * as path from "path";
-import * as crypto from "crypto";
-import { Readable } from "stream";
+import { api, APICallMeta } from 'encore.dev/api';
+import log from 'encore.dev/log';
+import { z } from 'zod';
+import { AuthData } from './auth';
+import { v4 as uuidv4 } from 'uuid';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as crypto from 'crypto';
+import { Readable } from 'stream';
 
 // File system interfaces
 export interface VirtualFile {
@@ -14,7 +14,7 @@ export interface VirtualFile {
   projectId: string;
   path: string;
   name: string;
-  type: "file" | "directory";
+  type: 'file' | 'directory';
   size: number;
   mimeType?: string;
   content?: string;
@@ -46,7 +46,7 @@ export interface FileMetadata {
   isBinary: boolean;
   isSymlink: boolean;
   symlinkTarget?: string;
-  gitStatus?: "untracked" | "modified" | "added" | "deleted" | "renamed" | "clean";
+  gitStatus?: 'untracked' | 'modified' | 'added' | 'deleted' | 'renamed' | 'clean';
   tags: string[];
   annotations: FileAnnotation[];
 }
@@ -55,7 +55,7 @@ export interface FileAnnotation {
   id: string;
   line: number;
   column: number;
-  type: "comment" | "todo" | "error" | "warning" | "info";
+  type: 'comment' | 'todo' | 'error' | 'warning' | 'info';
   content: string;
   author: string;
   createdAt: Date;
@@ -79,7 +79,7 @@ export interface FileDiff {
 }
 
 export interface FileDiffChange {
-  type: "add" | "delete" | "modify";
+  type: 'add' | 'delete' | 'modify';
   line: number;
   oldContent?: string;
   newContent?: string;
@@ -103,9 +103,9 @@ const CreateFileRequest = z.object({
   projectId: z.string(),
   path: z.string(),
   name: z.string(),
-  type: z.enum(["file", "directory"]).default("file"),
+  type: z.enum(['file', 'directory']).default('file'),
   content: z.string().optional(),
-  encoding: z.string().default("utf-8"),
+  encoding: z.string().default('utf-8'),
   permissions: z.object({
     mode: z.number().default(0o644),
     readable: z.boolean().default(true),
@@ -130,7 +130,7 @@ const UpdateFileRequest = z.object({
 const SearchFilesRequest = z.object({
   projectId: z.string(),
   query: z.string(),
-  type: z.enum(["content", "filename", "both"]).default("both"),
+  type: z.enum(['content', 'filename', 'both']).default('both'),
   fileTypes: z.array(z.string()).optional(),
   maxResults: z.number().min(1).max(100).default(20),
   caseSensitive: z.boolean().default(false),
@@ -138,7 +138,7 @@ const SearchFilesRequest = z.object({
 });
 
 const FileOperationRequest = z.object({
-  operation: z.enum(["copy", "move", "rename"]),
+  operation: z.enum(['copy', 'move', 'rename']),
   destination: z.string(),
   newName: z.string().optional(),
 });
@@ -148,7 +148,7 @@ const FileResponse = z.object({
   projectId: z.string(),
   path: z.string(),
   name: z.string(),
-  type: z.enum(["file", "directory"]),
+  type: z.enum(['file', 'directory']),
   size: z.number(),
   mimeType: z.string().optional(),
   hash: z.string(),
@@ -165,7 +165,7 @@ const FileResponse = z.object({
     lineCount: z.number().optional(),
     isHidden: z.boolean(),
     isBinary: z.boolean(),
-    gitStatus: z.enum(["untracked", "modified", "added", "deleted", "renamed", "clean"]).optional(),
+    gitStatus: z.enum(['untracked', 'modified', 'added', 'deleted', 'renamed', 'clean']).optional(),
     tags: z.array(z.string()),
   }),
   createdAt: z.date(),
@@ -178,7 +178,7 @@ const files: Map<string, VirtualFile> = new Map();
 const projectFileTrees: Map<string, Set<string>> = new Map();
 
 // Base directory for project files
-const BASE_PROJECTS_DIR = process.env.VAPORFORM_PROJECTS_DIR || "/tmp/vaporform/projects";
+const BASE_PROJECTS_DIR = process.env.VAPORFORM_PROJECTS_DIR || '/tmp/vaporform/projects';
 
 // Helper functions
 function generateFileHash(content: string): string {
@@ -252,12 +252,12 @@ async function ensureDirectoryExists(dirPath: string): Promise<void> {
 
 // Create file endpoint
 export const createFile = api<typeof CreateFileRequest, typeof FileResponse>(
-  { method: "POST", path: "/files", auth: true, expose: true },
+  { method: 'POST', path: '/files', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof FileResponse>> => {
     const { userID } = meta.auth;
-    const { projectId, path: filePath, name, type, content = "", encoding, permissions } = req;
+    const { projectId, path: filePath, name, type, content = '', encoding, permissions } = req;
     
-    log.info("Creating file", { projectId, filePath, name, type, userID });
+    log.info('Creating file', { projectId, filePath, name, type, userID });
     
     const fileId = uuidv4();
     const now = new Date();
@@ -268,8 +268,8 @@ export const createFile = api<typeof CreateFileRequest, typeof FileResponse>(
     await ensureDirectoryExists(path.dirname(physicalPath));
     
     const hash = generateFileHash(content);
-    const mimeType = type === "file" ? detectMimeType(name) : undefined;
-    const language = type === "file" ? detectLanguage(name) : undefined;
+    const mimeType = type === 'file' ? detectMimeType(name) : undefined;
+    const language = type === 'file' ? detectLanguage(name) : undefined;
     
     const file: VirtualFile = {
       id: fileId,
@@ -279,7 +279,7 @@ export const createFile = api<typeof CreateFileRequest, typeof FileResponse>(
       type,
       size: content.length,
       mimeType,
-      content: type === "file" ? content : undefined,
+      content: type === 'file' ? content : undefined,
       hash,
       permissions: {
         owner: userID,
@@ -289,13 +289,13 @@ export const createFile = api<typeof CreateFileRequest, typeof FileResponse>(
         executable: permissions.executable,
       },
       metadata: {
-        encoding: type === "file" ? encoding : undefined,
+        encoding: type === 'file' ? encoding : undefined,
         language,
-        lineCount: type === "file" ? content.split('\n').length : undefined,
+        lineCount: type === 'file' ? content.split('\n').length : undefined,
         isHidden: name.startsWith('.'),
         isBinary: false, // TODO: Detect binary files
         isSymlink: false,
-        gitStatus: "untracked",
+        gitStatus: 'untracked',
         tags: [],
         annotations: [],
       },
@@ -305,7 +305,7 @@ export const createFile = api<typeof CreateFileRequest, typeof FileResponse>(
         content,
         hash,
         size: content.length,
-        message: "Initial version",
+        message: 'Initial version',
         createdAt: now,
         createdBy: userID,
       }],
@@ -317,7 +317,7 @@ export const createFile = api<typeof CreateFileRequest, typeof FileResponse>(
     
     try {
       // Write to physical file system
-      if (type === "file") {
+      if (type === 'file') {
         await fs.writeFile(physicalPath, content, encoding as BufferEncoding);
       } else {
         await fs.mkdir(physicalPath, { recursive: true });
@@ -332,63 +332,63 @@ export const createFile = api<typeof CreateFileRequest, typeof FileResponse>(
       }
       projectFileTrees.get(projectId)!.add(fileId);
       
-      log.info("File created successfully", { fileId, fullPath, size: file.size });
+      log.info('File created successfully', { fileId, fullPath, size: file.size });
       
       return file;
       
     } catch (error) {
-      log.error("File creation failed", { 
+      log.error('File creation failed', { 
         error: error.message, 
         fileId, 
-        fullPath 
+        fullPath, 
       });
       
       throw new Error(`Failed to create file: ${error.message}`);
     }
-  }
+  },
 );
 
 // Get file endpoint
 export const getFile = api(
-  { method: "GET", path: "/files/:id", auth: true, expose: true },
+  { method: 'GET', path: '/files/:id', auth: true, expose: true },
   async (req: { id: string; includeContent?: boolean }, meta: APICallMeta<AuthData>): Promise<VirtualFile> => {
     const { userID } = meta.auth;
     const { id, includeContent = false } = req;
     
     const file = files.get(id);
     if (!file) {
-      throw new Error("File not found");
+      throw new Error('File not found');
     }
     
     // TODO: Add permission check
     
-    if (includeContent && file.type === "file") {
+    if (includeContent && file.type === 'file') {
       try {
         const physicalPath = getProjectFilePath(file.projectId, file.path);
         const content = await fs.readFile(physicalPath, file.metadata.encoding as BufferEncoding || 'utf-8');
         file.content = content;
       } catch (error) {
-        log.warn("Failed to read file content from disk", { 
+        log.warn('Failed to read file content from disk', { 
           error: error.message, 
-          fileId: id 
+          fileId: id, 
         });
       }
     }
     
     return file;
-  }
+  },
 );
 
 // Update file endpoint
 export const updateFile = api<typeof UpdateFileRequest, typeof FileResponse>(
-  { method: "PUT", path: "/files/:id", auth: true, expose: true },
+  { method: 'PUT', path: '/files/:id', auth: true, expose: true },
   async (req: z.infer<typeof UpdateFileRequest> & { id: string }, meta: APICallMeta<AuthData>): Promise<z.infer<typeof FileResponse>> => {
     const { userID } = meta.auth;
     const { id, content, name, path: newPath, permissions, message } = req;
     
     const file = files.get(id);
     if (!file) {
-      throw new Error("File not found");
+      throw new Error('File not found');
     }
     
     // TODO: Add permission check
@@ -399,7 +399,7 @@ export const updateFile = api<typeof UpdateFileRequest, typeof FileResponse>(
     let newPhysicalPath: string | undefined;
     
     // Handle content updates
-    if (content !== undefined && file.type === "file") {
+    if (content !== undefined && file.type === 'file') {
       const newHash = generateFileHash(content);
       
       if (newHash !== file.hash) {
@@ -430,8 +430,8 @@ export const updateFile = api<typeof UpdateFileRequest, typeof FileResponse>(
       file.name = name;
       file.path = path.join(path.dirname(file.path), name);
       newPhysicalPath = getProjectFilePath(file.projectId, file.path);
-      file.mimeType = file.type === "file" ? detectMimeType(name) : undefined;
-      file.metadata.language = file.type === "file" ? detectLanguage(name) : undefined;
+      file.mimeType = file.type === 'file' ? detectMimeType(name) : undefined;
+      file.metadata.language = file.type === 'file' ? detectLanguage(name) : undefined;
       file.metadata.isHidden = name.startsWith('.');
       needsPhysicalUpdate = true;
     }
@@ -462,42 +462,42 @@ export const updateFile = api<typeof UpdateFileRequest, typeof FileResponse>(
           await fs.rename(oldPhysicalPath, newPhysicalPath);
         }
         
-        if (content !== undefined && file.type === "file") {
+        if (content !== undefined && file.type === 'file') {
           await fs.writeFile(newPhysicalPath, content, file.metadata.encoding as BufferEncoding || 'utf-8');
         }
       }
       
       files.set(id, file);
       
-      log.info("File updated successfully", { 
+      log.info('File updated successfully', { 
         fileId: id, 
         path: file.path, 
-        version: file.versions.length 
+        version: file.versions.length, 
       });
       
       return file;
       
     } catch (error) {
-      log.error("File update failed", { 
+      log.error('File update failed', { 
         error: error.message, 
-        fileId: id 
+        fileId: id, 
       });
       
       throw new Error(`Failed to update file: ${error.message}`);
     }
-  }
+  },
 );
 
 // Delete file endpoint
 export const deleteFile = api(
-  { method: "DELETE", path: "/files/:id", auth: true, expose: true },
+  { method: 'DELETE', path: '/files/:id', auth: true, expose: true },
   async (req: { id: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean }> => {
     const { userID } = meta.auth;
     const { id } = req;
     
     const file = files.get(id);
     if (!file) {
-      throw new Error("File not found");
+      throw new Error('File not found');
     }
     
     // TODO: Add permission check
@@ -506,7 +506,7 @@ export const deleteFile = api(
       // Remove from physical file system
       const physicalPath = getProjectFilePath(file.projectId, file.path);
       
-      if (file.type === "directory") {
+      if (file.type === 'directory') {
         await fs.rmdir(physicalPath, { recursive: true });
       } else {
         await fs.unlink(physicalPath);
@@ -521,33 +521,33 @@ export const deleteFile = api(
         projectFiles.delete(id);
       }
       
-      log.info("File deleted successfully", { fileId: id, path: file.path });
+      log.info('File deleted successfully', { fileId: id, path: file.path });
       
       return { success: true };
       
     } catch (error) {
-      log.error("File deletion failed", { 
+      log.error('File deletion failed', { 
         error: error.message, 
-        fileId: id 
+        fileId: id, 
       });
       
       throw new Error(`Failed to delete file: ${error.message}`);
     }
-  }
+  },
 );
 
 // List files endpoint
 export const listFiles = api(
-  { method: "GET", path: "/files", auth: true, expose: true },
+  { method: 'GET', path: '/files', auth: true, expose: true },
   async (req: { 
     projectId: string; 
     path?: string; 
     recursive?: boolean; 
     includeHidden?: boolean;
-    type?: "file" | "directory";
+    type?: 'file' | 'directory';
   }, meta: APICallMeta<AuthData>): Promise<{ files: VirtualFile[]; total: number }> => {
     const { userID } = meta.auth;
-    const { projectId, path: filterPath = "", recursive = false, includeHidden = false, type } = req;
+    const { projectId, path: filterPath = '', recursive = false, includeHidden = false, type } = req;
     
     const projectFiles = projectFileTrees.get(projectId);
     if (!projectFiles) {
@@ -562,11 +562,11 @@ export const listFiles = api(
     if (filterPath) {
       if (recursive) {
         filteredFiles = filteredFiles.filter(file => 
-          file.path.startsWith(filterPath)
+          file.path.startsWith(filterPath),
         );
       } else {
         filteredFiles = filteredFiles.filter(file => 
-          path.dirname(file.path) === filterPath
+          path.dirname(file.path) === filterPath,
         );
       }
     }
@@ -587,12 +587,12 @@ export const listFiles = api(
       files: filteredFiles,
       total: filteredFiles.length,
     };
-  }
+  },
 );
 
 // Search files endpoint
 export const searchFiles = api<typeof SearchFilesRequest>(
-  { method: "POST", path: "/files/search", auth: true, expose: true },
+  { method: 'POST', path: '/files/search', auth: true, expose: true },
   async (req: z.infer<typeof SearchFilesRequest>, meta: APICallMeta<AuthData>): Promise<{ results: FileSearchResult[]; total: number }> => {
     const { userID } = meta.auth;
     const { projectId, query, type, fileTypes, maxResults, caseSensitive, useRegex } = req;
@@ -608,19 +608,23 @@ export const searchFiles = api<typeof SearchFilesRequest>(
     
     for (const fileId of projectFiles) {
       const file = files.get(fileId);
-      if (!file) continue;
+      if (!file) {
+        continue;
+      }
       
       // Filter by file types
       if (fileTypes && fileTypes.length > 0) {
         const fileExt = path.extname(file.name).toLowerCase();
-        if (!fileTypes.includes(fileExt)) continue;
+        if (!fileTypes.includes(fileExt)) {
+          continue;
+        }
       }
       
       const matches: FileMatch[] = [];
       let score = 0;
       
       // Search filename
-      if (type === "filename" || type === "both") {
+      if (type === 'filename' || type === 'both') {
         const nameMatches = file.name.match(searchRegex);
         if (nameMatches) {
           score += nameMatches.length * 10; // Higher weight for filename matches
@@ -634,7 +638,7 @@ export const searchFiles = api<typeof SearchFilesRequest>(
       }
       
       // Search content
-      if ((type === "content" || type === "both") && file.content && file.type === "file") {
+      if ((type === 'content' || type === 'both') && file.content && file.type === 'file') {
         const lines = file.content.split('\n');
         lines.forEach((line, lineIndex) => {
           const lineMatches = line.match(searchRegex);
@@ -660,7 +664,9 @@ export const searchFiles = api<typeof SearchFilesRequest>(
         });
       }
       
-      if (results.length >= maxResults) break;
+      if (results.length >= maxResults) {
+        break;
+      }
     }
     
     // Sort by score (relevance)
@@ -670,19 +676,19 @@ export const searchFiles = api<typeof SearchFilesRequest>(
       results,
       total: results.length,
     };
-  }
+  },
 );
 
 // File operation endpoint (copy, move, rename)
 export const fileOperation = api<typeof FileOperationRequest>(
-  { method: "POST", path: "/files/:id/operations", auth: true, expose: true },
+  { method: 'POST', path: '/files/:id/operations', auth: true, expose: true },
   async (req: z.infer<typeof FileOperationRequest> & { id: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean; newFileId?: string }> => {
     const { userID } = meta.auth;
     const { id, operation, destination, newName } = req;
     
     const file = files.get(id);
     if (!file) {
-      throw new Error("File not found");
+      throw new Error('File not found');
     }
     
     // TODO: Add permission check
@@ -691,7 +697,7 @@ export const fileOperation = api<typeof FileOperationRequest>(
       const currentPhysicalPath = getProjectFilePath(file.projectId, file.path);
       
       switch (operation) {
-        case "copy": {
+        case 'copy': {
           const newFileId = uuidv4();
           const newFileName = newName || file.name;
           const newPath = path.join(destination, newFileName);
@@ -716,19 +722,19 @@ export const fileOperation = api<typeof FileOperationRequest>(
           files.set(newFileId, newFile);
           projectFileTrees.get(file.projectId)?.add(newFileId);
           
-          log.info("File copied successfully", { 
+          log.info('File copied successfully', { 
             originalId: id, 
             newId: newFileId, 
-            destination: newPath 
+            destination: newPath, 
           });
           
           return { success: true, newFileId };
         }
         
-        case "move":
-        case "rename": {
+        case 'move':
+        case 'rename': {
           const newFileName = newName || file.name;
-          const newPath = operation === "move" 
+          const newPath = operation === 'move' 
             ? path.join(destination, file.name)
             : path.join(path.dirname(file.path), newFileName);
           const newPhysicalPath = getProjectFilePath(file.projectId, newPath);
@@ -744,8 +750,8 @@ export const fileOperation = api<typeof FileOperationRequest>(
           file.lastModifiedBy = userID;
           
           if (newFileName !== file.name) {
-            file.mimeType = file.type === "file" ? detectMimeType(newFileName) : undefined;
-            file.metadata.language = file.type === "file" ? detectLanguage(newFileName) : undefined;
+            file.mimeType = file.type === 'file' ? detectMimeType(newFileName) : undefined;
+            file.metadata.language = file.type === 'file' ? detectLanguage(newFileName) : undefined;
             file.metadata.isHidden = newFileName.startsWith('.');
           }
           
@@ -754,7 +760,7 @@ export const fileOperation = api<typeof FileOperationRequest>(
           log.info(`File ${operation}d successfully`, { 
             fileId: id, 
             oldPath: file.path,
-            newPath 
+            newPath, 
           });
           
           return { success: true };
@@ -767,29 +773,29 @@ export const fileOperation = api<typeof FileOperationRequest>(
     } catch (error) {
       log.error(`File ${operation} failed`, { 
         error: error.message, 
-        fileId: id 
+        fileId: id, 
       });
       
       throw new Error(`Failed to ${operation} file: ${error.message}`);
     }
-  }
+  },
 );
 
 // Get file diff endpoint
 export const getFileDiff = api(
-  { method: "GET", path: "/files/:id/diff", auth: true, expose: true },
+  { method: 'GET', path: '/files/:id/diff', auth: true, expose: true },
   async (req: { id: string; fromVersion?: number; toVersion?: number }, meta: APICallMeta<AuthData>): Promise<FileDiff> => {
     const { userID } = meta.auth;
     const { id, fromVersion, toVersion } = req;
     
     const file = files.get(id);
     if (!file) {
-      throw new Error("File not found");
+      throw new Error('File not found');
     }
     
-    const versions = file.versions;
+    const {versions} = file;
     if (versions.length < 2) {
-      throw new Error("File has insufficient versions for diff");
+      throw new Error('File has insufficient versions for diff');
     }
     
     const oldVersion = fromVersion 
@@ -801,7 +807,7 @@ export const getFileDiff = api(
       : versions[versions.length - 1];
     
     if (!oldVersion || !newVersion) {
-      throw new Error("Invalid version numbers");
+      throw new Error('Invalid version numbers');
     }
     
     // Simple diff implementation (could be enhanced with proper diff algorithm)
@@ -816,19 +822,19 @@ export const getFileDiff = api(
       
       if (oldLine === undefined) {
         changes.push({
-          type: "add",
+          type: 'add',
           line: i + 1,
           newContent: newLine,
         });
       } else if (newLine === undefined) {
         changes.push({
-          type: "delete",
+          type: 'delete',
           line: i + 1,
           oldContent: oldLine,
         });
       } else if (oldLine !== newLine) {
         changes.push({
-          type: "modify",
+          type: 'modify',
           line: i + 1,
           oldContent: oldLine,
           newContent: newLine,
@@ -841,5 +847,5 @@ export const getFileDiff = api(
       newFile: { ...newVersion, path: file.path, name: file.name },
       changes,
     };
-  }
+  },
 );

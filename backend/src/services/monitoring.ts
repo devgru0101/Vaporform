@@ -10,29 +10,29 @@
  * - Alerting System
  */
 
-import { api } from "encore.dev/api";
-import { secret } from "encore.dev/config";
-import { Redis } from "ioredis";
-import winston from "winston";
-import { promisify } from "util";
-import { register, Counter, Histogram, Gauge, collectDefaultMetrics } from "prom-client";
-import * as Sentry from "@sentry/node";
-import { trace, context, SpanStatusCode, SpanKind } from "@opentelemetry/api";
-import { NodeSDK } from "@opentelemetry/sdk-node";
-import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
-import { Resource } from "@opentelemetry/resources";
-import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
-import { z } from "zod";
+import { api } from 'encore.dev/api';
+import { secret } from 'encore.dev/config';
+import { Redis } from 'ioredis';
+import winston from 'winston';
+import { promisify } from 'util';
+import { register, Counter, Histogram, Gauge, collectDefaultMetrics } from 'prom-client';
+import * as Sentry from '@sentry/node';
+import { trace, context, SpanStatusCode, SpanKind } from '@opentelemetry/api';
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { Resource } from '@opentelemetry/resources';
+import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { z } from 'zod';
 
 // Configuration
-const SENTRY_DSN = secret("SENTRY_DSN");
-const PROMETHEUS_PORT = parseInt(process.env.PROMETHEUS_PORT || "9090");
-const ALERT_WEBHOOK_URL = secret("ALERT_WEBHOOK_URL");
+const SENTRY_DSN = secret('SENTRY_DSN');
+const PROMETHEUS_PORT = parseInt(process.env.PROMETHEUS_PORT || '9090');
+const ALERT_WEBHOOK_URL = secret('ALERT_WEBHOOK_URL');
 
 // Initialize Sentry
 Sentry.init({
   dsn: SENTRY_DSN(),
-  environment: process.env.NODE_ENV || "development",
+  environment: process.env.NODE_ENV || 'development',
   tracesSampleRate: 0.1,
   profilesSampleRate: 0.1,
 });
@@ -40,8 +40,8 @@ Sentry.init({
 // Initialize OpenTelemetry
 const sdk = new NodeSDK({
   resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: "vaporform-backend",
-    [SemanticResourceAttributes.SERVICE_VERSION]: "1.0.0",
+    [SemanticResourceAttributes.SERVICE_NAME]: 'vaporform-backend',
+    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
   }),
   instrumentations: [getNodeAutoInstrumentations()],
 });
@@ -120,7 +120,7 @@ const logger = winston.createLogger({
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
-    winston.format.json()
+    winston.format.json(),
   ),
   defaultMeta: { service: 'monitoring' },
   transports: [
@@ -129,7 +129,7 @@ const logger = winston.createLogger({
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
-        winston.format.simple()
+        winston.format.simple(),
       ),
     }),
   ],
@@ -243,7 +243,7 @@ const AlertSchema = z.object({
  * Application Performance Monitoring Service
  */
 export class APMService {
-  private static tracer = trace.getTracer('vaporform-apm');
+  private static readonly tracer = trace.getTracer('vaporform-apm');
 
   /**
    * Track HTTP request metrics
@@ -380,7 +380,9 @@ export class APMService {
     };
     
     const match = timeRange.match(/^(\d+)([mhd])$/);
-    if (!match) return 60 * 60 * 1000; // Default 1 hour
+    if (!match) {
+      return 60 * 60 * 1000;
+    } // Default 1 hour
     
     const value = parseInt(match[1]);
     const unit = match[2] as keyof typeof units;
@@ -459,7 +461,9 @@ export class InfrastructureMonitor {
       await redis.ping();
       const responseTime = Date.now() - start;
       
-      if (responseTime > 1000) return 'degraded';
+      if (responseTime > 1000) {
+        return 'degraded';
+      }
       return 'up';
     } catch {
       return 'down';
@@ -476,7 +480,9 @@ export class InfrastructureMonitor {
       const connectionCount = await redis.get('db_connections') || '0';
       const count = parseInt(connectionCount);
       
-      if (count > 100) return 'degraded';
+      if (count > 100) {
+        return 'degraded';
+      }
       return 'up';
     } catch {
       return 'down';
@@ -492,7 +498,9 @@ export class InfrastructureMonitor {
       await redis.ping();
       const responseTime = Date.now() - start;
       
-      if (responseTime > 100) return 'degraded';
+      if (responseTime > 100) {
+        return 'degraded';
+      }
       return 'up';
     } catch {
       return 'down';
@@ -507,7 +515,9 @@ export class InfrastructureMonitor {
       const activeContainers = await redis.get('active_containers') || '0';
       const count = parseInt(activeContainers);
       
-      if (count === 0) return 'down';
+      if (count === 0) {
+        return 'down';
+      }
       return 'up';
     } catch {
       return 'down';
@@ -520,10 +530,14 @@ export class InfrastructureMonitor {
   private static async checkAIHealth(): Promise<'up' | 'down' | 'degraded'> {
     try {
       const lastAIRequest = await redis.get('last_ai_request');
-      if (!lastAIRequest) return 'down';
+      if (!lastAIRequest) {
+        return 'down';
+      }
       
       const timeSinceLastRequest = Date.now() - parseInt(lastAIRequest);
-      if (timeSinceLastRequest > 300000) return 'degraded'; // 5 minutes
+      if (timeSinceLastRequest > 300000) {
+        return 'degraded';
+      } // 5 minutes
       
       return 'up';
     } catch {
@@ -561,12 +575,16 @@ export class InfrastructureMonitor {
    */
   private static calculateOverallHealth(
     services: SystemHealth['services'],
-    metrics: SystemHealth['metrics']
+    metrics: SystemHealth['metrics'],
   ): 'healthy' | 'degraded' | 'unhealthy' {
     const serviceStates = Object.values(services);
     
-    if (serviceStates.includes('down')) return 'unhealthy';
-    if (serviceStates.includes('degraded') || metrics.errorRate > 0.05) return 'degraded';
+    if (serviceStates.includes('down')) {
+      return 'unhealthy';
+    }
+    if (serviceStates.includes('degraded') || metrics.errorRate > 0.05) {
+      return 'degraded';
+    }
     
     return 'healthy';
   }
@@ -597,7 +615,7 @@ export class AnalyticsService {
   static async trackEvent(
     userId: string,
     sessionId: string,
-    event: Omit<AnalyticsEvent, 'id' | 'timestamp'>
+    event: Omit<AnalyticsEvent, 'id' | 'timestamp'>,
   ): Promise<void> {
     try {
       const analyticsEvent: AnalyticsEvent = {
@@ -643,7 +661,7 @@ export class AnalyticsService {
       const startTime = endTime - APMService['parseTimeRange'](timeRange);
 
       const filteredEvents = parsedEvents.filter(
-        event => new Date(event.timestamp).getTime() >= startTime
+        event => new Date(event.timestamp).getTime() >= startTime,
       );
 
       // Group by session
@@ -738,7 +756,9 @@ export class AlertingService {
       for (const [alertId, alertData] of Object.entries(alertRules)) {
         const alert: Alert = JSON.parse(alertData);
         
-        if (!alert.enabled) continue;
+        if (!alert.enabled) {
+          continue;
+        }
 
         const currentValue = await this.evaluateCondition(alert.condition);
         const isTriggered = this.isAlertTriggered(currentValue, alert.threshold, alert.condition);
@@ -850,7 +870,7 @@ export class AlertingService {
     // Find and resolve active alert instance
     const activeAlerts = await this.getActiveAlerts();
     const alertInstance = activeAlerts.find(instance => 
-      instance.alertId === alert.id && instance.status === 'active'
+      instance.alertId === alert.id && instance.status === 'active',
     );
 
     if (alertInstance) {
@@ -929,7 +949,7 @@ setInterval(async () => {
 // API Endpoints
 
 export const recordMetric = api(
-  { method: "POST", path: "/api/monitoring/metrics", auth: true },
+  { method: 'POST', path: '/api/monitoring/metrics', auth: true },
   async ({ name, value, labels, type }: {
     name: string;
     value: number;
@@ -947,25 +967,25 @@ export const recordMetric = api(
     await redis.ltrim('custom_metrics', 0, 9999); // Keep last 10k metrics
 
     return { success: true };
-  }
+  },
 );
 
 export const getSystemHealth = api(
-  { method: "GET", path: "/api/monitoring/health" },
+  { method: 'GET', path: '/api/monitoring/health' },
   async (): Promise<SystemHealth> => {
     return await InfrastructureMonitor.getSystemHealth();
-  }
+  },
 );
 
 export const getMetrics = api(
-  { method: "GET", path: "/api/monitoring/metrics/:endpoint" },
+  { method: 'GET', path: '/api/monitoring/metrics/:endpoint' },
   async ({ endpoint, timeRange = '1h' }: { endpoint: string; timeRange?: string }): Promise<PerformanceMetrics[]> => {
     return await APMService.getEndpointMetrics(endpoint, timeRange);
-  }
+  },
 );
 
 export const trackUserEvent = api(
-  { method: "POST", path: "/api/monitoring/analytics/track", auth: true },
+  { method: 'POST', path: '/api/monitoring/analytics/track', auth: true },
   async ({ userId, sessionId, type, action, category, properties }: {
     userId: string;
     sessionId: string;
@@ -982,41 +1002,41 @@ export const trackUserEvent = api(
     });
 
     return { success: true };
-  }
+  },
 );
 
 export const getUserAnalytics = api(
-  { method: "GET", path: "/api/monitoring/analytics/users/:userId", auth: true },
+  { method: 'GET', path: '/api/monitoring/analytics/users/:userId', auth: true },
   async ({ userId, timeRange = '7d' }: { userId: string; timeRange?: string }): Promise<UserAnalytics[]> => {
     return await AnalyticsService.getUserAnalytics(userId, timeRange);
-  }
+  },
 );
 
 export const getFeatureUsage = api(
-  { method: "GET", path: "/api/monitoring/analytics/features", auth: true },
+  { method: 'GET', path: '/api/monitoring/analytics/features', auth: true },
   async ({ timeRange = '30d' }: { timeRange?: string }): Promise<Record<string, number>> => {
     return await AnalyticsService.getFeatureUsage(timeRange);
-  }
+  },
 );
 
 export const createAlert = api(
-  { method: "POST", path: "/api/monitoring/alerts", auth: true },
+  { method: 'POST', path: '/api/monitoring/alerts', auth: true },
   async (alertData: Omit<Alert, 'id' | 'enabled'>): Promise<Alert> => {
     const validation = AlertSchema.parse(alertData);
     return await AlertingService.createAlert(validation);
-  }
+  },
 );
 
 export const getAlerts = api(
-  { method: "GET", path: "/api/monitoring/alerts", auth: true },
+  { method: 'GET', path: '/api/monitoring/alerts', auth: true },
   async (): Promise<AlertInstance[]> => {
     return await AlertingService.getActiveAlerts();
-  }
+  },
 );
 
 export const getPrometheusMetrics = api(
-  { method: "GET", path: "/metrics" },
+  { method: 'GET', path: '/metrics' },
   async (): Promise<string> => {
     return await register.metrics();
-  }
+  },
 );

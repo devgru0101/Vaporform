@@ -1,8 +1,8 @@
-import { api } from "encore.dev/api";
-import { projectAnalyzer, ProjectAnalysis } from "./project-analyzer";
-import { projectTemplates, TemplateConfig, ProjectFiles } from "./project-templates";
-import { projectScaffolding } from "./project-scaffolding";
-import { integrationSetup } from "./integration-setup";
+import { api } from 'encore.dev/api';
+import { projectAnalyzer, ProjectAnalysis } from './project-analyzer';
+import { projectTemplates, TemplateConfig, ProjectFiles } from './project-templates';
+import { projectScaffolding } from './project-scaffolding';
+import { integrationSetup } from './integration-setup';
 
 export interface WizardStep {
   id: string;
@@ -85,7 +85,7 @@ export interface WizardStepData {
 }
 
 class ProjectWizardService {
-  private sessions = new Map<string, WizardSession>();
+  private readonly sessions = new Map<string, WizardSession>();
 
   async createWizardSession(userId: string): Promise<WizardSession> {
     const sessionId = this.generateSessionId();
@@ -98,7 +98,7 @@ class ProjectWizardService {
       currentStep: 0,
       steps: this.initializeSteps(),
       projectData: {},
-      status: 'active'
+      status: 'active',
     };
 
     this.sessions.set(sessionId, session);
@@ -112,7 +112,7 @@ class ProjectWizardService {
   async updateWizardStep(
     sessionId: string, 
     stepId: string, 
-    data: any
+    data: any,
   ): Promise<WizardSession> {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -177,7 +177,7 @@ class ProjectWizardService {
       return {
         projectFiles,
         containerConfig,
-        deploymentInstructions
+        deploymentInstructions,
       };
     } catch (error) {
       console.error('Error completing wizard:', error);
@@ -191,32 +191,32 @@ class ProjectWizardService {
         id: 'project-description',
         name: 'Project Description',
         description: 'Describe your project and requirements',
-        completed: false
+        completed: false,
       },
       {
         id: 'technology-selection',
         name: 'Technology Selection',
         description: 'Choose your technology stack',
-        completed: false
+        completed: false,
       },
       {
         id: 'template-configuration',
         name: 'Template Configuration',
         description: 'Customize your project template',
-        completed: false
+        completed: false,
       },
       {
         id: 'integration-setup',
         name: 'Integration Setup',
         description: 'Configure third-party integrations',
-        completed: false
+        completed: false,
       },
       {
         id: 'preview-deployment',
         name: 'Preview & Deployment',
         description: 'Review and deploy your project',
-        completed: false
-      }
+        completed: false,
+      },
     ];
   }
 
@@ -240,9 +240,15 @@ class ProjectWizardService {
         if (!data.selectedStack) {
           errors.push('Technology stack must be selected');
         } else {
-          if (!data.selectedStack.frontend) errors.push('Frontend framework must be selected');
-          if (!data.selectedStack.backend) errors.push('Backend framework must be selected');
-          if (!data.selectedStack.database) errors.push('Database must be selected');
+          if (!data.selectedStack.frontend) {
+            errors.push('Frontend framework must be selected');
+          }
+          if (!data.selectedStack.backend) {
+            errors.push('Backend framework must be selected');
+          }
+          if (!data.selectedStack.database) {
+            errors.push('Database must be selected');
+          }
         }
         break;
 
@@ -256,7 +262,7 @@ class ProjectWizardService {
         // Integrations are optional, just validate configurations if provided
         if (data.selectedIntegrations && data.selectedIntegrations.length > 0) {
           for (const integration of data.selectedIntegrations) {
-            if (!data.configurations || !data.configurations[integration]) {
+            if (!data.configurations?.[integration]) {
               errors.push(`Configuration required for ${integration}`);
             }
           }
@@ -272,7 +278,7 @@ class ProjectWizardService {
 
     return {
       isValid: errors.length === 0,
-      errors
+      errors,
     };
   }
 
@@ -288,7 +294,7 @@ class ProjectWizardService {
           timeline: data.timeline,
           scalability: data.scalability,
           budget: data.budget,
-          features: data.requirements || []
+          features: data.requirements || [],
         });
         session.projectData.analysis = analysis;
         break;
@@ -302,7 +308,7 @@ class ProjectWizardService {
         session.projectData.selectedTemplate = data.selectedTemplate;
         session.projectData.customizations = {
           ...session.projectData.customizations,
-          ...data.customizations
+          ...data.customizations,
         };
         break;
 
@@ -310,7 +316,7 @@ class ProjectWizardService {
         session.projectData.integrations = data.selectedIntegrations;
         session.projectData.customizations = {
           ...session.projectData.customizations,
-          integrations: data.configurations
+          integrations: data.configurations,
         };
         break;
 
@@ -336,8 +342,8 @@ class ProjectWizardService {
       variables: {
         projectName: session.projectData.name || 'my-project',
         description: session.projectData.description || '',
-        ...session.projectData.customizations
-      }
+        ...session.projectData.customizations,
+      },
     };
 
     // Generate base project files from template
@@ -347,7 +353,7 @@ class ProjectWizardService {
     if (session.projectData.integrations) {
       const integrationFiles = await integrationSetup.generateIntegrationFiles(
         session.projectData.integrations,
-        session.projectData.customizations?.integrations || {}
+        session.projectData.customizations?.integrations || {},
       );
 
       // Merge integration files
@@ -359,14 +365,14 @@ class ProjectWizardService {
     // Apply scaffolding enhancements
     const enhancedFiles = await projectScaffolding.enhanceProjectFiles(
       projectFiles,
-      session.projectData.analysis?.recommendations || {} as any
+      session.projectData.analysis?.recommendations || {} as any,
     );
 
     return enhancedFiles;
   }
 
   private async generateContainerConfig(session: WizardSession): Promise<any> {
-    const analysis = session.projectData.analysis;
+    const {analysis} = session.projectData;
     if (!analysis) {
       throw new Error('Project analysis not available');
     }
@@ -381,21 +387,21 @@ class ProjectWizardService {
           ports: ['3000:3000'],
           environment: {
             NODE_ENV: 'development',
-            REACT_APP_API_URL: 'http://localhost:8000'
+            REACT_APP_API_URL: 'http://localhost:8000',
           },
           volumes: ['./frontend:/app', '/app/node_modules'],
-          depends_on: ['backend']
+          depends_on: ['backend'],
         },
         backend: {
           build: './backend',
           ports: ['8000:8000'],
           environment: {
             NODE_ENV: 'development',
-            DATABASE_URL: this.getDatabaseUrl(database.specific)
+            DATABASE_URL: this.getDatabaseUrl(database.specific),
           },
           volumes: ['./backend:/app', '/app/node_modules'],
           depends_on: database.specific === 'postgresql' ? ['postgres'] : 
-                       database.specific === 'mongodb' ? ['mongo'] : []
+            database.specific === 'mongodb' ? ['mongo'] : [],
         },
         ...(database.specific === 'postgresql' && {
           postgres: {
@@ -403,35 +409,35 @@ class ProjectWizardService {
             environment: {
               POSTGRES_DB: session.projectData.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'myapp',
               POSTGRES_USER: 'postgres',
-              POSTGRES_PASSWORD: 'password'
+              POSTGRES_PASSWORD: 'password',
             },
             ports: ['5432:5432'],
-            volumes: ['postgres_data:/var/lib/postgresql/data']
-          }
+            volumes: ['postgres_data:/var/lib/postgresql/data'],
+          },
         }),
         ...(database.specific === 'mongodb' && {
           mongo: {
             image: 'mongo:7',
             environment: {
-              MONGO_INITDB_DATABASE: session.projectData.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'myapp'
+              MONGO_INITDB_DATABASE: session.projectData.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'myapp',
             },
             ports: ['27017:27017'],
-            volumes: ['mongo_data:/data/db']
-          }
+            volumes: ['mongo_data:/data/db'],
+          },
         }),
         ...(database.specific === 'redis' && {
           redis: {
             image: 'redis:7-alpine',
             ports: ['6379:6379'],
-            volumes: ['redis_data:/data']
-          }
-        })
+            volumes: ['redis_data:/data'],
+          },
+        }),
       },
       volumes: {
         ...(database.specific === 'postgresql' && { postgres_data: {} }),
         ...(database.specific === 'mongodb' && { mongo_data: {} }),
-        ...(database.specific === 'redis' && { redis_data: {} })
-      }
+        ...(database.specific === 'redis' && { redis_data: {} }),
+      },
     };
   }
 
@@ -449,7 +455,7 @@ class ProjectWizardService {
   }
 
   private async generateDeploymentInstructions(session: WizardSession): Promise<string[]> {
-    const analysis = session.projectData.analysis;
+    const {analysis} = session.projectData;
     const deploymentPlatform = analysis?.recommendations.deployment.platform || 'vercel';
     
     const instructions: string[] = [
@@ -458,7 +464,7 @@ class ProjectWizardService {
       '## Prerequisites',
       '- Docker and Docker Compose installed',
       '- Git repository initialized',
-      '- Environment variables configured'
+      '- Environment variables configured',
     ];
 
     if (deploymentPlatform.includes('vercel') || deploymentPlatform.includes('netlify')) {
@@ -470,7 +476,7 @@ class ProjectWizardService {
         '   - Build command: `npm run build`',
         '   - Output directory: `dist` or `build`',
         '3. Set environment variables',
-        '4. Deploy!'
+        '4. Deploy!',
       );
     }
 
@@ -482,7 +488,7 @@ class ProjectWizardService {
         '2. Connect your Git repository',
         '3. Configure environment variables',
         '4. Add database service if needed',
-        '5. Deploy from main branch'
+        '5. Deploy from main branch',
       );
     }
 
@@ -494,7 +500,7 @@ class ProjectWizardService {
         '2. Build and push Docker images',
         '3. Configure load balancer',
         '4. Set up database service',
-        '5. Configure CI/CD pipeline'
+        '5. Configure CI/CD pipeline',
       );
     }
 
@@ -504,7 +510,7 @@ class ProjectWizardService {
       '1. Clone the repository',
       '2. Copy `.env.example` to `.env`',
       '3. Run `docker-compose up -d`',
-      '4. Access the application at http://localhost:3000'
+      '4. Access the application at http://localhost:3000',
     );
 
     return instructions;
@@ -533,7 +539,7 @@ class ProjectWizardService {
     let estimations = {
       complexity: 5,
       timeline: '2 weeks',
-      cost: '$50-200/month'
+      cost: '$50-200/month',
     };
 
     // Generate preview based on current step and data
@@ -569,32 +575,32 @@ class ProjectWizardService {
         frontend: {
           framework: recommendations.frontend.framework,
           port: 3000,
-          buildTool: recommendations.frontend.framework === 'vue' ? 'vite' : 'webpack'
+          buildTool: recommendations.frontend.framework === 'vue' ? 'vite' : 'webpack',
         },
         backend: {
           framework: recommendations.backend.framework,
           language: recommendations.backend.language,
-          port: 8000
+          port: 8000,
         },
         database: {
           type: recommendations.database.specific,
           port: recommendations.database.specific === 'postgresql' ? 5432 : 
-                recommendations.database.specific === 'mongodb' ? 27017 : 6379
-        }
+            recommendations.database.specific === 'mongodb' ? 27017 : 6379,
+        },
       };
 
       // Update estimations from analysis
       estimations = {
         complexity: session.projectData.analysis.estimatedComplexity,
         timeline: session.projectData.analysis.estimatedTimeline,
-        cost: recommendations.deployment.cost
+        cost: recommendations.deployment.cost,
       };
     }
 
     return {
       projectStructure,
       configPreview,
-      estimations
+      estimations,
     };
   }
 }
@@ -603,44 +609,44 @@ export const projectWizard = new ProjectWizardService();
 
 // API endpoints
 export const createWizardSession = api(
-  { method: "POST", path: "/wizard/session" },
+  { method: 'POST', path: '/wizard/session' },
   async ({ userId }: { userId: string }): Promise<WizardSession> => {
     return await projectWizard.createWizardSession(userId);
-  }
+  },
 );
 
 export const getWizardSession = api(
-  { method: "GET", path: "/wizard/session/:sessionId" },
+  { method: 'GET', path: '/wizard/session/:sessionId' },
   async ({ sessionId }: { sessionId: string }): Promise<WizardSession | null> => {
     return await projectWizard.getWizardSession(sessionId);
-  }
+  },
 );
 
 export const updateWizardStep = api(
-  { method: "PUT", path: "/wizard/session/:sessionId/step/:stepId" },
+  { method: 'PUT', path: '/wizard/session/:sessionId/step/:stepId' },
   async ({ 
     sessionId, 
     stepId, 
-    data 
+    data, 
   }: { 
     sessionId: string; 
     stepId: string; 
     data: any 
   }): Promise<WizardSession> => {
     return await projectWizard.updateWizardStep(sessionId, stepId, data);
-  }
+  },
 );
 
 export const getWizardPreview = api(
-  { method: "GET", path: "/wizard/session/:sessionId/preview/:stepId" },
+  { method: 'GET', path: '/wizard/session/:sessionId/preview/:stepId' },
   async ({ sessionId, stepId }: { sessionId: string; stepId: string }) => {
     return await projectWizard.getWizardPreview(sessionId, stepId);
-  }
+  },
 );
 
 export const completeWizard = api(
-  { method: "POST", path: "/wizard/session/:sessionId/complete" },
+  { method: 'POST', path: '/wizard/session/:sessionId/complete' },
   async ({ sessionId }: { sessionId: string }) => {
     return await projectWizard.completeWizard(sessionId);
-  }
+  },
 );

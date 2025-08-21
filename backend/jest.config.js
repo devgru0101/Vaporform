@@ -8,7 +8,9 @@ module.exports = {
     '**/?(*.)+(spec|test).ts',
   ],
   transform: {
-    '^.+\\.ts$': 'ts-jest',
+    '^.+\\.ts$': ['ts-jest', {
+      tsconfig: 'tsconfig.json',
+    }],
   },
   collectCoverageFrom: [
     'src/**/*.ts',
@@ -49,11 +51,6 @@ module.exports = {
     '/build/',
   ],
   moduleFileExtensions: ['ts', 'js', 'json'],
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.json',
-    },
-  },
   reporters: [
     'default',
     [

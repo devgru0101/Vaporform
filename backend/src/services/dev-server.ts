@@ -1,15 +1,15 @@
-import { api, APICallMeta } from "encore.dev/api";
-import log from "encore.dev/log";
-import { z } from "zod";
-import { AuthData } from "./auth";
-import { v4 as uuidv4 } from "uuid";
-import Docker from "dockerode";
-import * as fs from "fs/promises";
-import * as path from "path";
-import { promisify } from "util";
-import { exec } from "child_process";
-import chokidar from "chokidar";
-import WebSocket from "ws";
+import { api, APICallMeta } from 'encore.dev/api';
+import log from 'encore.dev/log';
+import { z } from 'zod';
+import { AuthData } from './auth';
+import { v4 as uuidv4 } from 'uuid';
+import Docker from 'dockerode';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { promisify } from 'util';
+import { exec } from 'child_process';
+import chokidar from 'chokidar';
+import WebSocket from 'ws';
 
 const docker = new Docker();
 const execAsync = promisify(exec);
@@ -20,8 +20,8 @@ export interface DevServer {
   containerId: string;
   projectId: string;
   name: string;
-  type: "development" | "preview" | "debug";
-  status: "starting" | "running" | "stopped" | "error" | "restarting";
+  type: 'development' | 'preview' | 'debug';
+  status: 'starting' | 'running' | 'stopped' | 'error' | 'restarting';
   configuration: DevServerConfig;
   features: DevServerFeatures;
   performance: DevServerPerformance;
@@ -91,7 +91,7 @@ export interface DevServerFeatures {
   formatting: {
     enabled: boolean;
     onSave: boolean;
-    tool: "prettier" | "eslint" | "custom";
+    tool: 'prettier' | 'eslint' | 'custom';
     config?: { [key: string]: any };
   };
 }
@@ -112,8 +112,8 @@ export interface DevServerPerformance {
 export interface DevServerLog {
   id: string;
   timestamp: Date;
-  level: "debug" | "info" | "warn" | "error";
-  source: "server" | "build" | "test" | "lint" | "format";
+  level: 'debug' | 'info' | 'warn' | 'error';
+  source: 'server' | 'build' | 'test' | 'lint' | 'format';
   message: string;
   metadata?: { [key: string]: any };
 }
@@ -129,7 +129,7 @@ export interface FileWatcher {
 }
 
 export interface WatchEvent {
-  type: "add" | "change" | "unlink" | "addDir" | "unlinkDir";
+  type: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir';
   path: string;
   timestamp: Date;
   size?: number;
@@ -151,10 +151,10 @@ export interface DevServerProxy {
 
 export interface DevServerTunnel {
   id: string;
-  type: "ngrok" | "localtunnel" | "custom";
+  type: 'ngrok' | 'localtunnel' | 'custom';
   localPort: number;
   publicUrl: string;
-  status: "connecting" | "connected" | "disconnected" | "error";
+  status: 'connecting' | 'connected' | 'disconnected' | 'error';
   config: TunnelConfig;
   createdAt: Date;
 }
@@ -172,7 +172,7 @@ export interface PreviewSession {
   devServerId: string;
   name: string;
   url: string;
-  type: "iframe" | "popup" | "tab";
+  type: 'iframe' | 'popup' | 'tab';
   device: DeviceSimulation;
   features: PreviewFeatures;
   metadata: { [key: string]: any };
@@ -182,14 +182,14 @@ export interface PreviewSession {
 }
 
 export interface DeviceSimulation {
-  type: "desktop" | "mobile" | "tablet" | "custom";
+  type: 'desktop' | 'mobile' | 'tablet' | 'custom';
   name: string;
   width: number;
   height: number;
   userAgent: string;
   pixelRatio: number;
   touchEnabled: boolean;
-  orientation: "portrait" | "landscape";
+  orientation: 'portrait' | 'landscape';
 }
 
 export interface PreviewFeatures {
@@ -206,19 +206,19 @@ const CreateDevServerRequest = z.object({
   containerId: z.string(),
   projectId: z.string(),
   name: z.string().min(1).max(100),
-  type: z.enum(["development", "preview", "debug"]).default("development"),
+  type: z.enum(['development', 'preview', 'debug']).default('development'),
   configuration: z.object({
     framework: z.string(),
-    runtime: z.string().default("18"),
+    runtime: z.string().default('18'),
     buildTool: z.string().optional(),
-    packageManager: z.enum(["npm", "yarn", "pnpm"]).default("npm"),
-    startCommand: z.string().default("npm start"),
+    packageManager: z.enum(['npm', 'yarn', 'pnpm']).default('npm'),
+    startCommand: z.string().default('npm start'),
     buildCommand: z.string().optional(),
     testCommand: z.string().optional(),
     port: z.number().min(1000).max(65535).default(3000),
-    host: z.string().default("0.0.0.0"),
+    host: z.string().default('0.0.0.0'),
     env: z.record(z.string()).default({}),
-    workingDirectory: z.string().default("/app"),
+    workingDirectory: z.string().default('/app'),
     autoRestart: z.boolean().default(true),
     hotReload: z.boolean().default(true),
     liveBrowser: z.boolean().default(true),
@@ -228,8 +228,8 @@ const CreateDevServerRequest = z.object({
   features: z.object({
     hotReload: z.object({
       enabled: z.boolean().default(true),
-      excludePatterns: z.array(z.string()).default(["node_modules/**", "*.log", ".git/**"]),
-      includePatterns: z.array(z.string()).default(["**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx", "**/*.css", "**/*.scss"]),
+      excludePatterns: z.array(z.string()).default(['node_modules/**', '*.log', '.git/**']),
+      includePatterns: z.array(z.string()).default(['**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx', '**/*.css', '**/*.scss']),
       debounceMs: z.number().default(300),
     }).optional(),
     liveBrowser: z.object({
@@ -268,14 +268,14 @@ const UpdateDevServerRequest = z.object({
 const CreatePreviewRequest = z.object({
   name: z.string().min(1).max(100),
   device: z.object({
-    type: z.enum(["desktop", "mobile", "tablet", "custom"]),
+    type: z.enum(['desktop', 'mobile', 'tablet', 'custom']),
     name: z.string(),
     width: z.number().min(320).max(4096),
     height: z.number().min(240).max(2160),
     userAgent: z.string().optional(),
     pixelRatio: z.number().default(1),
     touchEnabled: z.boolean().default(false),
-    orientation: z.enum(["portrait", "landscape"]).default("portrait"),
+    orientation: z.enum(['portrait', 'landscape']).default('portrait'),
   }),
   features: z.object({
     responsive: z.boolean().default(true),
@@ -287,7 +287,7 @@ const CreatePreviewRequest = z.object({
 });
 
 const DevServerActionRequest = z.object({
-  action: z.enum(["start", "stop", "restart", "rebuild", "test", "lint", "format"]),
+  action: z.enum(['start', 'stop', 'restart', 'rebuild', 'test', 'lint', 'format']),
   options: z.record(z.any()).optional(),
 });
 
@@ -299,60 +299,60 @@ const webSocketConnections: Map<string, WebSocket[]> = new Map();
 
 // Device presets
 const devicePresets: { [key: string]: DeviceSimulation } = {
-  "iPhone 13": {
-    type: "mobile",
-    name: "iPhone 13",
+  'iPhone 13': {
+    type: 'mobile',
+    name: 'iPhone 13',
     width: 390,
     height: 844,
-    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15",
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15',
     pixelRatio: 3,
     touchEnabled: true,
-    orientation: "portrait"
+    orientation: 'portrait',
   },
-  "Samsung Galaxy S21": {
-    type: "mobile",
-    name: "Samsung Galaxy S21",
+  'Samsung Galaxy S21': {
+    type: 'mobile',
+    name: 'Samsung Galaxy S21',
     width: 384,
     height: 854,
-    userAgent: "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36",
+    userAgent: 'Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36',
     pixelRatio: 2.75,
     touchEnabled: true,
-    orientation: "portrait"
+    orientation: 'portrait',
   },
-  "iPad Pro": {
-    type: "tablet",
-    name: "iPad Pro",
+  'iPad Pro': {
+    type: 'tablet',
+    name: 'iPad Pro',
     width: 1024,
     height: 1366,
-    userAgent: "Mozilla/5.0 (iPad; CPU OS 15_0 like Mac OS X) AppleWebKit/605.1.15",
+    userAgent: 'Mozilla/5.0 (iPad; CPU OS 15_0 like Mac OS X) AppleWebKit/605.1.15',
     pixelRatio: 2,
     touchEnabled: true,
-    orientation: "portrait"
+    orientation: 'portrait',
   },
-  "Desktop 1920x1080": {
-    type: "desktop",
-    name: "Desktop 1920x1080",
+  'Desktop 1920x1080': {
+    type: 'desktop',
+    name: 'Desktop 1920x1080',
     width: 1920,
     height: 1080,
-    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     pixelRatio: 1,
     touchEnabled: false,
-    orientation: "landscape"
-  }
+    orientation: 'landscape',
+  },
 };
 
 // Development server management functions
 async function startDevServer(devServer: DevServer): Promise<void> {
   const { containerId, configuration } = devServer;
   
-  log.info("Starting development server", { 
+  log.info('Starting development server', { 
     devServerId: devServer.id, 
     containerId, 
-    framework: configuration.framework 
+    framework: configuration.framework, 
   });
 
   try {
-    devServer.status = "starting";
+    devServer.status = 'starting';
     devServer.performance.lastReload = new Date();
     const startTime = Date.now();
 
@@ -361,7 +361,7 @@ async function startDevServer(devServer: DevServer): Promise<void> {
     const containerInfo = await dockerContainer.inspect();
 
     if (!containerInfo.State.Running) {
-      throw new Error("Container is not running");
+      throw new Error('Container is not running');
     }
 
     // Setup development environment based on framework
@@ -377,16 +377,16 @@ async function startDevServer(devServer: DevServer): Promise<void> {
       cwd: configuration.workingDirectory,
       env: {
         ...configuration.env,
-        NODE_ENV: "development",
+        NODE_ENV: 'development',
         PORT: configuration.port.toString(),
         HOST: configuration.host,
-      }
+      },
     });
 
     // Wait for server to be ready
     await waitForServerReady(devServer);
 
-    devServer.status = "running";
+    devServer.status = 'running';
     devServer.performance.startupTime = Date.now() - startTime;
 
     // Setup live browser if enabled
@@ -399,17 +399,17 @@ async function startDevServer(devServer: DevServer): Promise<void> {
       await setupDebugging(devServer);
     }
 
-    log.info("Development server started successfully", { 
+    log.info('Development server started successfully', { 
       devServerId: devServer.id,
-      startupTime: devServer.performance.startupTime 
+      startupTime: devServer.performance.startupTime, 
     });
 
   } catch (error) {
-    devServer.status = "error";
-    addDevServerLog(devServer, "error", "server", `Failed to start: ${error.message}`);
-    log.error("Failed to start development server", { 
+    devServer.status = 'error';
+    addDevServerLog(devServer, 'error', 'server', `Failed to start: ${error.message}`);
+    log.error('Failed to start development server', { 
       error: error.message, 
-      devServerId: devServer.id 
+      devServerId: devServer.id, 
     });
     throw error;
   }
@@ -421,16 +421,16 @@ async function setupDevEnvironment(devServer: DevServer): Promise<void> {
   const { containerId, configuration } = devServer;
   const { framework, packageManager } = configuration;
 
-  addDevServerLog(devServer, "info", "server", `Setting up ${framework} development environment`);
+  addDevServerLog(devServer, 'info', 'server', `Setting up ${framework} development environment`);
 
   // Install development dependencies if needed
   const devDependencies = getDevDependencies(framework);
   if (devDependencies.length > 0) {
-    addDevServerLog(devServer, "info", "server", `Installing development dependencies: ${devDependencies.join(", ")}`);
+    addDevServerLog(devServer, 'info', 'server', `Installing development dependencies: ${devDependencies.join(', ')}`);
     
-    const installCommand = `${packageManager} install ${devDependencies.join(" ")} --save-dev`;
+    const installCommand = `${packageManager} install ${devDependencies.join(' ')} --save-dev`;
     await executeInContainer(containerId, installCommand, {
-      cwd: configuration.workingDirectory
+      cwd: configuration.workingDirectory,
     });
   }
 
@@ -440,14 +440,14 @@ async function setupDevEnvironment(devServer: DevServer): Promise<void> {
 
 function getDevDependencies(framework: string): string[] {
   const dependencies: { [key: string]: string[] } = {
-    "react": ["@types/react", "@types/react-dom", "react-refresh"],
-    "vue": ["@vue/cli-service", "vue-template-compiler"],
-    "angular": ["@angular/cli", "@angular-devkit/build-angular"],
-    "next": ["@next/bundle-analyzer"],
-    "express": ["nodemon", "concurrently"],
-    "fastify": ["fastify-cli"],
-    "svelte": ["@sveltejs/adapter-auto"],
-    "nuxt": ["@nuxt/devtools"]
+    'react': ['@types/react', '@types/react-dom', 'react-refresh'],
+    'vue': ['@vue/cli-service', 'vue-template-compiler'],
+    'angular': ['@angular/cli', '@angular-devkit/build-angular'],
+    'next': ['@next/bundle-analyzer'],
+    'express': ['nodemon', 'concurrently'],
+    'fastify': ['fastify-cli'],
+    'svelte': ['@sveltejs/adapter-auto'],
+    'nuxt': ['@nuxt/devtools'],
   };
 
   return dependencies[framework] || [];
@@ -458,23 +458,23 @@ async function setupFrameworkConfig(devServer: DevServer): Promise<void> {
   const { framework, workingDirectory } = configuration;
 
   switch (framework) {
-    case "react":
+    case 'react':
       await setupReactConfig(devServer);
       break;
-    case "vue":
+    case 'vue':
       await setupVueConfig(devServer);
       break;
-    case "angular":
+    case 'angular':
       await setupAngularConfig(devServer);
       break;
-    case "next":
+    case 'next':
       await setupNextConfig(devServer);
       break;
-    case "express":
+    case 'express':
       await setupExpressConfig(devServer);
       break;
     default:
-      addDevServerLog(devServer, "info", "server", `Using default configuration for ${framework}`);
+      addDevServerLog(devServer, 'info', 'server', `Using default configuration for ${framework}`);
   }
 }
 
@@ -504,11 +504,11 @@ module.exports = {
 `;
 
   await writeFileToContainer(containerId, 
-    path.join(configuration.workingDirectory, "webpack.dev.js"), 
-    webpackConfig
+    path.join(configuration.workingDirectory, 'webpack.dev.js'), 
+    webpackConfig,
   );
 
-  addDevServerLog(devServer, "info", "build", "React development configuration updated");
+  addDevServerLog(devServer, 'info', 'build', 'React development configuration updated');
 }
 
 async function setupVueConfig(devServer: DevServer): Promise<void> {
@@ -529,18 +529,18 @@ module.exports = {
 `;
 
   await writeFileToContainer(containerId, 
-    path.join(configuration.workingDirectory, "vue.config.js"), 
-    vueConfig
+    path.join(configuration.workingDirectory, 'vue.config.js'), 
+    vueConfig,
   );
 
-  addDevServerLog(devServer, "info", "build", "Vue development configuration updated");
+  addDevServerLog(devServer, 'info', 'build', 'Vue development configuration updated');
 }
 
 async function setupAngularConfig(devServer: DevServer): Promise<void> {
   const { containerId, configuration } = devServer;
   
   // Update angular.json for development configuration
-  const angularConfigPath = path.join(configuration.workingDirectory, "angular.json");
+  const angularConfigPath = path.join(configuration.workingDirectory, 'angular.json');
   
   try {
     const configStr = await readFileFromContainer(containerId, angularConfigPath);
@@ -550,21 +550,21 @@ async function setupAngularConfig(devServer: DevServer): Promise<void> {
       const projectName = Object.keys(config.projects)[0];
       const project = config.projects[projectName];
       
-      if (project.architect && project.architect.serve) {
+      if (project.architect?.serve) {
         project.architect.serve.options = {
           ...project.architect.serve.options,
           port: configuration.port,
           host: configuration.host,
           hmr: true,
-          liveReload: true
+          liveReload: true,
         };
         
         await writeFileToContainer(containerId, angularConfigPath, JSON.stringify(config, null, 2));
-        addDevServerLog(devServer, "info", "build", "Angular development configuration updated");
+        addDevServerLog(devServer, 'info', 'build', 'Angular development configuration updated');
       }
     }
   } catch (error) {
-    addDevServerLog(devServer, "warn", "build", `Could not update Angular config: ${error.message}`);
+    addDevServerLog(devServer, 'warn', 'build', `Could not update Angular config: ${error.message}`);
   }
 }
 
@@ -588,11 +588,11 @@ module.exports = nextConfig;
 `;
 
   await writeFileToContainer(containerId, 
-    path.join(configuration.workingDirectory, "next.config.js"), 
-    nextConfig
+    path.join(configuration.workingDirectory, 'next.config.js'), 
+    nextConfig,
   );
 
-  addDevServerLog(devServer, "info", "build", "Next.js development configuration updated");
+  addDevServerLog(devServer, 'info', 'build', 'Next.js development configuration updated');
 }
 
 async function setupExpressConfig(devServer: DevServer): Promise<void> {
@@ -613,11 +613,11 @@ async function setupExpressConfig(devServer: DevServer): Promise<void> {
 `;
 
   await writeFileToContainer(containerId, 
-    path.join(configuration.workingDirectory, "nodemon.json"), 
-    nodemonConfig
+    path.join(configuration.workingDirectory, 'nodemon.json'), 
+    nodemonConfig,
   );
 
-  addDevServerLog(devServer, "info", "build", "Express development configuration updated");
+  addDevServerLog(devServer, 'info', 'build', 'Express development configuration updated');
 }
 
 async function startFileWatchers(devServer: DevServer): Promise<void> {
@@ -628,7 +628,7 @@ async function startFileWatchers(devServer: DevServer): Promise<void> {
     return;
   }
 
-  addDevServerLog(devServer, "info", "server", "Starting file watchers for hot reload");
+  addDevServerLog(devServer, 'info', 'server', 'Starting file watchers for hot reload');
 
   // Create file watcher
   const watcherId = uuidv4();
@@ -640,8 +640,8 @@ async function startFileWatchers(devServer: DevServer): Promise<void> {
     ignoreInitial: true,
     awaitWriteFinish: {
       stabilityThreshold: hotReload.debounceMs,
-      pollInterval: 100
-    }
+      pollInterval: 100,
+    },
   });
 
   const fileWatcher: FileWatcher = {
@@ -650,7 +650,7 @@ async function startFileWatchers(devServer: DevServer): Promise<void> {
     patterns: hotReload.includePatterns,
     ignored: hotReload.excludePatterns,
     events: [],
-    isActive: true
+    isActive: true,
   };
 
   // Setup event handlers
@@ -667,25 +667,25 @@ async function startFileWatchers(devServer: DevServer): Promise<void> {
   });
 
   watcher.on('error', (error) => {
-    addDevServerLog(devServer, "error", "server", `File watcher error: ${error.message}`);
+    addDevServerLog(devServer, 'error', 'server', `File watcher error: ${error.message}`);
   });
 
   devServer.watchers.push(fileWatcher);
   fileWatchers.set(watcherId, watcher);
 
-  addDevServerLog(devServer, "info", "server", `File watcher started for ${watchPath}`);
+  addDevServerLog(devServer, 'info', 'server', `File watcher started for ${watchPath}`);
 }
 
 async function handleFileChange(
   devServer: DevServer, 
   fileWatcher: FileWatcher, 
-  eventType: WatchEvent["type"], 
-  filePath: string
+  eventType: WatchEvent['type'], 
+  filePath: string,
 ): Promise<void> {
   const event: WatchEvent = {
     type: eventType,
     path: filePath,
-    timestamp: new Date()
+    timestamp: new Date(),
   };
 
   fileWatcher.events.push(event);
@@ -696,7 +696,7 @@ async function handleFileChange(
     fileWatcher.events.splice(0, fileWatcher.events.length - 100);
   }
 
-  addDevServerLog(devServer, "info", "server", `File ${eventType}: ${path.basename(filePath)}`);
+  addDevServerLog(devServer, 'info', 'server', `File ${eventType}: ${path.basename(filePath)}`);
 
   // Trigger hot reload
   await triggerHotReload(devServer, filePath);
@@ -706,26 +706,26 @@ async function triggerHotReload(devServer: DevServer, changedFile: string): Prom
   const startTime = Date.now();
   
   try {
-    addDevServerLog(devServer, "info", "server", "Triggering hot reload...");
+    addDevServerLog(devServer, 'info', 'server', 'Triggering hot reload...');
 
     // Framework-specific hot reload
     await performFrameworkHotReload(devServer, changedFile);
 
     // Notify connected browsers
     await notifyBrowserClients(devServer, {
-      type: "file-changed",
+      type: 'file-changed',
       file: changedFile,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     devServer.performance.reloadTime = Date.now() - startTime;
     devServer.performance.reloadCount++;
     devServer.performance.lastReload = new Date();
 
-    addDevServerLog(devServer, "info", "server", `Hot reload completed in ${devServer.performance.reloadTime}ms`);
+    addDevServerLog(devServer, 'info', 'server', `Hot reload completed in ${devServer.performance.reloadTime}ms`);
 
   } catch (error) {
-    addDevServerLog(devServer, "error", "server", `Hot reload failed: ${error.message}`);
+    addDevServerLog(devServer, 'error', 'server', `Hot reload failed: ${error.message}`);
   }
 }
 
@@ -734,22 +734,22 @@ async function performFrameworkHotReload(devServer: DevServer, changedFile: stri
   const { framework } = configuration;
 
   switch (framework) {
-    case "react":
+    case 'react':
       // React Fast Refresh is handled by webpack-dev-server
       break;
-    case "vue":
+    case 'vue':
       // Vue hot reload is handled by vue-cli-service
       break;
-    case "next":
+    case 'next':
       // Next.js handles hot reload automatically
       break;
-    case "express":
+    case 'express':
       // Restart the server for Express
       await restartExpressServer(devServer);
       break;
     default:
       // Generic reload - send signal to container
-      await executeInContainer(containerId, "pkill -SIGUSR2 node || true", {});
+      await executeInContainer(containerId, 'pkill -SIGUSR2 node || true', {});
   }
 }
 
@@ -757,9 +757,9 @@ async function restartExpressServer(devServer: DevServer): Promise<void> {
   const { containerId } = devServer;
   
   // Use nodemon to restart the server
-  await executeInContainer(containerId, "pkill -SIGUSR2 nodemon || pkill -SIGUSR2 node", {});
+  await executeInContainer(containerId, 'pkill -SIGUSR2 nodemon || pkill -SIGUSR2 node', {});
   
-  addDevServerLog(devServer, "info", "server", "Express server restarted");
+  addDevServerLog(devServer, 'info', 'server', 'Express server restarted');
 }
 
 async function setupLiveBrowser(devServer: DevServer): Promise<void> {
@@ -776,7 +776,7 @@ async function setupLiveBrowser(devServer: DevServer): Promise<void> {
   const wsServer = new WebSocket.Server({ port: liveBrowserPort });
   
   wsServer.on('connection', (ws) => {
-    addDevServerLog(devServer, "info", "server", "Browser client connected to live reload");
+    addDevServerLog(devServer, 'info', 'server', 'Browser client connected to live reload');
     
     // Add to connections
     if (!webSocketConnections.has(devServer.id)) {
@@ -794,16 +794,16 @@ async function setupLiveBrowser(devServer: DevServer): Promise<void> {
 
     // Send initial configuration
     ws.send(JSON.stringify({
-      type: "config",
+      type: 'config',
       data: {
         syncScrolling: liveBrowser.syncScrolling,
         syncClicks: liveBrowser.syncClicks,
-        syncForms: liveBrowser.syncForms
-      }
+        syncForms: liveBrowser.syncForms,
+      },
     }));
   });
 
-  addDevServerLog(devServer, "info", "server", `Live browser WebSocket server started on port ${liveBrowserPort}`);
+  addDevServerLog(devServer, 'info', 'server', `Live browser WebSocket server started on port ${liveBrowserPort}`);
 }
 
 async function notifyBrowserClients(devServer: DevServer, message: any): Promise<void> {
@@ -832,15 +832,15 @@ async function setupDebugging(devServer: DevServer): Promise<void> {
   // Enable Node.js debugging
   const debugFlags = [
     `--inspect=0.0.0.0:${debugPort}`,
-    debugging.breakOnStart ? "--inspect-brk" : "",
-    debugging.sourceMaps ? "--enable-source-maps" : ""
-  ].filter(Boolean).join(" ");
+    debugging.breakOnStart ? '--inspect-brk' : '',
+    debugging.sourceMaps ? '--enable-source-maps' : '',
+  ].filter(Boolean).join(' ');
 
   // Update start command to include debug flags
   const originalCommand = devServer.configuration.startCommand;
-  devServer.configuration.startCommand = `node ${debugFlags} ${originalCommand.replace(/^(npm|yarn|pnpm)\s+(start|dev)/, ".")}`;
+  devServer.configuration.startCommand = `node ${debugFlags} ${originalCommand.replace(/^(npm|yarn|pnpm)\s+(start|dev)/, '.')}`;
 
-  addDevServerLog(devServer, "info", "server", `Debugging enabled on port ${debugPort}`);
+  addDevServerLog(devServer, 'info', 'server', `Debugging enabled on port ${debugPort}`);
 }
 
 async function waitForServerReady(devServer: DevServer): Promise<void> {
@@ -852,12 +852,12 @@ async function waitForServerReady(devServer: DevServer): Promise<void> {
     try {
       // Try to connect to the server
       const response = await fetch(`http://${configuration.host}:${configuration.port}`, {
-        method: "GET",
-        timeout: 5000
+        method: 'GET',
+        timeout: 5000,
       });
       
       if (response.ok || response.status < 500) {
-        addDevServerLog(devServer, "info", "server", "Development server is ready");
+        addDevServerLog(devServer, 'info', 'server', 'Development server is ready');
         return;
       }
     } catch (error) {
@@ -869,40 +869,40 @@ async function waitForServerReady(devServer: DevServer): Promise<void> {
     }
   }
 
-  throw new Error("Development server failed to start within timeout period");
+  throw new Error('Development server failed to start within timeout period');
 }
 
 // Container execution helpers
 async function executeInContainer(
   containerId: string, 
   command: string, 
-  options: { cwd?: string; env?: { [key: string]: string } }
+  options: { cwd?: string; env?: { [key: string]: string } },
 ): Promise<string> {
   const dockerContainer = docker.getContainer(containerId);
   
   const execOptions = {
-    Cmd: ["sh", "-c", command],
+    Cmd: ['sh', '-c', command],
     AttachStdout: true,
     AttachStderr: true,
     WorkingDir: options.cwd,
-    Env: options.env ? Object.entries(options.env).map(([k, v]) => `${k}=${v}`) : undefined
+    Env: options.env ? Object.entries(options.env).map(([k, v]) => `${k}=${v}`) : undefined,
   };
 
   const exec = await dockerContainer.exec(execOptions);
   const stream = await exec.start({ hijack: true, stdin: false });
   
   return new Promise((resolve, reject) => {
-    let output = "";
+    let output = '';
     
-    stream.on("data", (chunk) => {
+    stream.on('data', (chunk) => {
       output += chunk.toString();
     });
     
-    stream.on("end", () => {
+    stream.on('end', () => {
       resolve(output);
     });
     
-    stream.on("error", (error) => {
+    stream.on('error', (error) => {
       reject(error);
     });
   });
@@ -920,10 +920,10 @@ async function readFileFromContainer(containerId: string, filePath: string): Pro
 // Utility functions
 function addDevServerLog(
   devServer: DevServer, 
-  level: DevServerLog["level"], 
-  source: DevServerLog["source"], 
+  level: DevServerLog['level'], 
+  source: DevServerLog['source'], 
   message: string,
-  metadata?: any
+  metadata?: any,
 ): void {
   const logEntry: DevServerLog = {
     id: uuidv4(),
@@ -931,7 +931,7 @@ function addDevServerLog(
     level,
     source,
     message,
-    metadata
+    metadata,
   };
 
   devServer.logs.push(logEntry);
@@ -942,16 +942,16 @@ function addDevServerLog(
   }
 
   // Also log to system
-  log.info("DevServer log", { 
+  log.info('DevServer log', { 
     devServerId: devServer.id, 
     level, 
     source, 
-    message 
+    message, 
   });
 }
 
 async function stopDevServer(devServer: DevServer): Promise<void> {
-  log.info("Stopping development server", { devServerId: devServer.id });
+  log.info('Stopping development server', { devServerId: devServer.id });
 
   // Stop file watchers
   for (const watcher of devServer.watchers) {
@@ -970,27 +970,27 @@ async function stopDevServer(devServer: DevServer): Promise<void> {
 
   // Stop the development server process in container
   try {
-    await executeInContainer(devServer.containerId, "pkill -f node || true", {});
+    await executeInContainer(devServer.containerId, 'pkill -f node || true', {});
   } catch (error) {
-    addDevServerLog(devServer, "warn", "server", `Error stopping process: ${error.message}`);
+    addDevServerLog(devServer, 'warn', 'server', `Error stopping process: ${error.message}`);
   }
 
-  devServer.status = "stopped";
+  devServer.status = 'stopped';
   devServers.set(devServer.id, devServer);
 
-  addDevServerLog(devServer, "info", "server", "Development server stopped");
+  addDevServerLog(devServer, 'info', 'server', 'Development server stopped');
 }
 
 // API Endpoints
 
 // Create development server
 export const createDevServer = api<typeof CreateDevServerRequest>(
-  { method: "POST", path: "/dev-servers", auth: true, expose: true },
+  { method: 'POST', path: '/dev-servers', auth: true, expose: true },
   async (req, meta: APICallMeta<AuthData>): Promise<DevServer> => {
     const { userID } = meta.auth;
     const { containerId, projectId, name, type, configuration, features } = req;
     
-    log.info("Creating development server", { containerId, projectId, name, type, userID });
+    log.info('Creating development server', { containerId, projectId, name, type, userID });
     
     const devServerId = uuidv4();
     const now = new Date();
@@ -999,8 +999,8 @@ export const createDevServer = api<typeof CreateDevServerRequest>(
     const defaultFeatures: DevServerFeatures = {
       hotReload: {
         enabled: features?.hotReload?.enabled ?? true,
-        excludePatterns: features?.hotReload?.excludePatterns ?? ["node_modules/**", "*.log", ".git/**"],
-        includePatterns: features?.hotReload?.includePatterns ?? ["**/*.js", "**/*.jsx", "**/*.ts", "**/*.tsx", "**/*.css", "**/*.scss"],
+        excludePatterns: features?.hotReload?.excludePatterns ?? ['node_modules/**', '*.log', '.git/**'],
+        includePatterns: features?.hotReload?.includePatterns ?? ['**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx', '**/*.css', '**/*.scss'],
         debounceMs: features?.hotReload?.debounceMs ?? 300,
       },
       liveBrowser: {
@@ -1033,7 +1033,7 @@ export const createDevServer = api<typeof CreateDevServerRequest>(
       formatting: {
         enabled: false,
         onSave: false,
-        tool: "prettier",
+        tool: 'prettier',
       },
     };
 
@@ -1043,7 +1043,7 @@ export const createDevServer = api<typeof CreateDevServerRequest>(
       projectId,
       name,
       type,
-      status: "stopped",
+      status: 'stopped',
       configuration,
       features: defaultFeatures,
       performance: {
@@ -1066,74 +1066,74 @@ export const createDevServer = api<typeof CreateDevServerRequest>(
 
     devServers.set(devServerId, devServer);
     
-    addDevServerLog(devServer, "info", "server", "Development server created");
+    addDevServerLog(devServer, 'info', 'server', 'Development server created');
     
-    log.info("Development server created", { devServerId, containerId });
+    log.info('Development server created', { devServerId, containerId });
     
     return devServer;
-  }
+  },
 );
 
 // Start development server
 export const startDevServerEndpoint = api(
-  { method: "POST", path: "/dev-servers/:id/start", auth: true, expose: true },
+  { method: 'POST', path: '/dev-servers/:id/start', auth: true, expose: true },
   async (req: { id: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean; message: string }> => {
     const devServer = devServers.get(req.id);
     if (!devServer) {
-      throw new Error("Development server not found");
+      throw new Error('Development server not found');
     }
 
-    if (devServer.status === "running") {
-      return { success: true, message: "Development server is already running" };
+    if (devServer.status === 'running') {
+      return { success: true, message: 'Development server is already running' };
     }
 
     try {
       await startDevServer(devServer);
-      return { success: true, message: "Development server started successfully" };
+      return { success: true, message: 'Development server started successfully' };
     } catch (error) {
       return { success: false, message: `Failed to start development server: ${error.message}` };
     }
-  }
+  },
 );
 
 // Stop development server
 export const stopDevServerEndpoint = api(
-  { method: "POST", path: "/dev-servers/:id/stop", auth: true, expose: true },
+  { method: 'POST', path: '/dev-servers/:id/stop', auth: true, expose: true },
   async (req: { id: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean; message: string }> => {
     const devServer = devServers.get(req.id);
     if (!devServer) {
-      throw new Error("Development server not found");
+      throw new Error('Development server not found');
     }
 
-    if (devServer.status === "stopped") {
-      return { success: true, message: "Development server is already stopped" };
+    if (devServer.status === 'stopped') {
+      return { success: true, message: 'Development server is already stopped' };
     }
 
     try {
       await stopDevServer(devServer);
-      return { success: true, message: "Development server stopped successfully" };
+      return { success: true, message: 'Development server stopped successfully' };
     } catch (error) {
       return { success: false, message: `Failed to stop development server: ${error.message}` };
     }
-  }
+  },
 );
 
 // Get development server
 export const getDevServer = api(
-  { method: "GET", path: "/dev-servers/:id", auth: true, expose: true },
+  { method: 'GET', path: '/dev-servers/:id', auth: true, expose: true },
   async (req: { id: string }, meta: APICallMeta<AuthData>): Promise<DevServer> => {
     const devServer = devServers.get(req.id);
     if (!devServer) {
-      throw new Error("Development server not found");
+      throw new Error('Development server not found');
     }
     
     return devServer;
-  }
+  },
 );
 
 // List development servers
 export const listDevServers = api(
-  { method: "GET", path: "/dev-servers", auth: true, expose: true },
+  { method: 'GET', path: '/dev-servers', auth: true, expose: true },
   async (req: { containerId?: string; projectId?: string; status?: string }, meta: APICallMeta<AuthData>): Promise<{ devServers: DevServer[]; total: number }> => {
     let filteredDevServers = Array.from(devServers.values());
     
@@ -1153,64 +1153,64 @@ export const listDevServers = api(
       devServers: filteredDevServers,
       total: filteredDevServers.length,
     };
-  }
+  },
 );
 
 // Development server actions
 export const devServerAction = api<typeof DevServerActionRequest>(
-  { method: "POST", path: "/dev-servers/:id/actions", auth: true, expose: true },
+  { method: 'POST', path: '/dev-servers/:id/actions', auth: true, expose: true },
   async (req: z.infer<typeof DevServerActionRequest> & { id: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean; message: string; output?: string }> => {
     const { id, action, options } = req;
     
     const devServer = devServers.get(id);
     if (!devServer) {
-      throw new Error("Development server not found");
+      throw new Error('Development server not found');
     }
 
-    log.info("Development server action", { devServerId: id, action });
+    log.info('Development server action', { devServerId: id, action });
 
     try {
-      let output = "";
+      let output = '';
       
       switch (action) {
-        case "start":
+        case 'start':
           await startDevServer(devServer);
           break;
-        case "stop":
+        case 'stop':
           await stopDevServer(devServer);
           break;
-        case "restart":
+        case 'restart':
           await stopDevServer(devServer);
           await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
           await startDevServer(devServer);
           break;
-        case "rebuild":
+        case 'rebuild':
           if (devServer.configuration.buildCommand) {
             output = await executeInContainer(devServer.containerId, devServer.configuration.buildCommand, {
-              cwd: devServer.configuration.workingDirectory
+              cwd: devServer.configuration.workingDirectory,
             });
-            addDevServerLog(devServer, "info", "build", "Rebuild completed");
+            addDevServerLog(devServer, 'info', 'build', 'Rebuild completed');
           }
           break;
-        case "test":
+        case 'test':
           if (devServer.configuration.testCommand) {
             output = await executeInContainer(devServer.containerId, devServer.configuration.testCommand, {
-              cwd: devServer.configuration.workingDirectory
+              cwd: devServer.configuration.workingDirectory,
             });
-            addDevServerLog(devServer, "info", "test", "Tests completed");
+            addDevServerLog(devServer, 'info', 'test', 'Tests completed');
           }
           break;
-        case "lint":
-          output = await executeInContainer(devServer.containerId, "npm run lint || yarn lint || pnpm lint", {
-            cwd: devServer.configuration.workingDirectory
+        case 'lint':
+          output = await executeInContainer(devServer.containerId, 'npm run lint || yarn lint || pnpm lint', {
+            cwd: devServer.configuration.workingDirectory,
           });
-          addDevServerLog(devServer, "info", "lint", "Linting completed");
+          addDevServerLog(devServer, 'info', 'lint', 'Linting completed');
           break;
-        case "format":
-          output = await executeInContainer(devServer.containerId, "npm run format || yarn format || pnpm format", {
-            cwd: devServer.configuration.workingDirectory
+        case 'format':
+          output = await executeInContainer(devServer.containerId, 'npm run format || yarn format || pnpm format', {
+            cwd: devServer.configuration.workingDirectory,
           });
-          addDevServerLog(devServer, "info", "format", "Formatting completed");
+          addDevServerLog(devServer, 'info', 'format', 'Formatting completed');
           break;
         default:
           throw new Error(`Unknown action: ${action}`);
@@ -1219,28 +1219,28 @@ export const devServerAction = api<typeof DevServerActionRequest>(
       return { 
         success: true, 
         message: `Action '${action}' completed successfully`,
-        output: output || undefined
+        output: output || undefined,
       };
 
     } catch (error) {
-      addDevServerLog(devServer, "error", "server", `Action '${action}' failed: ${error.message}`);
+      addDevServerLog(devServer, 'error', 'server', `Action '${action}' failed: ${error.message}`);
       return { 
         success: false, 
-        message: `Action '${action}' failed: ${error.message}` 
+        message: `Action '${action}' failed: ${error.message}`, 
       };
     }
-  }
+  },
 );
 
 // Create preview session
 export const createPreviewSession = api<typeof CreatePreviewRequest>(
-  { method: "POST", path: "/dev-servers/:id/preview", auth: true, expose: true },
+  { method: 'POST', path: '/dev-servers/:id/preview', auth: true, expose: true },
   async (req: z.infer<typeof CreatePreviewRequest> & { id: string }, meta: APICallMeta<AuthData>): Promise<PreviewSession> => {
     const { id: devServerId, name, device, features } = req;
     
     const devServer = devServers.get(devServerId);
     if (!devServer) {
-      throw new Error("Development server not found");
+      throw new Error('Development server not found');
     }
 
     const sessionId = uuidv4();
@@ -1251,7 +1251,7 @@ export const createPreviewSession = api<typeof CreatePreviewRequest>(
       devServerId,
       name,
       url: `http://${devServer.configuration.host}:${devServer.configuration.port}`,
-      type: "iframe",
+      type: 'iframe',
       device,
       features: {
         responsive: features?.responsive ?? true,
@@ -1269,27 +1269,27 @@ export const createPreviewSession = api<typeof CreatePreviewRequest>(
 
     previewSessions.set(sessionId, previewSession);
     
-    log.info("Preview session created", { sessionId, devServerId, deviceType: device.type });
+    log.info('Preview session created', { sessionId, devServerId, deviceType: device.type });
     
     return previewSession;
-  }
+  },
 );
 
 // Get device presets
 export const getDevicePresets = api(
-  { method: "GET", path: "/dev-servers/device-presets", auth: true, expose: true },
+  { method: 'GET', path: '/dev-servers/device-presets', auth: true, expose: true },
   async (req: {}, meta: APICallMeta<AuthData>): Promise<{ [key: string]: DeviceSimulation }> => {
     return devicePresets;
-  }
+  },
 );
 
 // Get development server logs
 export const getDevServerLogs = api(
-  { method: "GET", path: "/dev-servers/:id/logs", auth: true, expose: true },
+  { method: 'GET', path: '/dev-servers/:id/logs', auth: true, expose: true },
   async (req: { id: string; level?: string; source?: string; limit?: number }, meta: APICallMeta<AuthData>): Promise<{ logs: DevServerLog[]; total: number }> => {
     const devServer = devServers.get(req.id);
     if (!devServer) {
-      throw new Error("Development server not found");
+      throw new Error('Development server not found');
     }
 
     let filteredLogs = devServer.logs;
@@ -1313,18 +1313,18 @@ export const getDevServerLogs = api(
       logs: filteredLogs,
       total: filteredLogs.length,
     };
-  }
+  },
 );
 
 // Update development server
 export const updateDevServer = api<typeof UpdateDevServerRequest>(
-  { method: "PATCH", path: "/dev-servers/:id", auth: true, expose: true },
+  { method: 'PATCH', path: '/dev-servers/:id', auth: true, expose: true },
   async (req: z.infer<typeof UpdateDevServerRequest> & { id: string }, meta: APICallMeta<AuthData>): Promise<DevServer> => {
     const { id, configuration, features } = req;
     
     const devServer = devServers.get(id);
     if (!devServer) {
-      throw new Error("Development server not found");
+      throw new Error('Development server not found');
     }
 
     // Update configuration
@@ -1345,23 +1345,23 @@ export const updateDevServer = api<typeof UpdateDevServerRequest>(
     devServer.updatedAt = new Date();
     devServers.set(id, devServer);
     
-    addDevServerLog(devServer, "info", "server", "Development server configuration updated");
+    addDevServerLog(devServer, 'info', 'server', 'Development server configuration updated');
     
     return devServer;
-  }
+  },
 );
 
 // Delete development server
 export const deleteDevServer = api(
-  { method: "DELETE", path: "/dev-servers/:id", auth: true, expose: true },
+  { method: 'DELETE', path: '/dev-servers/:id', auth: true, expose: true },
   async (req: { id: string }, meta: APICallMeta<AuthData>): Promise<{ success: boolean }> => {
     const devServer = devServers.get(req.id);
     if (!devServer) {
-      throw new Error("Development server not found");
+      throw new Error('Development server not found');
     }
 
     // Stop the server if running
-    if (devServer.status === "running") {
+    if (devServer.status === 'running') {
       await stopDevServer(devServer);
     }
 
@@ -1374,8 +1374,8 @@ export const deleteDevServer = api(
 
     devServers.delete(req.id);
     
-    log.info("Development server deleted", { devServerId: req.id });
+    log.info('Development server deleted', { devServerId: req.id });
     
     return { success: true };
-  }
+  },
 );

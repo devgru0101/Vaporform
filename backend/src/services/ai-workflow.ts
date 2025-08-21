@@ -1,29 +1,22 @@
-import { api, APICallMeta } from "encore.dev/api";
-import log from "encore.dev/log";
-import { z } from "zod";
-import { AuthData } from "./auth";
-import Anthropic from "@anthropic-ai/sdk";
-import * as fs from 'fs/promises';
-import * as path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import { api } from 'encore.dev/api';
+import log from 'encore.dev/log';
+import { z } from 'zod';
+import Anthropic from '@anthropic-ai/sdk';
 
 // AI service configuration
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || "",
+  apiKey: process.env.ANTHROPIC_API_KEY || '',
 });
 
 // AI Workflow Integration schemas
 const GitCommitGenerationRequest = z.object({
   changes: z.array(z.object({
     filePath: z.string(),
-    changeType: z.enum(["added", "modified", "deleted", "renamed"]),
+    changeType: z.enum(['added', 'modified', 'deleted', 'renamed']),
     diff: z.string().optional(),
     oldPath: z.string().optional(), // for renamed files
   })),
-  commitType: z.enum(["feat", "fix", "docs", "style", "refactor", "test", "chore"]).optional(),
+  commitType: z.enum(['feat', 'fix', 'docs', 'style', 'refactor', 'test', 'chore']).optional(),
   scope: z.string().optional(),
   includeDescription: z.boolean().default(true),
   maxLength: z.number().min(20).max(200).default(72),
@@ -32,11 +25,11 @@ const GitCommitGenerationRequest = z.object({
 
 const BranchNamingRequest = z.object({
   taskDescription: z.string(),
-  taskType: z.enum(["feature", "bugfix", "hotfix", "experiment", "refactor"]),
+  taskType: z.enum(['feature', 'bugfix', 'hotfix', 'experiment', 'refactor']),
   ticketNumber: z.string().optional(),
   includeUserName: z.boolean().default(false),
   userName: z.string().optional(),
-  namingConvention: z.enum(["kebab", "snake", "camel"]).default("kebab"),
+  namingConvention: z.enum(['kebab', 'snake', 'camel']).default('kebab'),
 });
 
 const CodeReviewRequest = z.object({
@@ -47,16 +40,16 @@ const CodeReviewRequest = z.object({
     content: z.string().optional(),
     language: z.string().optional(),
   })),
-  reviewType: z.enum(["security", "performance", "style", "logic", "comprehensive"]).default("comprehensive"),
-  targetBranch: z.string().default("main"),
+  reviewType: z.enum(['security', 'performance', 'style', 'logic', 'comprehensive']).default('comprehensive'),
+  targetBranch: z.string().default('main'),
   includeTests: z.boolean().default(true),
 });
 
 const DeploymentAnalysisRequest = z.object({
-  environment: z.enum(["development", "staging", "production"]),
+  environment: z.enum(['development', 'staging', 'production']),
   applicationName: z.string(),
   deploymentConfig: z.string().optional(), // Docker, K8s, etc.
-  infrastructureType: z.enum(["docker", "kubernetes", "serverless", "traditional"]),
+  infrastructureType: z.enum(['docker', 'kubernetes', 'serverless', 'traditional']),
   previousDeployment: z.string().optional(),
   rollbackRequired: z.boolean().default(false),
 });
@@ -65,18 +58,18 @@ const CICDPipelineRequest = z.object({
   projectType: z.string(),
   language: z.string(),
   framework: z.string().optional(),
-  targetPlatform: z.enum(["github", "gitlab", "bitbucket", "jenkins", "azure"]),
+  targetPlatform: z.enum(['github', 'gitlab', 'bitbucket', 'jenkins', 'azure']),
   includeTests: z.boolean().default(true),
   includeQualityGates: z.boolean().default(true),
   includeSecurity: z.boolean().default(true),
-  deploymentTargets: z.array(z.string()).default(["staging", "production"]),
+  deploymentTargets: z.array(z.string()).default(['staging', 'production']),
 });
 
 const WorkflowOptimizationRequest = z.object({
   currentWorkflow: z.string(),
   painPoints: z.array(z.string()),
   teamSize: z.number().min(1).max(100),
-  projectComplexity: z.enum(["simple", "moderate", "complex"]),
+  projectComplexity: z.enum(['simple', 'moderate', 'complex']),
   complianceRequirements: z.array(z.string()).optional(),
   performanceGoals: z.array(z.string()).optional(),
 });
@@ -98,12 +91,12 @@ const GitWorkflowResponse = z.object({
 const CodeReviewResponse = z.object({
   overall: z.object({
     score: z.number().min(0).max(100),
-    recommendation: z.enum(["approve", "request_changes", "needs_discussion"]),
+    recommendation: z.enum(['approve', 'request_changes', 'needs_discussion']),
     summary: z.string(),
   }),
   findings: z.array(z.object({
-    type: z.enum(["bug", "security", "performance", "style", "best_practice", "suggestion"]),
-    severity: z.enum(["low", "medium", "high", "critical"]),
+    type: z.enum(['bug', 'security', 'performance', 'style', 'best_practice', 'suggestion']),
+    severity: z.enum(['low', 'medium', 'high', 'critical']),
     file: z.string(),
     line: z.number().optional(),
     message: z.string(),
@@ -114,14 +107,14 @@ const CodeReviewResponse = z.object({
   improvements: z.array(z.object({
     category: z.string(),
     description: z.string(),
-    priority: z.enum(["low", "medium", "high"]),
-    effort: z.enum(["low", "medium", "high"]),
+    priority: z.enum(['low', 'medium', 'high']),
+    effort: z.enum(['low', 'medium', 'high']),
   })),
   securityAnalysis: z.object({
     score: z.number(),
     vulnerabilities: z.array(z.object({
       type: z.string(),
-      severity: z.enum(["low", "medium", "high", "critical"]),
+      severity: z.enum(['low', 'medium', 'high', 'critical']),
       description: z.string(),
       mitigation: z.string(),
     })),
@@ -136,26 +129,26 @@ const CodeReviewResponse = z.object({
 });
 
 const DeploymentResponse = z.object({
-  recommendation: z.enum(["proceed", "wait", "cancel", "rollback"]),
+  recommendation: z.enum(['proceed', 'wait', 'cancel', 'rollback']),
   readinessScore: z.number().min(0).max(100),
   checklist: z.array(z.object({
     item: z.string(),
-    status: z.enum(["completed", "pending", "failed", "skipped"]),
-    priority: z.enum(["low", "medium", "high", "critical"]),
+    status: z.enum(['completed', 'pending', 'failed', 'skipped']),
+    priority: z.enum(['low', 'medium', 'high', 'critical']),
     description: z.string(),
   })),
   risks: z.array(z.object({
-    category: z.enum(["security", "performance", "availability", "data", "compliance"]),
-    severity: z.enum(["low", "medium", "high", "critical"]),
+    category: z.enum(['security', 'performance', 'availability', 'data', 'compliance']),
+    severity: z.enum(['low', 'medium', 'high', 'critical']),
     description: z.string(),
     mitigation: z.string(),
-    likelihood: z.enum(["low", "medium", "high"]),
+    likelihood: z.enum(['low', 'medium', 'high']),
   })),
   optimizations: z.array(z.object({
-    type: z.enum(["performance", "cost", "security", "reliability"]),
+    type: z.enum(['performance', 'cost', 'security', 'reliability']),
     description: z.string(),
-    impact: z.enum(["low", "medium", "high"]),
-    effort: z.enum(["low", "medium", "high"]),
+    impact: z.enum(['low', 'medium', 'high']),
+    effort: z.enum(['low', 'medium', 'high']),
   })),
   rollbackPlan: z.object({
     strategy: z.string(),
@@ -172,18 +165,19 @@ const DeploymentResponse = z.object({
 });
 
 // Git commit message generation endpoint
-export const generateCommitMessage = api<typeof GitCommitGenerationRequest, typeof GitWorkflowResponse>(
-  { method: "POST", path: "/ai/generate-commit", auth: true, expose: true },
-  async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof GitWorkflowResponse>> => {
-    const { userID } = meta.auth;
+export const generateCommitMessage = api(
+  { method: 'POST', path: '/ai/generate-commit', auth: true, expose: true },
+  async (req: z.infer<typeof GitCommitGenerationRequest>): Promise<z.infer<typeof GitWorkflowResponse>> => {
+    // TODO: Get auth data from currentRequest() when auth handler is implemented
+    const userID = 'placeholder-user-id';
     const { changes, commitType, scope, includeDescription, maxLength, conventional } = req;
     
     const startTime = Date.now();
-    log.info("Git commit generation request", { 
+    log.info('Git commit generation request', { 
       userID, 
       changesCount: changes.length,
       commitType,
-      conventional 
+      conventional, 
     });
     
     try {
@@ -211,10 +205,10 @@ Rules:
 
 Analyze the changes and generate an appropriate commit message.`;
 
-      const changesDescription = changes.map(change => {
+      const changesDescription = changes.map((change: any) => {
         const action = change.changeType === 'added' ? 'Added' :
-                      change.changeType === 'modified' ? 'Modified' :
-                      change.changeType === 'deleted' ? 'Deleted' : 'Renamed';
+          change.changeType === 'modified' ? 'Modified' :
+            change.changeType === 'deleted' ? 'Deleted' : 'Renamed';
         
         let desc = `${action}: ${change.filePath}`;
         if (change.oldPath) {
@@ -240,13 +234,13 @@ ${scope ? `- Scope: ${scope}` : ''}
 Provide a clear, professional commit message that accurately describes the changes.`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 1500,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const aiResponse = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -256,58 +250,60 @@ Provide a clear, professional commit message that accurately describes the chang
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Git commit generation completed", { 
+      log.info('Git commit generation completed', { 
         userID, 
         messageLength: commitData.commitMessage?.length || 0,
-        processingTime 
+        processingTime, 
       });
 
       return {
         commitMessage: commitData.commitMessage,
         description: includeDescription ? commitData.description : undefined,
         suggestions: [
-          "Review the commit message for accuracy",
-          "Ensure all related changes are included",
-          "Consider squashing related commits",
-          "Add issue references if applicable"
+          'Review the commit message for accuracy',
+          'Ensure all related changes are included',
+          'Consider squashing related commits',
+          'Add issue references if applicable',
         ],
         bestPractices: [
-          "Keep commits atomic and focused",
-          "Write clear, descriptive messages",
-          "Use conventional commit format for automation",
-          "Include breaking change notes when applicable"
+          'Keep commits atomic and focused',
+          'Write clear, descriptive messages',
+          'Use conventional commit format for automation',
+          'Include breaking change notes when applicable',
         ],
         metadata: {
           conventional,
           type: commitData.type,
           scope: commitData.scope,
           generatedAt: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("Git commit generation failed", { error: error.message, userID });
-      throw new Error("Failed to generate commit message");
+      const err = error as Error;
+      log.error('Git commit generation failed', { error: err.message, userID });
+      throw new Error('Failed to generate commit message');
     }
-  }
+  },
 );
 
 // Branch naming suggestion endpoint
-export const suggestBranchName = api<typeof BranchNamingRequest, typeof GitWorkflowResponse>(
-  { method: "POST", path: "/ai/suggest-branch", auth: true, expose: true },
-  async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof GitWorkflowResponse>> => {
-    const { userID } = meta.auth;
+export const suggestBranchName = api(
+  { method: 'POST', path: '/ai/suggest-branch', auth: true, expose: true },
+  async (req: z.infer<typeof BranchNamingRequest>): Promise<z.infer<typeof GitWorkflowResponse>> => {
+    // TODO: Get auth data from currentRequest() when auth handler is implemented
+    const userID = 'placeholder-user-id';
     const { 
       taskDescription, 
       taskType, 
       ticketNumber, 
       includeUserName, 
       userName, 
-      namingConvention 
+      namingConvention, 
     } = req;
     
     const startTime = Date.now();
-    log.info("Branch naming request", { userID, taskType, namingConvention });
+    log.info('Branch naming request', { userID, taskType, namingConvention });
     
     try {
       const systemPrompt = `You are a Git workflow expert specializing in branch naming conventions.
@@ -339,13 +335,13 @@ Naming Convention: ${namingConvention}
 Provide a clear, professional branch name that follows best practices.`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 1000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const aiResponse = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -355,54 +351,56 @@ Provide a clear, professional branch name that follows best practices.`;
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Branch naming completed", { 
+      log.info('Branch naming completed', { 
         userID, 
         branchName,
-        processingTime 
+        processingTime, 
       });
 
       return {
         branchName,
         description: `Branch for ${taskType}: ${taskDescription}`,
         suggestions: [
-          "Ensure branch name aligns with team conventions",
-          "Keep branch focused on single task/feature",
-          "Delete branch after merging",
-          "Use descriptive names for easier tracking"
+          'Ensure branch name aligns with team conventions',
+          'Keep branch focused on single task/feature',
+          'Delete branch after merging',
+          'Use descriptive names for easier tracking',
         ],
         bestPractices: [
-          "Include task type prefix for organization",
-          "Keep names under 50 characters",
-          "Use consistent naming conventions",
-          "Avoid special characters and spaces"
+          'Include task type prefix for organization',
+          'Keep names under 50 characters',
+          'Use consistent naming conventions',
+          'Avoid special characters and spaces',
         ],
         metadata: {
           conventional: true,
           type: taskType,
           generatedAt: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("Branch naming failed", { error: error.message, userID });
-      throw new Error("Failed to suggest branch name");
+      const err = error as Error;
+      log.error('Branch naming failed', { error: err.message, userID });
+      throw new Error('Failed to suggest branch name');
     }
-  }
+  },
 );
 
 // AI-powered code review endpoint
-export const reviewCode = api<typeof CodeReviewRequest, typeof CodeReviewResponse>(
-  { method: "POST", path: "/ai/review-code", auth: true, expose: true },
-  async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof CodeReviewResponse>> => {
-    const { userID } = meta.auth;
+export const reviewCode = api(
+  { method: 'POST', path: '/ai/review-code', auth: true, expose: true },
+  async (req: z.infer<typeof CodeReviewRequest>): Promise<z.infer<typeof CodeReviewResponse>> => {
+    // TODO: Get auth data from currentRequest() when auth handler is implemented
+    const userID = 'placeholder-user-id';
     const { pullRequestId, diff, files, reviewType, targetBranch, includeTests } = req;
     
     const startTime = Date.now();
-    log.info("Code review request", { 
+    log.info('Code review request', { 
       userID, 
       filesCount: files.length,
       reviewType,
-      includeTests 
+      includeTests, 
     });
     
     try {
@@ -424,7 +422,7 @@ ${includeTests ? '7. Test coverage and quality' : ''}
 Provide constructive, actionable feedback with specific recommendations.
 Rate the overall change quality and provide a recommendation (approve/request_changes/needs_discussion).`;
 
-      const filesDescription = files.map(file => `
+      const filesDescription = files.map((file: any) => `
 File: ${file.filePath}
 ${file.language ? `Language: ${file.language}` : ''}
 ${file.content ? `Content:\n${file.content.slice(0, 2000)}...` : ''}
@@ -451,13 +449,13 @@ Provide comprehensive review with:
 Focus on ${reviewType} aspects while considering overall code quality.`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 6000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const reviewResult = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -467,12 +465,12 @@ Focus on ${reviewType} aspects while considering overall code quality.`;
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Code review completed", { 
+      log.info('Code review completed', { 
         userID, 
         overallScore: structuredReview.overall.score,
         recommendation: structuredReview.overall.recommendation,
         findingsCount: structuredReview.findings.length,
-        processingTime 
+        processingTime, 
       });
 
       return {
@@ -480,39 +478,41 @@ Focus on ${reviewType} aspects while considering overall code quality.`;
         metadata: {
           reviewTime: processingTime,
           filesAnalyzed: files.length,
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           timestamp: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("Code review failed", { error: error.message, userID });
-      throw new Error("Failed to review code");
+      const err = error as Error;
+      log.error('Code review failed', { error: err.message, userID });
+      throw new Error('Failed to review code');
     }
-  }
+  },
 );
 
 // Deployment analysis endpoint
-export const analyzeDeployment = api<typeof DeploymentAnalysisRequest, typeof DeploymentResponse>(
-  { method: "POST", path: "/ai/analyze-deployment", auth: true, expose: true },
-  async (req, meta: APICallMeta<AuthData>): Promise<z.infer<typeof DeploymentResponse>> => {
-    const { userID } = meta.auth;
+export const analyzeDeployment = api(
+  { method: 'POST', path: '/ai/analyze-deployment', auth: true, expose: true },
+  async (req: z.infer<typeof DeploymentAnalysisRequest>): Promise<z.infer<typeof DeploymentResponse>> => {
+    // TODO: Get auth data from currentRequest() when auth handler is implemented
+    const userID = 'placeholder-user-id';
     const { 
       environment, 
       applicationName, 
       deploymentConfig, 
       infrastructureType, 
       previousDeployment,
-      rollbackRequired 
+      rollbackRequired, 
     } = req;
     
     const startTime = Date.now();
-    log.info("Deployment analysis request", { 
+    log.info('Deployment analysis request', { 
       userID, 
       environment,
       applicationName,
       infrastructureType,
-      rollbackRequired 
+      rollbackRequired, 
     });
     
     try {
@@ -534,7 +534,7 @@ Analyze deployment for:
 
 Provide detailed analysis with actionable recommendations and risk mitigation strategies.`;
 
-      let userMessage = `Analyze deployment readiness for:
+      const userMessage = `Analyze deployment readiness for:
 
 Application: ${applicationName}
 Environment: ${environment}
@@ -552,13 +552,13 @@ Provide:
 6. Monitoring recommendations`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 5000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const deploymentAnalysis = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -568,12 +568,12 @@ Provide:
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Deployment analysis completed", { 
+      log.info('Deployment analysis completed', { 
         userID, 
         recommendation: structuredAnalysis.recommendation,
         readinessScore: structuredAnalysis.readinessScore,
         risksCount: structuredAnalysis.risks.length,
-        processingTime 
+        processingTime, 
       });
 
       return {
@@ -581,23 +581,25 @@ Provide:
         metadata: {
           environment,
           analysisTime: processingTime,
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           timestamp: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("Deployment analysis failed", { error: error.message, userID });
-      throw new Error("Failed to analyze deployment");
+      const err = error as Error;
+      log.error('Deployment analysis failed', { error: err.message, userID });
+      throw new Error('Failed to analyze deployment');
     }
-  }
+  },
 );
 
 // CI/CD pipeline generation endpoint
-export const generateCICDPipeline = api<typeof CICDPipelineRequest, typeof z.ZodType<any>>(
-  { method: "POST", path: "/ai/generate-cicd", auth: true, expose: true },
-  async (req, meta: APICallMeta<AuthData>): Promise<any> => {
-    const { userID } = meta.auth;
+export const generateCICDPipeline = api(
+  { method: 'POST', path: '/ai/generate-cicd', auth: true, expose: true },
+  async (req: z.infer<typeof CICDPipelineRequest>): Promise<any> => {
+    // TODO: Get auth data from currentRequest() when auth handler is implemented
+    const userID = 'placeholder-user-id';
     const { 
       projectType, 
       language, 
@@ -606,16 +608,16 @@ export const generateCICDPipeline = api<typeof CICDPipelineRequest, typeof z.Zod
       includeTests,
       includeQualityGates,
       includeSecurity,
-      deploymentTargets 
+      deploymentTargets, 
     } = req;
     
     const startTime = Date.now();
-    log.info("CI/CD pipeline generation request", { 
+    log.info('CI/CD pipeline generation request', { 
       userID, 
       projectType,
       language,
       targetPlatform,
-      deploymentTargets 
+      deploymentTargets, 
     });
     
     try {
@@ -654,23 +656,23 @@ ${includeSecurity ? '- Security scanning (SAST, dependency check)' : ''}
 Provide complete, ready-to-use pipeline configuration with comments and best practices.`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 7000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const pipelineConfig = response.content[0]?.type === 'text' ? response.content[0].text : '';
       
       const processingTime = Date.now() - startTime;
       
-      log.info("CI/CD pipeline generation completed", { 
+      log.info('CI/CD pipeline generation completed', { 
         userID, 
         configLength: pipelineConfig.length,
-        processingTime 
+        processingTime, 
       });
 
       return {
@@ -680,14 +682,14 @@ Provide complete, ready-to-use pipeline configuration with comments and best pra
           testing: includeTests,
           qualityGates: includeQualityGates,
           security: includeSecurity,
-          deploymentTargets
+          deploymentTargets,
         },
         recommendations: [
-          "Review and customize the pipeline for your specific needs",
-          "Set up proper secrets and environment variables",
-          "Configure notifications for team members",
-          "Test the pipeline in a safe environment first",
-          "Set up monitoring and alerting for deployments"
+          'Review and customize the pipeline for your specific needs',
+          'Set up proper secrets and environment variables',
+          'Configure notifications for team members',
+          'Test the pipeline in a safe environment first',
+          'Set up monitoring and alerting for deployments',
         ],
         metadata: {
           projectType,
@@ -695,38 +697,40 @@ Provide complete, ready-to-use pipeline configuration with comments and best pra
           framework,
           targetPlatform,
           generationTime: processingTime,
-          model: "claude-3-5-sonnet-20241022",
+          model: 'claude-3-5-sonnet-20241022',
           timestamp: new Date().toISOString(),
-        }
+        },
       };
 
     } catch (error) {
-      log.error("CI/CD pipeline generation failed", { error: error.message, userID });
-      throw new Error("Failed to generate CI/CD pipeline");
+      const err = error as Error;
+      log.error('CI/CD pipeline generation failed', { error: err.message, userID });
+      throw new Error('Failed to generate CI/CD pipeline');
     }
-  }
+  },
 );
 
 // Workflow optimization endpoint
-export const optimizeWorkflow = api<typeof WorkflowOptimizationRequest, typeof z.ZodType<any>>(
-  { method: "POST", path: "/ai/optimize-workflow", auth: true, expose: true },
-  async (req, meta: APICallMeta<AuthData>): Promise<any> => {
-    const { userID } = meta.auth;
+export const optimizeWorkflow = api(
+  { method: 'POST', path: '/ai/optimize-workflow', auth: true, expose: true },
+  async (req: z.infer<typeof WorkflowOptimizationRequest>): Promise<any> => {
+    // TODO: Get auth data from currentRequest() when auth handler is implemented
+    const userID = 'placeholder-user-id';
     const { 
       currentWorkflow, 
       painPoints, 
       teamSize, 
       projectComplexity,
       complianceRequirements,
-      performanceGoals 
+      performanceGoals, 
     } = req;
     
     const startTime = Date.now();
-    log.info("Workflow optimization request", { 
+    log.info('Workflow optimization request', { 
       userID, 
       teamSize,
       projectComplexity,
-      painPointsCount: painPoints.length 
+      painPointsCount: painPoints.length, 
     });
     
     try {
@@ -747,7 +751,7 @@ Current Workflow:
 ${currentWorkflow}
 
 Pain Points:
-${painPoints.map((point, index) => `${index + 1}. ${point}`).join('\n')}
+${painPoints.map((point: any, index: number) => `${index + 1}. ${point}`).join('\n')}
 
 Team Context:
 - Size: ${teamSize} developers
@@ -765,13 +769,13 @@ Provide:
 7. Implementation roadmap with priorities`;
 
       const response = await anthropic.messages.create({
-        model: "claude-3-5-sonnet-20241022",
+        model: 'claude-3-5-sonnet-20241022',
         max_tokens: 6000,
         system: systemPrompt,
         messages: [{
-          role: "user",
-          content: userMessage
-        }]
+          role: 'user',
+          content: userMessage,
+        }],
       });
 
       const optimization = response.content[0]?.type === 'text' ? response.content[0].text : '';
@@ -780,19 +784,20 @@ Provide:
       
       const processingTime = Date.now() - startTime;
       
-      log.info("Workflow optimization completed", { 
+      log.info('Workflow optimization completed', { 
         userID, 
         recommendationsCount: structuredOptimization.recommendations.length,
-        processingTime 
+        processingTime, 
       });
 
       return structuredOptimization;
 
     } catch (error) {
-      log.error("Workflow optimization failed", { error: error.message, userID });
-      throw new Error("Failed to optimize workflow");
+      const err = error as Error;
+      log.error('Workflow optimization failed', { error: err.message, userID });
+      throw new Error('Failed to optimize workflow');
     }
-  }
+  },
 );
 
 // Utility functions
@@ -826,7 +831,7 @@ function parseCommitMessage(aiResponse: string, conventional: boolean, commitTyp
     commitMessage,
     description,
     type,
-    scope: extractedScope
+    scope: extractedScope,
   };
 }
 
@@ -836,7 +841,7 @@ function formatBranchName(
   namingConvention: string, 
   ticketNumber?: string, 
   userName?: string, 
-  includeUserName?: boolean
+  includeUserName?: boolean,
 ): string {
   const lines = aiResponse.split('\n');
   let branchName = lines.find(line => line.includes('/') || line.includes('-') || line.includes('_'))?.trim() || '';
@@ -897,14 +902,14 @@ function parseCodeReview(reviewResult: string, files: any[], reviewType: string)
   // Security analysis if applicable
   const securityAnalysis = reviewType.includes('security') ? {
     score: extractScore(reviewResult, 'security') || 80,
-    vulnerabilities: extractVulnerabilities(reviewResult)
+    vulnerabilities: extractVulnerabilities(reviewResult),
   } : undefined;
   
   return {
     overall: {
       score: overallScore,
       recommendation,
-      summary
+      summary,
     },
     findings,
     positives,
@@ -913,17 +918,17 @@ function parseCodeReview(reviewResult: string, files: any[], reviewType: string)
     testingRecommendations: [
       'Add unit tests for new functionality',
       'Consider edge case testing',
-      'Ensure proper mocking of dependencies'
-    ]
+      'Ensure proper mocking of dependencies',
+    ],
   };
 }
 
-function parseDeploymentAnalysis(analysis: string, environment: string, rollbackRequired: boolean): any {
+function parseDeploymentAnalysis(analysis: string, _environment: string, rollbackRequired: boolean): any {
   const readinessScore = extractScore(analysis, 'readiness') || (rollbackRequired ? 60 : 80);
   
   const recommendation = rollbackRequired ? 'rollback' : 
-                        readinessScore >= 80 ? 'proceed' : 
-                        readinessScore >= 60 ? 'wait' : 'cancel';
+    readinessScore >= 80 ? 'proceed' : 
+      readinessScore >= 60 ? 'wait' : 'cancel';
   
   return {
     recommendation,
@@ -933,20 +938,20 @@ function parseDeploymentAnalysis(analysis: string, environment: string, rollback
         item: 'Code review completed',
         status: 'completed',
         priority: 'high',
-        description: 'All code changes have been reviewed and approved'
+        description: 'All code changes have been reviewed and approved',
       },
       {
         item: 'Tests passing',
         status: 'pending',
         priority: 'critical',
-        description: 'All automated tests must pass before deployment'
+        description: 'All automated tests must pass before deployment',
       },
       {
         item: 'Security scan',
         status: 'pending',
         priority: 'high',
-        description: 'Security vulnerabilities have been scanned and addressed'
-      }
+        description: 'Security vulnerabilities have been scanned and addressed',
+      },
     ],
     risks: [
       {
@@ -954,31 +959,31 @@ function parseDeploymentAnalysis(analysis: string, environment: string, rollback
         severity: 'medium',
         description: 'Potential service disruption during deployment',
         mitigation: 'Use blue-green deployment strategy',
-        likelihood: 'low'
-      }
+        likelihood: 'low',
+      },
     ],
     optimizations: [
       {
         type: 'performance',
         description: 'Optimize container startup time',
         impact: 'medium',
-        effort: 'low'
-      }
+        effort: 'low',
+      },
     ],
     rollbackPlan: {
       strategy: rollbackRequired ? 'Immediate rollback to previous version' : 'Standard rollback procedure',
       estimatedTime: '5-10 minutes',
-      prerequisites: ['Database backup', 'Traffic routing ready']
+      prerequisites: ['Database backup', 'Traffic routing ready'],
     },
     monitoringRecommendations: [
       'Monitor application response times',
       'Track error rates and exceptions',
-      'Watch resource utilization metrics'
-    ]
+      'Watch resource utilization metrics',
+    ],
   };
 }
 
-function parseWorkflowOptimization(optimization: string, painPoints: string[]): any {
+function parseWorkflowOptimization(_optimization: string, painPoints: string[]): any {
   return {
     summary: 'Workflow optimization analysis completed',
     currentEfficiency: 70,
@@ -991,33 +996,33 @@ function parseWorkflowOptimization(optimization: string, painPoints: string[]): 
         priority: 'high',
         effort: 'medium',
         impact: 'high',
-        timeframe: '2-4 weeks'
-      }
+        timeframe: '2-4 weeks',
+      },
     ],
-    painPointSolutions: painPoints.map((point, index) => ({
+    painPointSolutions: painPoints.map((point, _index) => ({
       painPoint: point,
       solution: `Solution for ${point}`,
       priority: 'medium',
-      effort: 'medium'
+      effort: 'medium',
     })),
     implementationRoadmap: [
       {
         phase: 1,
         title: 'Quick Wins',
         duration: '1-2 weeks',
-        items: ['Implement automated linting', 'Set up code formatting']
-      }
+        items: ['Implement automated linting', 'Set up code formatting'],
+      },
     ],
     metrics: {
       estimatedTimeReduction: '30%',
       qualityImprovement: '25%',
-      teamSatisfaction: '40%'
+      teamSatisfaction: '40%',
     },
     metadata: {
       analysisTime: Date.now(),
-      model: "claude-3-5-sonnet-20241022",
+      model: 'claude-3-5-sonnet-20241022',
       timestamp: new Date().toISOString(),
-    }
+    },
   };
 }
 
@@ -1031,9 +1036,15 @@ function extractScore(text: string, metric: string): number | null {
 
 function extractRecommendation(text: string): string {
   const lowerText = text.toLowerCase();
-  if (lowerText.includes('approve') && !lowerText.includes('not approve')) return 'approve';
-  if (lowerText.includes('request changes') || lowerText.includes('needs work')) return 'request_changes';
-  if (lowerText.includes('discussion') || lowerText.includes('clarification')) return 'needs_discussion';
+  if (lowerText.includes('approve') && !lowerText.includes('not approve')) {
+    return 'approve';
+  }
+  if (lowerText.includes('request changes') || lowerText.includes('needs work')) {
+    return 'request_changes';
+  }
+  if (lowerText.includes('discussion') || lowerText.includes('clarification')) {
+    return 'needs_discussion';
+  }
   return 'request_changes';
 }
 
@@ -1054,8 +1065,8 @@ function extractFindings(text: string, files: any[]): any[] {
       severity: 'medium',
       file: files[0]?.filePath || 'unknown',
       message: 'Consider adding error handling',
-      suggestion: 'Add try-catch blocks for better error management'
-    }
+      suggestion: 'Add try-catch blocks for better error management',
+    },
   ];
 }
 
@@ -1063,7 +1074,7 @@ function extractPositives(text: string): string[] {
   return [
     'Good code structure and organization',
     'Proper naming conventions followed',
-    'Clear and readable implementation'
+    'Clear and readable implementation',
   ];
 }
 
@@ -1073,8 +1084,8 @@ function extractImprovements(text: string): any[] {
       category: 'testing',
       description: 'Add more comprehensive test coverage',
       priority: 'medium',
-      effort: 'medium'
-    }
+      effort: 'medium',
+    },
   ];
 }
 
