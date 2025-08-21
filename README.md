@@ -83,10 +83,11 @@ npm run dev:frontend
 ```
 
 ### 4. Access the Application
-- Frontend: http://localhost:3000
+- Frontend: http://localhost:3001
+- Files Server: http://localhost:3000  
 - Backend API: http://localhost:4000
-- Database: localhost:5432
-- Redis: localhost:6379
+- Database: localhost:5432 (requires Docker)
+- Redis: localhost:6379 (requires Docker)
 
 ## Project Structure
 
@@ -166,7 +167,7 @@ PORT=4000
 
 # Security
 JWT_SECRET=your-super-secure-jwt-secret
-CORS_ORIGIN=http://localhost:3000
+CORS_ORIGIN=http://localhost:3001
 
 # AI Services
 ANTHROPIC_API_KEY=your-anthropic-api-key
