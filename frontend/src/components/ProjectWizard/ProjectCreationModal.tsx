@@ -71,6 +71,8 @@ export const ProjectCreationModal: React.FC<ProjectCreationModalProps> = ({
     availableTemplates,
     availableIntegrations
   } = useSelector((state: RootState) => state.projectWizard);
+  
+  const { user } = useSelector((state: RootState) => state.auth);
 
   const [isClosing, setIsClosing] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
@@ -83,8 +85,15 @@ export const ProjectCreationModal: React.FC<ProjectCreationModalProps> = ({
           // Clear any previous errors
           dispatch(clearAllErrors());
           
+          // Get current user ID from auth state
+          const userId = user?.id;
+          
+          if (!userId) {
+            console.error('No user ID available - user may not be logged in');
+            return;
+          }
+          
           // Create a new wizard session
-          const userId = 'user-123'; // TODO: Get from auth state
           await dispatch(createWizardSession(userId));
           
           // Load initial data for templates and integrations

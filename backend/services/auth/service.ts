@@ -1,12 +1,9 @@
 import { api } from "encore.dev/api";
-import { SQLDatabase } from "encore.dev/storage/sqldb";
 import * as bcrypt from "bcryptjs";
-import * as jwt from "jsonwebtoken";
+import jwt from "jsonwebtoken";
+import { db } from "../../utils/database";
 
-// Database instance
-const db = new SQLDatabase("auth", {
-  migrations: "./migrations",
-});
+// Auth service uses shared database
 
 // JWT secret (in production, this should be from environment variables)
 const JWT_SECRET = process.env.JWT_SECRET || "your-super-secret-jwt-key";
@@ -94,7 +91,7 @@ export const register = api(
     try {
       // Check if user already exists
       const existingUser = await db.query`
-        SELECT id FROM users WHERE email = ${req.email}
+        SELECT id::text FROM users WHERE email = ${req.email}
       `;
       
       if (existingUser.length > 0) {
@@ -106,13 +103,27 @@ export const register = api(
       const password_hash = await bcrypt.hash(req.password, saltRounds);
 
       // Create user
-      const userResult = await db.query`
+      await db.exec`
         INSERT INTO users (email, password_hash, name, email_verified)
         VALUES (${req.email}, ${password_hash}, ${req.name}, false)
-        RETURNING id, email, name, created_at, updated_at, email_verified, last_login
       `;
 
-      const user = userResult[0] as User;
+      // Get the created user
+      const userResult = await db.query`
+        SELECT id::text, email, name, created_at, updated_at, email_verified, last_login
+        FROM users 
+        WHERE email = ${req.email}
+      `;
+
+      let user: User | null = null;
+      for await (const row of userResult) {
+        user = row as User;
+        break; // We only want the first row
+      }
+
+      if (!user) {
+        throw new Error("Failed to create user - user not found after insert");
+      }
       
       // Generate tokens
       const { token, refreshToken } = generateTokens(user.id);
@@ -141,16 +152,20 @@ export const login = api(
     try {
       // Find user by email
       const userResult = await db.query`
-        SELECT id, email, password_hash, name, created_at, updated_at, email_verified, last_login
+        SELECT id::text, email, password_hash, name, created_at, updated_at, email_verified, last_login
         FROM users 
         WHERE email = ${req.email}
       `;
 
-      if (userResult.length === 0) {
-        throw new Error("Invalid email or password");
+      let user: User | null = null;
+      for await (const row of userResult) {
+        user = row as User;
+        break; // We only want the first row
       }
 
-      const user = userResult[0] as User;
+      if (!user) {
+        throw new Error("Invalid email or password");
+      }
 
       // Verify password
       const isValidPassword = await bcrypt.compare(req.password, user.password_hash);
@@ -310,6 +325,8 @@ export const verify = api(
     return { valid: true };
   }
 );
+
+// Production endpoints only - debug endpoints removed
 
 // Cleanup expired sessions (utility endpoint)
 export const cleanupSessions = api(

@@ -1,10 +1,5 @@
 import { api } from "encore.dev/api";
-import { SQLDatabase } from "encore.dev/storage/sqldb";
-
-// Database setup
-const db = new SQLDatabase("integrations", {
-  migrations: "./migrations",
-});
+import { db } from "../../utils/database";
 
 // Interfaces
 interface Integration {

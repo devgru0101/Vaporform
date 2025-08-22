@@ -1,3 +1,4 @@
+-- Create sessions table for authentication
 CREATE TABLE sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -17,6 +18,5 @@ CREATE INDEX idx_sessions_token ON sessions(token);
 -- Create index on expires_at for cleanup queries
 CREATE INDEX idx_sessions_expires_at ON sessions(expires_at);
 
--- Create regular index on expires_at for efficient queries
--- (removed partial index due to PostgreSQL immutability requirements)
+-- Create composite index for efficient queries
 CREATE INDEX idx_sessions_user_expires ON sessions(user_id, expires_at);

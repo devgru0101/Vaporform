@@ -1,11 +1,6 @@
 import { api, APIError } from "encore.dev/api";
-import { SQLDatabase } from "encore.dev/storage/sqldb";
 import log from "encore.dev/log";
-
-// Database setup for template management
-const db = new SQLDatabase("templates", {
-  migrations: "./migrations",
-});
+import { db } from "../../utils/database";
 
 // Enhanced Template interface for comprehensive project wizard
 export interface Template {
