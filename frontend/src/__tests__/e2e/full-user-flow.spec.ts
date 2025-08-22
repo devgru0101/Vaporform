@@ -1,6 +1,15 @@
 /**
- * End-to-End User Flow Tests with Playwright
- * Tests complete user journeys through the Vaporform application
+ * DEPRECATED: Legacy End-to-End User Flow Tests with Playwright
+ * 
+ * These tests include deprecated wizard page routes that have been removed.
+ * The wizard functionality has been moved to a modal-based approach.
+ * 
+ * Tests that navigate to /wizard routes need to be updated to:
+ * - Use modal interactions instead of page navigation
+ * - Test ProjectCreationModal component behavior
+ * - Use UI state management for modal opening/closing
+ * 
+ * @deprecated Update tests to use modal-based wizard approach
  */
 
 import { test, expect, Page, BrowserContext } from '@playwright/test';

@@ -28,6 +28,9 @@ export const KeyboardShortcuts: React.FC = () => {
           case 'quickOpen':
             dispatch(uiSlice.actions.openModal('quickOpen'));
             break;
+          case 'settings':
+            dispatch(uiSlice.actions.openModal('settings'));
+            break;
           case 'toggleSidebar':
             dispatch(uiSlice.actions.updatePanelDimensions({
               panel: 'leftSidebar',

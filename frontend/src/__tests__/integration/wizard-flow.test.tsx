@@ -1,6 +1,14 @@
 /**
- * Wizard Flow Integration Tests
- * Tests the complete project creation wizard flow
+ * DEPRECATED: Legacy Wizard Flow Integration Tests
+ * 
+ * These tests cover the deprecated wizard page functionality.
+ * The wizard has been replaced with a modal-based approach.
+ * 
+ * New tests should be written for:
+ * - components/ProjectWizard/ProjectCreationModal.tsx
+ * - store/projectWizard.ts
+ * 
+ * @deprecated Tests for legacy wizard - update to test ProjectCreationModal
  */
 
 import React from 'react';

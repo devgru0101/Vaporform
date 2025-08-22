@@ -107,11 +107,11 @@ function validateEmail(email: string): boolean {
 }
 
 function validatePassword(password: string): boolean {
-  return password && password.length >= 8;
+  return Boolean(password && password.length >= 8);
 }
 
 function validateName(name: string): boolean {
-  return name && name.trim().length > 0;
+  return Boolean(name && name.trim().length > 0);
 }
 
 // Login endpoint

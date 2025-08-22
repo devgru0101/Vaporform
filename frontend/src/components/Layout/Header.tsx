@@ -28,6 +28,10 @@ export const Header: React.FC = () => {
     dispatch(uiSlice.actions.openModal('settings'));
   };
 
+  const handleCreateProject = () => {
+    dispatch(uiSlice.actions.openModal('projectCreationModal'));
+  };
+
   return (
     <nav className="vf-top-nav">
       <div className="vf-nav-brand">
@@ -35,6 +39,19 @@ export const Header: React.FC = () => {
           <path d="M13 2L3 14l9 9L22 11z" strokeLinejoin="round"/>
         </svg>
         VAPORFORM
+      </div>
+
+      <div className="vf-nav-create">
+        <button 
+          className="vf-btn vf-btn-primary vf-btn-sm"
+          onClick={handleCreateProject}
+          title="Create New Project"
+        >
+          <svg className="vf-icon vf-icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 5v14m-7-7h14"/>
+          </svg>
+          Create Project
+        </button>
       </div>
       
       <div className="vf-nav-tabs">

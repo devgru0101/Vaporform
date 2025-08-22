@@ -1,0 +1,1006 @@
+#Vaporform UI Mockup
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vaporform IDE</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        :root {
+            /* Base Colors */
+            --vf-bg-primary: #000000;
+            --vf-bg-secondary: #0A0A0A;
+            --vf-bg-tertiary: #111111;
+            --vf-bg-elevated: #1A1A1A;
+            --vf-surface-border: #2A2A2A;
+            --vf-surface-border-light: #3A3A3A;
+            
+            /* Text Colors */
+            --vf-text-primary: #F6EEE3;
+            --vf-text-secondary: #CAC4B7;
+            --vf-text-muted: #737664;
+            --vf-text-disabled: #4A4A4A;
+            
+            /* Accent Colors - Updated with tan for active states */
+            --vf-accent-primary: #CAC4B7;  /* Changed to tan */
+            --vf-accent-active: #F6EEE3;   /* Bright tan for active */
+            --vf-accent-success: #E1FF00;
+            --vf-accent-danger: #FF4200;
+            --vf-accent-info: #2B00FF;
+            
+            /* Typography */
+            --vf-font-display: 'Space Grotesk', 'Inter', sans-serif;
+            --vf-font-body: 'Inter', system-ui, sans-serif;
+            --vf-font-mono: 'JetBrains Mono', monospace;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--vf-font-body);
+            background: var(--vf-bg-primary);
+            color: var(--vf-text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* Icon styles */
+        .icon {
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            stroke-width: 2;
+            fill: none;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        
+        .icon-sm {
+            width: 12px;
+            height: 12px;
+        }
+        
+        .icon-lg {
+            width: 18px;
+            height: 18px;
+        }
+        
+        /* Main Layout Grid - CORRECTED ORDER */
+        .app-container {
+            display: grid;
+            grid-template-rows: 48px 1fr 24px;
+            grid-template-columns: 48px 320px 200px 1fr;
+            height: 100vh;
+            background: var(--vf-bg-primary);
+        }
+        
+        /* Top Navigation Bar */
+        .top-nav {
+            grid-column: 1 / -1;
+            grid-row: 1;
+            background: var(--vf-bg-primary);
+            border-bottom: 1px solid var(--vf-surface-border);
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            gap: 24px;
+        }
+        
+        .nav-brand {
+            font-family: var(--vf-font-display);
+            font-weight: 700;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .nav-tabs {
+            display: flex;
+            gap: 2px;
+            margin-left: 24px;
+        }
+        
+        .nav-tab {
+            padding: 8px 16px;
+            background: transparent;
+            border: none;
+            color: var(--vf-text-muted);
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            border-bottom: 2px solid transparent;
+        }
+        
+        .nav-tab:hover {
+            color: var(--vf-text-secondary);
+        }
+        
+        .nav-tab.active {
+            color: var(--vf-text-primary);
+            border-bottom-color: var(--vf-accent-primary);
+        }
+        
+        .nav-actions {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 8px;
+            border: 1px solid var(--vf-surface-border);
+        }
+        
+        .user-avatar {
+            width: 24px;
+            height: 24px;
+            background: var(--vf-text-muted);
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--vf-bg-primary);
+        }
+        
+        /* Left App Sidebar - Column 1 */
+        .app-sidebar {
+            grid-column: 1;
+            grid-row: 2;
+            background: var(--vf-bg-secondary);
+            border-right: 1px solid var(--vf-surface-border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 8px 0;
+            gap: 4px;
+        }
+        
+        .app-icon {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--vf-text-muted);
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            position: relative;
+        }
+        
+        .app-icon:hover {
+            color: var(--vf-text-secondary);
+            background: var(--vf-bg-tertiary);
+        }
+        
+        .app-icon.active {
+            color: var(--vf-accent-active);
+        }
+        
+        .app-icon.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 2px;
+            height: 20px;
+            background: var(--vf-accent-primary);
+        }
+        
+        /* AI Assistant Panel - Column 2 (LEFT SIDE) */
+        .ai-assistant {
+            grid-column: 2;
+            grid-row: 2;
+            background: var(--vf-bg-secondary);
+            border-right: 1px solid var(--vf-surface-border);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .ai-header {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--vf-surface-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .ai-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--vf-text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .ai-tabs {
+            display: flex;
+            gap: 12px;
+            padding: 8px 16px;
+            border-bottom: 1px solid var(--vf-surface-border);
+        }
+        
+        .ai-tab {
+            padding: 4px 0;
+            background: none;
+            border: none;
+            color: var(--vf-text-muted);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            border-bottom: 2px solid transparent;
+        }
+        
+        .ai-tab:hover {
+            color: var(--vf-text-secondary);
+        }
+        
+        .ai-tab.active {
+            color: var(--vf-accent-active);
+            border-bottom-color: var(--vf-accent-primary);
+        }
+        
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .chat-message {
+            padding: 12px;
+            background: var(--vf-bg-tertiary);
+            border: 1px solid var(--vf-surface-border);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        
+        .chat-message.user {
+            background: var(--vf-bg-elevated);
+            border-left: 2px solid var(--vf-accent-primary);
+        }
+        
+        .chat-message.assistant {
+            background: var(--vf-bg-tertiary);
+            border-left: 2px solid var(--vf-text-muted);
+        }
+        
+        .message-label {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--vf-text-muted);
+            margin-bottom: 8px;
+        }
+        
+        .chat-input-container {
+            padding: 16px;
+            border-top: 1px solid var(--vf-surface-border);
+            background: var(--vf-bg-tertiary);
+        }
+        
+        .chat-input {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--vf-bg-primary);
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-primary);
+            font-family: var(--vf-font-body);
+            font-size: 13px;
+            resize: none;
+            transition: border-color 150ms ease-out;
+        }
+        
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--vf-accent-primary);
+        }
+        
+        .chat-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+        }
+        
+        .chat-helpers {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .helper-btn {
+            padding: 4px 8px;
+            background: transparent;
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-muted);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .helper-btn:hover {
+            border-color: var(--vf-text-muted);
+            color: var(--vf-text-secondary);
+        }
+        
+        .send-btn {
+            padding: 6px 16px;
+            background: var(--vf-text-muted);
+            border: none;
+            color: var(--vf-bg-primary);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+        }
+        
+        .send-btn:hover {
+            background: var(--vf-accent-primary);
+            transform: translateY(-1px);
+        }
+        
+        /* File Explorer - Column 3 */
+        .file-explorer {
+            grid-column: 3;
+            grid-row: 2;
+            background: var(--vf-bg-tertiary);
+            border-right: 1px solid var(--vf-surface-border);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .explorer-header {
+            padding: 12px;
+            border-bottom: 1px solid var(--vf-surface-border);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--vf-text-muted);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .explorer-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .icon-btn {
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--vf-text-muted);
+            cursor: pointer;
+            transition: color 150ms ease-out;
+            background: none;
+            border: none;
+        }
+        
+        .icon-btn:hover {
+            color: var(--vf-text-primary);
+        }
+        
+        .file-tree {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+        
+        .file-item {
+            padding: 6px 8px;
+            font-size: 12px;
+            color: var(--vf-text-secondary);
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: var(--vf-font-mono);
+        }
+        
+        .file-item:hover {
+            background: var(--vf-bg-elevated);
+            color: var(--vf-text-primary);
+        }
+        
+        .file-item.selected {
+            background: var(--vf-bg-elevated);
+            color: var(--vf-accent-active);
+            border-left: 2px solid var(--vf-accent-primary);
+            padding-left: 6px;
+        }
+        
+        .folder-item {
+            font-weight: 600;
+            color: var(--vf-text-secondary);
+        }
+        
+        /* Main Content Area - Column 4 */
+        .main-content {
+            grid-column: 4;
+            grid-row: 2;
+            background: var(--vf-bg-primary);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        /* Sub Header for IDE/Preview Toggle */
+        .content-header {
+            height: 40px;
+            background: var(--vf-bg-secondary);
+            border-bottom: 1px solid var(--vf-surface-border);
+            display: flex;
+            align-items: center;
+            padding: 0 16px;
+            gap: 16px;
+        }
+        
+        .view-toggle {
+            display: flex;
+            gap: 2px;
+            background: var(--vf-bg-primary);
+            padding: 2px;
+            border: 1px solid var(--vf-surface-border);
+        }
+        
+        .view-btn {
+            padding: 4px 12px;
+            background: transparent;
+            border: none;
+            color: var(--vf-text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+        }
+        
+        .view-btn:hover {
+            color: var(--vf-text-secondary);
+        }
+        
+        .view-btn.active {
+            background: var(--vf-accent-primary);
+            color: var(--vf-bg-primary);
+        }
+        
+        .file-tabs {
+            display: flex;
+            gap: 1px;
+            flex: 1;
+        }
+        
+        .file-tab {
+            padding: 0 16px;
+            background: var(--vf-bg-tertiary);
+            border: none;
+            border-right: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-muted);
+            font-size: 12px;
+            font-family: var(--vf-font-mono);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 150ms ease-out;
+        }
+        
+        .file-tab:hover {
+            background: var(--vf-bg-elevated);
+            color: var(--vf-text-secondary);
+        }
+        
+        .file-tab.active {
+            background: var(--vf-bg-primary);
+            color: var(--vf-accent-active);
+            border-bottom: 2px solid var(--vf-accent-primary);
+        }
+        
+        .tab-close {
+            width: 14px;
+            height: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--vf-text-disabled);
+            cursor: pointer;
+        }
+        
+        .tab-close:hover {
+            color: var(--vf-accent-danger);
+        }
+        
+        /* Editor Area */
+        .editor-area {
+            flex: 1;
+            background: var(--vf-bg-primary);
+            padding: 24px;
+            overflow-y: auto;
+            font-family: var(--vf-font-mono);
+        }
+        
+        .code-editor {
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--vf-text-secondary);
+        }
+        
+        .code-line {
+            display: flex;
+            gap: 16px;
+        }
+        
+        .line-number {
+            color: var(--vf-text-disabled);
+            width: 40px;
+            text-align: right;
+            user-select: none;
+        }
+        
+        .code-content {
+            flex: 1;
+        }
+        
+        /* Status Bar */
+        .status-bar {
+            grid-column: 1 / -1;
+            grid-row: 3;
+            background: var(--vf-bg-secondary);
+            border-top: 1px solid var(--vf-surface-border);
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            font-size: 11px;
+            color: var(--vf-text-muted);
+            gap: 16px;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .status-indicator {
+            width: 6px;
+            height: 6px;
+            background: var(--vf-accent-success);
+            border-radius: 50%;
+        }
+        
+        .status-indicator.error {
+            background: var(--vf-accent-danger);
+        }
+        
+        .status-indicator.warning {
+            background: var(--vf-accent-success);
+        }
+        
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--vf-bg-primary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--vf-surface-border);
+            border-radius: 0;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--vf-surface-border-light);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation -->
+        <nav class="top-nav">
+            <div class="nav-brand">
+                <svg class="icon icon-lg" viewBox="0 0 24 24">
+                    <path d="M13 2L3 14l9 9L22 11z" stroke-linejoin="round"/>
+                </svg>
+                VAPORFORM
+            </div>
+            <div class="nav-tabs">
+                <button class="nav-tab active">Terminal</button>
+                <button class="nav-tab">Infrastructure</button>
+                <button class="nav-tab">Encore Dashboard</button>
+            </div>
+            <div class="nav-actions">
+                <button class="icon-btn">
+                    <svg class="icon" viewBox="0 0 24 24">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M12 1v6m0 6v6m4.22-13.22l4.24 4.24M1.54 1.54l4.24 4.24M20.46 20.46l-4.24-4.24M1.54 20.46l4.24-4.24"/>
+                    </svg>
+                </button>
+                <div class="user-info">
+                    <div class="user-avatar">DU</div>
+                    <span style="font-size: 12px;">Demo User</span>
+                </div>
+            </div>
+        </nav>
+        
+        <!-- Left App Sidebar -->
+        <aside class="app-sidebar">
+            <div class="app-icon active" title="Explorer">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M3 3v18h18V3H3zm16 2v2H5V5h14zm0 4v10H5V9h14z"/>
+                    <path d="M7 11h2v2H7zm4 0h6v2h-6zm-4 4h2v2H7zm4 0h6v2h-6z"/>
+                </svg>
+            </div>
+            <div class="app-icon" title="Search">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="m21 21-4.35-4.35"/>
+                </svg>
+            </div>
+            <div class="app-icon" title="Source Control">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <path d="M9 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM5 9.5a3 3 0 1 0 6 0 3 3 0 0 0-6 0zm14 0a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM9 13V9.5m6 0V16a3 3 0 0 0 3 3"/>
+                </svg>
+            </div>
+            <div class="app-icon" title="Run and Debug">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <path d="m5 12 14 0"/>
+                    <path d="m5 12 6 6"/>
+                    <path d="m5 12 6-6"/>
+                    <circle cx="19" cy="12" r="2"/>
+                </svg>
+            </div>
+            <div class="app-icon" title="Extensions">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <rect x="3" y="3" width="7" height="7"/>
+                    <rect x="14" y="3" width="7" height="7"/>
+                    <rect x="14" y="14" width="7" height="7"/>
+                    <rect x="3" y="14" width="7" height="7"/>
+                </svg>
+            </div>
+            <div class="app-icon" title="Settings" style="margin-top: auto;">
+                <svg class="icon" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 1v6m0 6v6m4.22-13.22l4.24 4.24M1.54 1.54l4.24 4.24M20.46 20.46l-4.24-4.24M1.54 20.46l4.24-4.24"/>
+                </svg>
+            </div>
+        </aside>
+        
+        <!-- AI Assistant Panel (LEFT SIDE NOW) -->
+        <aside class="ai-assistant">
+            <div class="ai-header">
+                <div class="ai-title">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24">
+                        <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 1 1 12 2z"/>
+                    </svg>
+                    AI ASSISTANT
+                </div>
+                <button class="icon-btn">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="ai-tabs">
+                <button class="ai-tab active">Chat</button>
+                <button class="ai-tab">History</button>
+                <button class="ai-tab">Settings</button>
+            </div>
+            <div class="chat-area">
+                <div class="chat-message assistant">
+                    <div class="message-label">CLAUDE</div>
+                    Welcome to Vaporform! I'm ready to help with your development. I can assist with code suggestions, debugging, refactoring, and answering questions about your project.
+                </div>
+                <div class="chat-message user">
+                    <div class="message-label">YOU</div>
+                    Can you help me optimize this React component for better performance?
+                </div>
+                <div class="chat-message assistant">
+                    <div class="message-label">CLAUDE</div>
+                    I'd be happy to help optimize your React component. Looking at your index.tsx file, here are some optimization strategies we can implement:
+                    
+                    1. Use React.memo for component memoization
+                    2. Implement useMemo and useCallback hooks
+                    3. Consider code splitting with lazy loading
+                    4. Optimize re-renders with proper dependency arrays
+                </div>
+            </div>
+            <div class="chat-input-container">
+                <textarea class="chat-input" placeholder="Ask Claude anything..." rows="3"></textarea>
+                <div class="chat-actions">
+                    <div class="chat-helpers">
+                        <button class="helper-btn">
+                            <svg class="icon icon-sm" viewBox="0 0 24 24">
+                                <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                            </svg>
+                        </button>
+                        <button class="helper-btn">
+                            <svg class="icon icon-sm" viewBox="0 0 24 24">
+                                <polyline points="16 18 22 12 16 6"/>
+                                <polyline points="8 6 2 12 8 18"/>
+                            </svg>
+                            Code
+                        </button>
+                        <button class="helper-btn">
+                            <svg class="icon icon-sm" viewBox="0 0 24 24">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                            Context
+                        </button>
+                    </div>
+                    <button class="send-btn">Send →</button>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- File Explorer -->
+        <div class="file-explorer">
+            <div class="explorer-header">
+                EXPLORER
+                <div class="explorer-actions">
+                    <button class="icon-btn">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="12" y1="18" x2="12" y2="12"/>
+                            <line x1="9" y1="15" x2="15" y2="15"/>
+                        </svg>
+                    </button>
+                    <button class="icon-btn">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24">
+                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                            <polyline points="22 4 12 14.01 9 11.01"/>
+                        </svg>
+                    </button>
+                    <button class="icon-btn">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="1"/>
+                            <circle cx="12" cy="5" r="1"/>
+                            <circle cx="12" cy="19" r="1"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="file-tree">
+                <div class="file-item folder-item">
+                    <svg class="icon icon-sm" viewBox="0 0 24 24">
+                        <path d="m6 9 6 6 6-6"/>
+                    </svg>
+                    vaporform-app
+                </div>
+                <div style="padding-left: 16px;">
+                    <div class="file-item folder-item">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24">
+                            <path d="m6 9 6 6 6-6"/>
+                        </svg>
+                        src
+                    </div>
+                    <div style="padding-left: 32px;">
+                        <div class="file-item selected">
+                            <svg class="icon icon-sm" viewBox="0 0 24 24" fill="var(--vf-accent-info)">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                            index.tsx
+                        </div>
+                        <div class="file-item">
+                            <svg class="icon icon-sm" viewBox="0 0 24 24" fill="var(--vf-accent-info)">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                            app.tsx
+                        </div>
+                        <div class="file-item">
+                            <svg class="icon icon-sm" viewBox="0 0 24 24">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                            styles.css
+                        </div>
+                    </div>
+                    <div class="file-item folder-item">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24">
+                            <path d="m9 18 6-6-6-6"/>
+                        </svg>
+                        components
+                    </div>
+                    <div class="file-item folder-item">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24">
+                            <path d="m9 18 6-6-6-6"/>
+                        </svg>
+                        utils
+                    </div>
+                    <div class="file-item">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        package.json
+                    </div>
+                    <div class="file-item">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        tsconfig.json
+                    </div>
+                    <div class="file-item">
+                        <svg class="icon icon-sm" viewBox="0 0 24 24">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                        README.md
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Sub Header with View Toggle -->
+            <div class="content-header">
+                <div class="view-toggle">
+                    <button class="view-btn active">IDE</button>
+                    <button class="view-btn">PREVIEW</button>
+                </div>
+                <div class="file-tabs">
+                    <div class="file-tab active">
+                        index.tsx
+                        <span class="tab-close">
+                            <svg class="icon icon-sm" viewBox="0 0 24 24">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </span>
+                    </div>
+                    <div class="file-tab">
+                        app.tsx
+                        <span class="tab-close">
+                            <svg class="icon icon-sm" viewBox="0 0 24 24">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </span>
+                    </div>
+                    <div class="file-tab">
+                        styles.css
+                        <span class="tab-close">
+                            <svg class="icon icon-sm" viewBox="0 0 24 24">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Editor Area -->
+            <div class="editor-area">
+                <div class="code-editor">
+                    <div class="code-line">
+                        <span class="line-number">1</span>
+                        <span class="code-content"><span style="color: #E1FF00">import</span> React <span style="color: #E1FF00">from</span> <span style="color: #737664">'react'</span>;</span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">2</span>
+                        <span class="code-content"><span style="color: #E1FF00">import</span> ReactDOM <span style="color: #E1FF00">from</span> <span style="color: #737664">'react-dom/client'</span>;</span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">3</span>
+                        <span class="code-content"><span style="color: #E1FF00">import</span> { App } <span style="color: #E1FF00">from</span> <span style="color: #737664">'./app'</span>;</span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">4</span>
+                        <span class="code-content"><span style="color: #E1FF00">import</span> <span style="color: #737664">'./styles.css'</span>;</span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">5</span>
+                        <span class="code-content"></span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">6</span>
+                        <span class="code-content"><span style="color: #E1FF00">const</span> root = ReactDOM.createRoot(</span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">7</span>
+                        <span class="code-content">  document.getElementById(<span style="color: #737664">'root'</span>) <span style="color: #E1FF00">as</span> HTMLElement</span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">8</span>
+                        <span class="code-content">);</span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">9</span>
+                        <span class="code-content"></span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">10</span>
+                        <span class="code-content">root.render(</span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">11</span>
+                        <span class="code-content">  <span style="color: #CAC4B7">&lt;React.StrictMode&gt;</span></span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">12</span>
+                        <span class="code-content">    <span style="color: #CAC4B7">&lt;App /&gt;</span></span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">13</span>
+                        <span class="code-content">  <span style="color: #CAC4B7">&lt;/React.StrictMode&gt;</span></span>
+                    </div>
+                    <div class="code-line">
+                        <span class="line-number">14</span>
+                        <span class="code-content">);</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- Status Bar -->
+        <footer class="status-bar">
+            <div class="status-item">
+                <span class="status-indicator"></span>
+                Connected
+            </div>
+            <div class="status-item">UTF-8</div>
+            <div class="status-item">TypeScript React</div>
+            <div class="status-item">Ln 14, Col 3</div>
+            <div class="status-item" style="margin-left: auto;">
+                <span class="status-indicator warning"></span>
+                0 Problems
+            </div>
+            <div class="status-item">
+                <svg class="icon icon-sm" viewBox="0 0 24 24">
+                    <path d="M9 19a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM5 9.5a3 3 0 1 0 6 0 3 3 0 0 0-6 0zm14 0a3 3 0 1 0 6 0 3 3 0 0 0-6 0zM9 13V9.5m6 0V16a3 3 0 0 0 3 3"/>
+                </svg>
+                main
+            </div>
+        </footer>
+    </div>
+</body>
+</html>

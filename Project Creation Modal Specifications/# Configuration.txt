@@ -1,0 +1,782 @@
+# Configuration
+# this step needs to be removed from the project creation wizard. If the user selects a tech stack that is not an encore backend then we need to show a configuration button on the
+main application header. encore has a dev dashboard that can be accessed from the main application header that will manage these configurations.
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vaporform - Step 4: Configuration</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        :root {
+            /* Base Colors */
+            --vf-bg-primary: #000000;
+            --vf-bg-secondary: #0A0A0A;
+            --vf-bg-tertiary: #111111;
+            --vf-bg-elevated: #1A1A1A;
+            --vf-surface-border: #2A2A2A;
+            --vf-surface-border-light: #3A3A3A;
+            
+            /* Text Colors */
+            --vf-text-primary: #F6EEE3;
+            --vf-text-secondary: #CAC4B7;
+            --vf-text-muted: #737664;
+            --vf-text-disabled: #4A4A4A;
+            
+            /* Accent Colors */
+            --vf-accent-primary: #CAC4B7;
+            --vf-accent-active: #F6EEE3;
+            --vf-accent-success: #E1FF00;
+            --vf-accent-danger: #FF4200;
+            --vf-accent-info: #2B00FF;
+            
+            /* Typography */
+            --vf-font-display: 'Space Grotesk', 'Inter', sans-serif;
+            --vf-font-body: 'Inter', system-ui, sans-serif;
+            --vf-font-mono: 'JetBrains Mono', monospace;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--vf-font-body);
+            background: var(--vf-bg-primary);
+            color: var(--vf-text-primary);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Modal Structure */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .modal-container {
+            background: var(--vf-bg-secondary);
+            border: 1px solid var(--vf-surface-border);
+            width: 90%;
+            max-width: 1000px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--vf-surface-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-title {
+            font-family: var(--vf-font-display);
+            font-size: 18px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .close-btn {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-muted);
+            cursor: pointer;
+            transition: all 150ms ease-out;
+        }
+        
+        .progress-bar {
+            height: 2px;
+            background: var(--vf-surface-border);
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--vf-accent-primary);
+            width: 80%;
+            transition: width 300ms ease-out;
+        }
+        
+        .modal-body {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .wizard-sidebar {
+            width: 240px;
+            background: var(--vf-bg-tertiary);
+            border-right: 1px solid var(--vf-surface-border);
+            padding: 24px 0;
+        }
+        
+        .step-item {
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--vf-text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            position: relative;
+        }
+        
+        .step-item.completed {
+            color: var(--vf-text-secondary);
+        }
+        
+        .step-item.active {
+            color: var(--vf-accent-active);
+            background: var(--vf-bg-elevated);
+        }
+        
+        .step-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--vf-accent-primary);
+        }
+        
+        .step-number {
+            width: 24px;
+            height: 24px;
+            border: 1px solid var(--vf-surface-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        
+        .step-item.completed .step-number {
+            background: var(--vf-accent-success);
+            color: var(--vf-bg-primary);
+            border-color: var(--vf-accent-success);
+        }
+        
+        .step-item.active .step-number {
+            background: var(--vf-accent-primary);
+            color: var(--vf-bg-primary);
+            border-color: var(--vf-accent-primary);
+        }
+        
+        .wizard-content {
+            flex: 1;
+            padding: 32px;
+            overflow-y: auto;
+        }
+        
+        .step-title {
+            font-family: var(--vf-font-display);
+            font-size: 24px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+        
+        .step-description {
+            color: var(--vf-text-muted);
+            font-size: 14px;
+            margin-bottom: 32px;
+            line-height: 1.5;
+        }
+        
+        /* Environment Tabs */
+        .environment-tabs {
+            display: flex;
+            gap: 2px;
+            background: var(--vf-bg-tertiary);
+            padding: 2px;
+            margin-bottom: 24px;
+            border: 1px solid var(--vf-surface-border);
+        }
+        
+        .env-tab {
+            flex: 1;
+            padding: 8px 16px;
+            background: transparent;
+            border: none;
+            color: var(--vf-text-muted);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+        }
+        
+        .env-tab:hover {
+            color: var(--vf-text-secondary);
+        }
+        
+        .env-tab.active {
+            background: var(--vf-accent-primary);
+            color: var(--vf-bg-primary);
+        }
+        
+        /* Configuration Sections */
+        .config-section {
+            background: var(--vf-bg-tertiary);
+            border: 1px solid var(--vf-surface-border);
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .section-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .section-badge {
+            padding: 2px 8px;
+            background: var(--vf-bg-secondary);
+            border: 1px solid var(--vf-surface-border);
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--vf-text-muted);
+        }
+        
+        /* Environment Variables */
+        .env-variables {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .env-var-item {
+            display: grid;
+            grid-template-columns: 200px 1fr auto;
+            gap: 12px;
+            align-items: center;
+        }
+        
+        .env-var-key {
+            padding: 8px 12px;
+            background: var(--vf-bg-primary);
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-primary);
+            font-family: var(--vf-font-mono);
+            font-size: 12px;
+        }
+        
+        .env-var-value {
+            padding: 8px 12px;
+            background: var(--vf-bg-primary);
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-primary);
+            font-family: var(--vf-font-mono);
+            font-size: 12px;
+        }
+        
+        .env-var-value:focus {
+            outline: none;
+            border-color: var(--vf-accent-primary);
+        }
+        
+        .env-var-remove {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-muted);
+            cursor: pointer;
+            transition: all 150ms ease-out;
+        }
+        
+        .env-var-remove:hover {
+            border-color: var(--vf-accent-danger);
+            color: var(--vf-accent-danger);
+        }
+        
+        .add-env-btn {
+            padding: 8px 16px;
+            background: transparent;
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-secondary);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            margin-top: 8px;
+        }
+        
+        .add-env-btn:hover {
+            border-color: var(--vf-text-secondary);
+            background: var(--vf-bg-elevated);
+        }
+        
+        /* Resource Sliders */
+        .resource-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .resource-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .resource-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--vf-text-secondary);
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .resource-value {
+            font-family: var(--vf-font-mono);
+            color: var(--vf-accent-primary);
+        }
+        
+        .resource-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: var(--vf-surface-border);
+            outline: none;
+            transition: background 150ms ease-out;
+        }
+        
+        .resource-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--vf-accent-primary);
+            cursor: pointer;
+            border: 2px solid var(--vf-bg-primary);
+        }
+        
+        .resource-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: var(--vf-accent-primary);
+            cursor: pointer;
+            border: 2px solid var(--vf-bg-primary);
+        }
+        
+        .resource-recommendation {
+            font-size: 10px;
+            color: var(--vf-text-muted);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .recommend-icon {
+            width: 12px;
+            height: 12px;
+            background: var(--vf-accent-success);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: bold;
+            color: var(--vf-bg-primary);
+        }
+        
+        /* Deployment Options */
+        .deployment-options {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .option-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            padding: 8px;
+            transition: background 150ms ease-out;
+        }
+        
+        .option-item:hover {
+            background: var(--vf-bg-secondary);
+        }
+        
+        .option-checkbox {
+            width: 18px;
+            height: 18px;
+            border: 1px solid var(--vf-surface-border);
+            background: var(--vf-bg-primary);
+            position: relative;
+            transition: all 150ms ease-out;
+        }
+        
+        .option-checkbox.checked {
+            background: var(--vf-accent-primary);
+            border-color: var(--vf-accent-primary);
+        }
+        
+        .option-checkbox.checked::after {
+            content: '✓';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--vf-bg-primary);
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .option-content {
+            flex: 1;
+        }
+        
+        .option-label {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+        
+        .option-description {
+            font-size: 11px;
+            color: var(--vf-text-muted);
+        }
+        
+        /* Scaling Strategy */
+        .scaling-options {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        
+        .scaling-card {
+            background: var(--vf-bg-secondary);
+            border: 1px solid var(--vf-surface-border);
+            padding: 12px;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+        }
+        
+        .scaling-card:hover {
+            background: var(--vf-bg-elevated);
+            border-color: var(--vf-surface-border-light);
+        }
+        
+        .scaling-card.selected {
+            border-color: var(--vf-accent-primary);
+            background: var(--vf-bg-elevated);
+        }
+        
+        .scaling-title {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .scaling-description {
+            font-size: 10px;
+            color: var(--vf-text-muted);
+            line-height: 1.4;
+        }
+        
+        /* Modal Footer */
+        .modal-footer {
+            padding: 20px 24px;
+            border-top: 1px solid var(--vf-surface-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--vf-bg-tertiary);
+        }
+        
+        .footer-info {
+            font-size: 11px;
+            color: var(--vf-text-muted);
+        }
+        
+        .footer-actions {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .btn {
+            padding: 8px 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: none;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            background: transparent;
+        }
+        
+        .btn-secondary {
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-secondary);
+        }
+        
+        .btn-secondary:hover {
+            border-color: var(--vf-text-secondary);
+            background: var(--vf-bg-elevated);
+        }
+        
+        .btn-primary {
+            background: var(--vf-text-muted);
+            color: var(--vf-bg-primary);
+        }
+        
+        .btn-primary:hover {
+            background: var(--vf-accent-primary);
+        }
+    </style>
+</head>
+<body>
+    <!-- Modal Overlay -->
+    <div class="modal-overlay">
+        <div class="modal-container">
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <h2 class="modal-title">Create New Project</h2>
+                <button class="close-btn">×</button>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+            
+            <!-- Modal Body -->
+            <div class="modal-body">
+                <!-- Wizard Steps Sidebar -->
+                <div class="wizard-sidebar">
+                    <div class="step-item completed">
+                        <div class="step-number">✓</div>
+                        <span>Project Vision</span>
+                    </div>
+                    <div class="step-item completed">
+                        <div class="step-number">✓</div>
+                        <span>Tech Stack</span>
+                    </div>
+                    <div class="step-item completed">
+                        <div class="step-number">✓</div>
+                        <span>Integrations</span>
+                    </div>
+                    <div class="step-item active">
+                        <div class="step-number">4</div>
+                        <span>Configuration</span>
+                    </div>
+                    <div class="step-item">
+                        <div class="step-number">5</div>
+                        <span>Review & Generate</span>
+                    </div>
+                </div>
+                
+                <!-- Wizard Content Area -->
+                <div class="wizard-content">
+                    <h3 class="step-title">Project Configuration</h3>
+                    <p class="step-description">Configure environments, resources, and deployment settings. Claude has pre-filled recommended values based on your project.</p>
+                    
+                    <!-- Environment Tabs -->
+                    <div class="environment-tabs">
+                        <button class="env-tab active">Development</button>
+                        <button class="env-tab">Staging</button>
+                        <button class="env-tab">Production</button>
+                    </div>
+                    
+                    <!-- Environment Variables -->
+                    <div class="config-section">
+                        <div class="section-header">
+                            <h4 class="section-title">Environment Variables</h4>
+                            <span class="section-badge">Auto-configured</span>
+                        </div>
+                        <div class="env-variables">
+                            <div class="env-var-item">
+                                <input type="text" class="env-var-key" value="DATABASE_URL" readonly />
+                                <input type="text" class="env-var-value" value="postgresql://localhost:5432/taskflow_dev" />
+                                <button class="env-var-remove">×</button>
+                            </div>
+                            <div class="env-var-item">
+                                <input type="text" class="env-var-key" value="CLERK_SECRET_KEY" readonly />
+                                <input type="password" class="env-var-value" value="sk_test_..." />
+                                <button class="env-var-remove">×</button>
+                            </div>
+                            <div class="env-var-item">
+                                <input type="text" class="env-var-key" value="RESEND_API_KEY" readonly />
+                                <input type="password" class="env-var-value" value="re_..." />
+                                <button class="env-var-remove">×</button>
+                            </div>
+                            <div class="env-var-item">
+                                <input type="text" class="env-var-key" value="ENCORE_APP_ID" readonly />
+                                <input type="text" class="env-var-value" value="taskflow-pro" />
+                                <button class="env-var-remove">×</button>
+                            </div>
+                        </div>
+                        <button class="add-env-btn">+ Add Variable</button>
+                    </div>
+                    
+                    <!-- Container Resources -->
+                    <div class="config-section">
+                        <div class="section-header">
+                            <h4 class="section-title">Container Resources</h4>
+                            <span class="section-badge">Recommended</span>
+                        </div>
+                        <div class="resource-grid">
+                            <div class="resource-item">
+                                <label class="resource-label">
+                                    <span>Memory Limit</span>
+                                    <span class="resource-value">512 MB</span>
+                                </label>
+                                <input type="range" class="resource-slider" min="256" max="4096" step="256" value="512" />
+                                <div class="resource-recommendation">
+                                    <span class="recommend-icon">✓</span>
+                                    <span>Recommended for your stack</span>
+                                </div>
+                            </div>
+                            <div class="resource-item">
+                                <label class="resource-label">
+                                    <span>CPU Allocation</span>
+                                    <span class="resource-value">50%</span>
+                                </label>
+                                <input type="range" class="resource-slider" min="25" max="200" step="25" value="50" />
+                                <div class="resource-recommendation">
+                                    <span class="recommend-icon">✓</span>
+                                    <span>Optimal for development</span>
+                                </div>
+                            </div>
+                            <div class="resource-item">
+                                <label class="resource-label">
+                                    <span>Storage</span>
+                                    <span class="resource-value">10 GB</span>
+                                </label>
+                                <input type="range" class="resource-slider" min="5" max="100" step="5" value="10" />
+                            </div>
+                            <div class="resource-item">
+                                <label class="resource-label">
+                                    <span>Max Instances</span>
+                                    <span class="resource-value">1</span>
+                                </label>
+                                <input type="range" class="resource-slider" min="1" max="10" step="1" value="1" />
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Deployment Options -->
+                    <div class="config-section">
+                        <div class="section-header">
+                            <h4 class="section-title">Deployment & Automation</h4>
+                        </div>
+                        <div class="deployment-options">
+                            <div class="option-item">
+                                <div class="option-checkbox checked"></div>
+                                <div class="option-content">
+                                    <div class="option-label">Auto-deploy on code changes</div>
+                                    <div class="option-description">Automatically rebuild and deploy when Claude updates your code</div>
+                                </div>
+                            </div>
+                            <div class="option-item">
+                                <div class="option-checkbox checked"></div>
+                                <div class="option-content">
+                                    <div class="option-label">Enable hot reload</div>
+                                    <div class="option-description">Instant updates during development without container restart</div>
+                                </div>
+                            </div>
+                            <div class="option-item">
+                                <div class="option-checkbox"></div>
+                                <div class="option-content">
+                                    <div class="option-label">Enable monitoring</div>
+                                    <div class="option-description">Track performance metrics and error rates</div>
+                                </div>
+                            </div>
+                            <div class="option-item">
+                                <div class="option-checkbox"></div>
+                                <div class="option-content">
+                                    <div class="option-label">Generate API documentation</div>
+                                    <div class="option-description">Auto-generate OpenAPI specs and interactive docs</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Scaling Strategy -->
+                    <div class="config-section">
+                        <div class="section-header">
+                            <h4 class="section-title">Scaling Strategy</h4>
+                        </div>
+                        <div class="scaling-options">
+                            <div class="scaling-card selected">
+                                <div class="scaling-title">Manual</div>
+                                <div class="scaling-description">Control instance count manually through the dashboard</div>
+                            </div>
+                            <div class="scaling-card">
+                                <div class="scaling-title">Auto-scaling</div>
+                                <div class="scaling-description">Automatically scale based on CPU and memory usage</div>
+                            </div>
+                            <div class="scaling-card">
+                                <div class="scaling-title">Fixed</div>
+                                <div class="scaling-description">Maintain a fixed number of instances at all times</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <div class="footer-info">
+                    Step 4 of 5 • Project Configuration
+                </div>
+                <div class="footer-actions">
+                    <button class="btn btn-secondary">Previous</button>
+                    <button class="btn btn-primary">Next: Review & Generate</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

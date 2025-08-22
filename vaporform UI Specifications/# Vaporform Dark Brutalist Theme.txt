@@ -1,0 +1,298 @@
+# Vaporform Dark Brutalist Theme Specification
+
+## Design Philosophy
+
+### Core Principles
+1. **Brutalist Minimalism**: Raw, unpolished aesthetic with sharp edges
+2. **High Contrast**: Pure black backgrounds with strategic light text
+3. **Typography-Forward**: Bold, condensed fonts dominate the hierarchy
+4. **Functional Color**: Vibrant colors reserved exclusively for interactive elements
+5. **Information Density**: Maximum content visibility without clutter
+
+## Color System
+
+### Base Palette
+
+```css
+/* Background Hierarchy */
+--vf-bg-primary: #000000;        /* Pure black - main backgrounds */
+--vf-bg-secondary: #0A0A0A;      /* Near black - sidebars, headers */
+--vf-bg-tertiary: #111111;       /* Dark gray - panels, cards */
+--vf-bg-elevated: #1A1A1A;       /* Elevated surfaces - hover states */
+
+/* Border System */
+--vf-surface-border: #2A2A2A;       /* Primary borders */
+--vf-surface-border-light: #3A3A3A; /* Secondary borders, hover */
+--vf-surface-border-heavy: #4A4A4A; /* Emphasis borders */
+```
+
+### Text Hierarchy
+
+```css
+/* Text Colors */
+--vf-text-primary: #F6EEE3;     /* Primary text - high contrast */
+--vf-text-secondary: #CAC4B7;   /* Secondary text - readable */
+--vf-text-muted: #737664;       /* Muted text - labels, hints */
+--vf-text-disabled: #4A4A4A;    /* Disabled state */
+--vf-text-inverse: #000000;     /* On light backgrounds */
+```
+
+### Interactive Accents
+
+```css
+/* Limited Use - Actions Only */
+--vf-accent-primary: #CAC4B7;   /* Tan - primary actions, borders */
+--vf-accent-active: #F6EEE3;    /* Bright tan - active states */
+--vf-accent-success: #E1FF00;   /* Yellow-green - success */
+--vf-accent-danger: #FF4200;    /* Orange-red - errors, warnings */
+--vf-accent-info: #2B00FF;      /* Blue - information, loading only */
+```
+
+## Typography
+
+### Font Stack
+
+```css
+/* Font Families */
+--vf-font-display: 'Space Grotesk', 'Inter', sans-serif;  /* Headers */
+--vf-font-body: 'Inter', system-ui, sans-serif;           /* UI text */
+--vf-font-mono: 'JetBrains Mono', 'Fira Code', monospace; /* Code */
+
+/* Font Weights */
+--vf-weight-regular: 400;
+--vf-weight-medium: 500;
+--vf-weight-semibold: 600;
+--vf-weight-bold: 700;
+--vf-weight-black: 900;
+```
+
+### Type Scale
+
+```css
+/* Font Sizes */
+--vf-text-2xs: 0.625rem;   /* 10px - micro labels */
+--vf-text-xs: 0.6875rem;   /* 11px - status, labels */
+--vf-text-sm: 0.75rem;     /* 12px - secondary UI */
+--vf-text-base: 0.8125rem; /* 13px - body text */
+--vf-text-md: 0.875rem;    /* 14px - emphasis */
+--vf-text-lg: 1rem;        /* 16px - headers */
+--vf-text-xl: 1.25rem;     /* 20px - section titles */
+--vf-text-2xl: 1.5rem;     /* 24px - page titles */
+```
+
+## Spacing System
+
+```css
+/* Spacing Scale */
+--vf-space-0: 0;
+--vf-space-1: 0.25rem;   /* 4px */
+--vf-space-2: 0.5rem;    /* 8px */
+--vf-space-3: 0.75rem;   /* 12px */
+--vf-space-4: 1rem;      /* 16px */
+--vf-space-5: 1.25rem;   /* 20px */
+--vf-space-6: 1.5rem;    /* 24px */
+--vf-space-8: 2rem;      /* 32px */
+--vf-space-10: 2.5rem;   /* 40px */
+--vf-space-12: 3rem;     /* 48px */
+```
+
+## Icon System
+
+### Professional Icon Library
+
+Use **Lucide Icons** or **VSCode Codicons** for a consistent, professional appearance:
+
+```css
+/* Icon Sizing */
+.icon {
+    width: 14px;
+    height: 14px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+}
+
+.icon-sm {
+    width: 12px;
+    height: 12px;
+}
+
+.icon-lg {
+    width: 18px;
+    height: 18px;
+}
+
+/* Icon Colors */
+/* Icons inherit color from parent text color */
+/* Special states: */
+.icon.active { color: var(--vf-accent-active); }
+.icon.muted { color: var(--vf-text-muted); }
+.icon.danger { color: var(--vf-accent-danger); }
+```
+
+**Icon Guidelines:**
+- Use outline icons for UI actions
+- Use filled icons sparingly for file types
+- Maintain consistent stroke width (2px)
+- Never use emoji or decorative icons
+- Prefer monochrome icons, use color only for state
+
+## Layout Specifications
+
+### Application Grid
+
+```css
+/* Main Layout Grid - Chat Panel on LEFT */
+.app-container {
+    display: grid;
+    grid-template-rows: 48px 1fr 24px;
+    grid-template-columns: 48px 320px 200px 1fr;
+    /*                     sidebar│chat│explorer│editor */
+    height: 100vh;
+}
+
+/* Responsive Breakpoints */
+--vf-screen-sm: 640px;
+--vf-screen-md: 768px;
+--vf-screen-lg: 1024px;
+--vf-screen-xl: 1280px;
+--vf-screen-2xl: 1536px;
+```
+
+### Component Dimensions
+
+```css
+/* Fixed Dimensions */
+--vf-nav-height: 48px;
+--vf-statusbar-height: 24px;
+--vf-sidebar-width: 48px;
+--vf-assistant-width: 320px;  /* Chat panel */
+--vf-explorer-width: 200px;   /* File explorer */
+
+/* Minimum Sizes */
+--vf-assistant-min-width: 280px;
+--vf-explorer-min-width: 160px;
+--vf-editor-min-width: 400px;
+```
+
+## Component Specifications
+
+### Buttons
+
+```css
+/* Button Base */
+.btn {
+    padding: 6px 16px;
+    font-size: var(--vf-text-xs);
+    font-weight: var(--vf-weight-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 2px solid;
+    transition: all 150ms ease-out;
+    cursor: pointer;
+}
+
+/* Button Variants */
+.btn-primary {
+    background: var(--vf-text-muted);
+    border-color: var(--vf-text-muted);
+    color: var(--vf-bg-primary);
+}
+
+.btn-primary:hover {
+    background: var(--vf-accent-primary);
+    border-color: var(--vf-accent-primary);
+}
+
+.btn-secondary {
+    background: transparent;
+    border-color: var(--vf-surface-border);
+    color: var(--vf-text-secondary);
+}
+
+.btn-ghost {
+    background: transparent;
+    border: none;
+    color: var(--vf-text-muted);
+}
+```
+
+### Input Fields
+
+```css
+/* Input Base */
+.input {
+    padding: 8px 12px;
+    background: var(--vf-bg-primary);
+    border: 1px solid var(--vf-surface-border);
+    color: var(--vf-text-primary);
+    font-family: var(--vf-font-mono);
+    font-size: var(--vf-text-base);
+    transition: border-color 150ms ease-out;
+}
+
+.input:focus {
+    outline: none;
+    border-color: var(--vf-accent-primary);  /* Tan focus */
+}
+
+.input:disabled {
+    background: var(--vf-bg-tertiary);
+    color: var(--vf-text-disabled);
+    cursor: not-allowed;
+}
+```
+
+### Panels & Cards
+
+```css
+/* Panel Base */
+.panel {
+    background: var(--vf-bg-tertiary);
+    border: 1px solid var(--vf-surface-border);
+    padding: var(--vf-space-4);
+}
+
+/* Card Variant */
+.card {
+    background: var(--vf-bg-secondary);
+    border: 1px solid var(--vf-surface-border);
+    transition: border-color 150ms ease-out;
+}
+
+.card:hover {
+    border-color: var(--vf-surface-border-light);
+}
+
+/* Active State */
+.card.active {
+    border-color: var(--vf-accent-primary);
+    border-width: 2px;
+}
+```
+
+## Animation & Interaction
+
+```css
+/* Transitions */
+--vf-transition-fast: 150ms ease-out;
+--vf-transition-base: 250ms ease-out;
+--vf-transition-slow: 350ms ease-out;
+
+/* Hover States */
+/* Subtle elevation through background lightening */
+/* No shadows or blurs - maintain brutalist aesthetic */
+
+/* Focus States */
+/* Use tan accent color for all focus indicators */
+/* 2px solid borders for emphasis */
+```
+
+## Implementation Notes
+
+1. **Layout Structure**: The chat panel is positioned between the app sidebar and file explorer on the left side for better workflow integration
+2. **Color Usage**: Blue (#2B00FF) is reserved only for informational badges and loading states
+3. **Active States**: All active/selected states use the tan color palette (#CAC4B7, #F6EEE3)
+4. **Icons**: Use Lucide Icons or VSCode Codicons for professional consistency
+5. **Typography**: Uppercase labels with letter-spacing for brutalist industrial feel
+6. **Borders**: 1px for standard, 2px for emphasis, no rounded corners except minimal 2px where necessary

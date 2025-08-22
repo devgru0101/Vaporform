@@ -1,0 +1,774 @@
+# Tech Stack
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vaporform - Step 2: Tech Stack Selection</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        :root {
+            /* Base Colors */
+            --vf-bg-primary: #000000;
+            --vf-bg-secondary: #0A0A0A;
+            --vf-bg-tertiary: #111111;
+            --vf-bg-elevated: #1A1A1A;
+            --vf-surface-border: #2A2A2A;
+            --vf-surface-border-light: #3A3A3A;
+            
+            /* Text Colors */
+            --vf-text-primary: #F6EEE3;
+            --vf-text-secondary: #CAC4B7;
+            --vf-text-muted: #737664;
+            --vf-text-disabled: #4A4A4A;
+            
+            /* Accent Colors */
+            --vf-accent-primary: #CAC4B7;
+            --vf-accent-active: #F6EEE3;
+            --vf-accent-success: #E1FF00;
+            --vf-accent-danger: #FF4200;
+            --vf-accent-info: #2B00FF;
+            
+            /* Typography */
+            --vf-font-display: 'Space Grotesk', 'Inter', sans-serif;
+            --vf-font-body: 'Inter', system-ui, sans-serif;
+            --vf-font-mono: 'JetBrains Mono', monospace;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--vf-font-body);
+            background: var(--vf-bg-primary);
+            color: var(--vf-text-primary);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Modal Structure (same as step 1) */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .modal-container {
+            background: var(--vf-bg-secondary);
+            border: 1px solid var(--vf-surface-border);
+            width: 90%;
+            max-width: 1000px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--vf-surface-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-title {
+            font-family: var(--vf-font-display);
+            font-size: 18px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .close-btn {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-muted);
+            cursor: pointer;
+            transition: all 150ms ease-out;
+        }
+        
+        .progress-bar {
+            height: 2px;
+            background: var(--vf-surface-border);
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--vf-accent-primary);
+            width: 40%;
+            transition: width 300ms ease-out;
+        }
+        
+        .modal-body {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .wizard-sidebar {
+            width: 240px;
+            background: var(--vf-bg-tertiary);
+            border-right: 1px solid var(--vf-surface-border);
+            padding: 24px 0;
+        }
+        
+        .step-item {
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--vf-text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            position: relative;
+        }
+        
+        .step-item.completed {
+            color: var(--vf-text-secondary);
+        }
+        
+        .step-item.active {
+            color: var(--vf-accent-active);
+            background: var(--vf-bg-elevated);
+        }
+        
+        .step-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--vf-accent-primary);
+        }
+        
+        .step-number {
+            width: 24px;
+            height: 24px;
+            border: 1px solid var(--vf-surface-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        
+        .step-item.completed .step-number {
+            background: var(--vf-accent-success);
+            color: var(--vf-bg-primary);
+            border-color: var(--vf-accent-success);
+        }
+        
+        .step-item.active .step-number {
+            background: var(--vf-accent-primary);
+            color: var(--vf-bg-primary);
+            border-color: var(--vf-accent-primary);
+        }
+        
+        .wizard-content {
+            flex: 1;
+            padding: 32px;
+            overflow-y: auto;
+        }
+        
+        .step-title {
+            font-family: var(--vf-font-display);
+            font-size: 24px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+        
+        .step-description {
+            color: var(--vf-text-muted);
+            font-size: 14px;
+            margin-bottom: 32px;
+            line-height: 1.5;
+        }
+        
+        /* Claude Analysis Box */
+        .claude-analysis {
+            background: var(--vf-bg-tertiary);
+            border: 1px solid var(--vf-surface-border);
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .claude-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .claude-icon {
+            width: 20px;
+            height: 20px;
+            background: var(--vf-accent-primary);
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--vf-bg-primary);
+        }
+        
+        .claude-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .claude-content {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--vf-text-secondary);
+        }
+        
+        /* Template Grid */
+        .template-section {
+            margin-bottom: 32px;
+        }
+        
+        .section-title {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 16px;
+            color: var(--vf-text-secondary);
+        }
+        
+        .template-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        
+        .template-card {
+            background: var(--vf-bg-tertiary);
+            border: 1px solid var(--vf-surface-border);
+            padding: 20px;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            position: relative;
+        }
+        
+        .template-card:hover {
+            background: var(--vf-bg-elevated);
+            border-color: var(--vf-surface-border-light);
+        }
+        
+        .template-card.selected {
+            border-color: var(--vf-accent-primary);
+            background: var(--vf-bg-elevated);
+        }
+        
+        .template-card.selected::after {
+            content: '✓';
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 20px;
+            height: 20px;
+            background: var(--vf-accent-primary);
+            color: var(--vf-bg-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        .template-card.recommended {
+            border-color: var(--vf-accent-success);
+        }
+        
+        .recommended-badge {
+            position: absolute;
+            top: -1px;
+            left: -1px;
+            background: var(--vf-accent-success);
+            color: var(--vf-bg-primary);
+            padding: 2px 8px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .template-header {
+            margin-bottom: 12px;
+        }
+        
+        .template-name {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 4px;
+        }
+        
+        .template-subtitle {
+            font-size: 11px;
+            color: var(--vf-text-muted);
+        }
+        
+        .template-description {
+            font-size: 12px;
+            color: var(--vf-text-secondary);
+            line-height: 1.4;
+            margin-bottom: 12px;
+        }
+        
+        .template-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-top: 12px;
+            border-top: 1px solid var(--vf-surface-border);
+        }
+        
+        .stack-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+        }
+        
+        .stack-label {
+            color: var(--vf-text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .stack-value {
+            color: var(--vf-text-primary);
+            font-family: var(--vf-font-mono);
+        }
+        
+        /* Custom Configuration */
+        .custom-config {
+            background: var(--vf-bg-tertiary);
+            border: 1px solid var(--vf-surface-border);
+            padding: 20px;
+            margin-top: 24px;
+        }
+        
+        .config-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 16px;
+        }
+        
+        .config-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        
+        .config-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .config-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--vf-text-muted);
+        }
+        
+        .config-select {
+            padding: 8px 12px;
+            background: var(--vf-bg-primary);
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-primary);
+            font-size: 12px;
+            cursor: pointer;
+            transition: border-color 150ms ease-out;
+        }
+        
+        .config-select:focus {
+            outline: none;
+            border-color: var(--vf-accent-primary);
+        }
+        
+        /* Modal Footer */
+        .modal-footer {
+            padding: 20px 24px;
+            border-top: 1px solid var(--vf-surface-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--vf-bg-tertiary);
+        }
+        
+        .footer-info {
+            font-size: 11px;
+            color: var(--vf-text-muted);
+        }
+        
+        .footer-actions {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .btn {
+            padding: 8px 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: none;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            background: transparent;
+        }
+        
+        .btn-secondary {
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-secondary);
+        }
+        
+        .btn-secondary:hover {
+            border-color: var(--vf-text-secondary);
+            background: var(--vf-bg-elevated);
+        }
+        
+        .btn-primary {
+            background: var(--vf-text-muted);
+            color: var(--vf-bg-primary);
+        }
+        
+        .btn-primary:hover {
+            background: var(--vf-accent-primary);
+        }
+    </style>
+</head>
+<body>
+    <!-- Modal Overlay -->
+    <div class="modal-overlay">
+        <div class="modal-container">
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <h2 class="modal-title">Create New Project</h2>
+                <button class="close-btn">×</button>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+            
+            <!-- Modal Body -->
+            <div class="modal-body">
+                <!-- Wizard Steps Sidebar -->
+                <div class="wizard-sidebar">
+                    <div class="step-item completed">
+                        <div class="step-number">✓</div>
+                        <span>Project Vision</span>
+                    </div>
+                    <div class="step-item active">
+                        <div class="step-number">2</div>
+                        <span>Tech Stack</span>
+                    </div>
+                    <div class="step-item">
+                        <div class="step-number">3</div>
+                        <span>Integrations</span>
+                    </div>
+                    <div class="step-item">
+                        <div class="step-number">4</div>
+                        <span>Configuration</span>
+                    </div>
+                    <div class="step-item">
+                        <div class="step-number">5</div>
+                        <span>Review & Generate</span>
+                    </div>
+                </div>
+                
+                <!-- Wizard Content Area -->
+                <div class="wizard-content">
+                    <h3 class="step-title">AI-Recommended Tech Stack</h3>
+                    <p class="step-description">Claude analyzed your project and suggests these technology combinations optimized for your needs.</p>
+                    
+                    <!-- Claude's Analysis -->
+                    <div class="claude-analysis">
+                        <div class="claude-header">
+                            <div class="claude-icon">C</div>
+                            <span class="claude-title">Claude's Analysis</span>
+                        </div>
+                        <div class="claude-content">
+                            Based on your task management application requirements, I recommend using <strong>Encore.ts</strong> for the backend with <strong>React</strong> for real-time UI updates. This combination provides excellent TypeScript support, built-in API documentation, and seamless real-time capabilities. The Encore SQLDB will handle your relational data efficiently with automatic migrations.
+                        </div>
+                    </div>
+                    
+                    <!-- Recommended Templates -->
+                    <div class="template-section">
+                        <h4 class="section-title">Recommended Stack</h4>
+                        <div class="template-grid">
+                            <div class="template-card selected">
+                                <div class="recommended-badge">Claude Recommends</div>
+                                <div class="template-header">
+                                    <div class="template-name">Encore.ts + React</div>
+                                    <div class="template-subtitle">Full-stack TypeScript with real-time sync</div>
+                                </div>
+                                <div class="template-description">
+                                    Perfect for collaborative apps requiring real-time updates, type safety, and rapid development.
+                                </div>
+                                <div class="template-stack">
+                                    <div class="stack-item">
+                                        <span class="stack-label">Backend:</span>
+                                        <span class="stack-value">Encore.ts</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Frontend:</span>
+                                        <span class="stack-value">React 18</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Database:</span>
+                                        <span class="stack-value">Encore SQLDB</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Real-time:</span>
+                                        <span class="stack-value">Encore PubSub</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Alternative Templates -->
+                    <div class="template-section">
+                        <h4 class="section-title">Alternative Stacks</h4>
+                        <div class="template-grid">
+                            <div class="template-card">
+                                <div class="template-header">
+                                    <div class="template-name">Encore.ts + Solid.js</div>
+                                    <div class="template-subtitle">Performance-focused reactive UI</div>
+                                </div>
+                                <div class="template-description">
+                                    Optimal for high-performance applications with fine-grained reactivity and smaller bundle sizes.
+                                </div>
+                                <div class="template-stack">
+                                    <div class="stack-item">
+                                        <span class="stack-label">Backend:</span>
+                                        <span class="stack-value">Encore.ts</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Frontend:</span>
+                                        <span class="stack-value">Solid.js</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Database:</span>
+                                        <span class="stack-value">Encore SQLDB</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Styling:</span>
+                                        <span class="stack-value">Tailwind CSS</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="template-card">
+                                <div class="template-header">
+                                    <div class="template-name">Encore.go + Vue 3</div>
+                                    <div class="template-subtitle">Go performance with progressive framework</div>
+                                </div>
+                                <div class="template-description">
+                                    Ideal for applications requiring high concurrency, system-level performance, and gradual complexity.
+                                </div>
+                                <div class="template-stack">
+                                    <div class="stack-item">
+                                        <span class="stack-label">Backend:</span>
+                                        <span class="stack-value">Encore.go</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Frontend:</span>
+                                        <span class="stack-value">Vue 3</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Database:</span>
+                                        <span class="stack-value">PostgreSQL</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">State:</span>
+                                        <span class="stack-value">Pinia</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="template-card">
+                                <div class="template-header">
+                                    <div class="template-name">Encore.go + HTMX</div>
+                                    <div class="template-subtitle">Server-driven hypermedia application</div>
+                                </div>
+                                <div class="template-description">
+                                    Simplified architecture with server-side rendering and minimal JavaScript for maximum simplicity.
+                                </div>
+                                <div class="template-stack">
+                                    <div class="stack-item">
+                                        <span class="stack-label">Backend:</span>
+                                        <span class="stack-value">Encore.go</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Frontend:</span>
+                                        <span class="stack-value">HTMX + Alpine</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Database:</span>
+                                        <span class="stack-value">Encore SQLDB</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Templates:</span>
+                                        <span class="stack-value">Templ</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="template-card">
+                                <div class="template-header">
+                                    <div class="template-name">Encore.ts + Next.js</div>
+                                    <div class="template-subtitle">Full-stack React with SSR/SSG</div>
+                                </div>
+                                <div class="template-description">
+                                    Enterprise-ready solution with server-side rendering, static generation, and API routes.
+                                </div>
+                                <div class="template-stack">
+                                    <div class="stack-item">
+                                        <span class="stack-label">Backend:</span>
+                                        <span class="stack-value">Encore.ts</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Frontend:</span>
+                                        <span class="stack-value">Next.js 14</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Database:</span>
+                                        <span class="stack-value">Encore SQLDB</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Auth:</span>
+                                        <span class="stack-value">Encore Auth</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="template-card">
+                                <div class="template-header">
+                                    <div class="template-name">Encore.go + Svelte</div>
+                                    <div class="template-subtitle">Compiled framework with Go backend</div>
+                                </div>
+                                <div class="template-description">
+                                    Compile-time optimized frontend with no virtual DOM and excellent developer experience.
+                                </div>
+                                <div class="template-stack">
+                                    <div class="stack-item">
+                                        <span class="stack-label">Backend:</span>
+                                        <span class="stack-value">Encore.go</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Frontend:</span>
+                                        <span class="stack-value">SvelteKit</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Database:</span>
+                                        <span class="stack-value">PostgreSQL</span>
+                                    </div>
+                                    <div class="stack-item">
+                                        <span class="stack-label">Cache:</span>
+                                        <span class="stack-value">Redis</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Custom Configuration -->
+                    <div class="custom-config">
+                        <h4 class="config-title">Customize Your Stack</h4>
+                        <div class="config-options">
+                            <div class="config-group">
+                                <label class="config-label">Database Type</label>
+                                <select class="config-select">
+                                    <option>Encore SQLDB (PostgreSQL)</option>
+                                    <option>PostgreSQL (Self-managed)</option>
+                                    <option>MySQL</option>
+                                    <option>MongoDB</option>
+                                </select>
+                            </div>
+                            <div class="config-group">
+                                <label class="config-label">Styling Solution</label>
+                                <select class="config-select">
+                                    <option>Tailwind CSS</option>
+                                    <option>CSS Modules</option>
+                                    <option>Styled Components</option>
+                                    <option>Vanilla CSS</option>
+                                </select>
+                            </div>
+                            <div class="config-group">
+                                <label class="config-label">Testing Framework</label>
+                                <select class="config-select">
+                                    <option>Vitest</option>
+                                    <option>Jest</option>
+                                    <option>Playwright</option>
+                                    <option>Cypress</option>
+                                </select>
+                            </div>
+                            <div class="config-group">
+                                <label class="config-label">Package Manager</label>
+                                <select class="config-select">
+                                    <option>pnpm</option>
+                                    <option>npm</option>
+                                    <option>yarn</option>
+                                    <option>bun</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <div class="footer-info">
+                    Step 2 of 5 • Tech Stack Selection
+                </div>
+                <div class="footer-actions">
+                    <button class="btn btn-secondary">Previous</button>
+                    <button class="btn btn-primary">Next: Choose Integrations</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

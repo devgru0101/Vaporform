@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/hooks/redux';
 import { authSlice } from '@/store/auth';
+import { openModal } from '@/store/ui';
 import type { User } from '@shared/types';
 import './UserMenu.css';
 
@@ -57,7 +58,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ className = '' }) => {
 
   const handleSettings = () => {
     setIsOpen(false);
-    navigate('/settings');
+    dispatch(openModal('settings'));
   };
 
   const handleLogout = () => {

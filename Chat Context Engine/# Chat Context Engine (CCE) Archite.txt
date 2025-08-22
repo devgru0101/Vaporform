@@ -1,0 +1,446 @@
+# Chat Context Engine (CCE) Architecture
+
+## System Overview
+
+The Chat Context Engine is a sophisticated context aggregation and prompt enhancement system that intelligently combines multiple data sources to create optimized prompts for Claude Code SDK.
+
+## Core Components
+
+### 1. Context Aggregator
+```typescript
+interface ContextSource {
+  projectConfig: ProjectConfiguration;
+  chatHistory: ChatMessage[];
+  generatedCode: CodeRepository;
+  selectedUIElement: UIElementContext | null;
+  projectReadme: ProjectReadmeDocument;
+}
+
+class ContextAggregator {
+  private xmlParser: XMLParser;
+  private contextCache: Map<string, CachedContext>;
+  
+  async gatherContext(projectId: string): Promise<AggregatedContext> {
+    const sources = await Promise.all([
+      this.getProjectConfig(projectId),
+      this.getChatHistory(projectId),
+      this.getGeneratedCode(projectId),
+      this.getProjectReadme(projectId)
+    ]);
+    
+    return this.mergeContextSources(sources);
+  }
+  
+  async addUIElementContext(element: UIElementContext): Promise<void> {
+    // Process selected UI element and extract relevant code
+    const relatedCode = await this.extractRelatedCode(element);
+    this.currentContext.uiElement = {
+      element,
+      code: relatedCode,
+      dependencies: this.analyzeDependencies(relatedCode)
+    };
+  }
+}
+```
+
+### 2. UI Selector System
+```typescript
+interface UIElementContext {
+  elementId: string;
+  componentPath: string;
+  elementType: string;
+  props: Record<string, any>;
+  styles: CSSProperties;
+  parentHierarchy: string[];
+  dataBindings: DataBinding[];
+}
+
+class UISelector {
+  private previewWindow: PreviewWindow;
+  private elementTracker: ElementTracker;
+  
+  enableSelection(): void {
+    this.previewWindow.addEventListener('click', this.handleElementClick);
+    this.previewWindow.classList.add('ui-selector-active');
+  }
+  
+  private handleElementClick = async (event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const element = event.target as HTMLElement;
+    const context = await this.extractElementContext(element);
+    
+    // Send to CCE
+    await this.cce.addUIElementContext(context);
+    
+    // Visual feedback
+    this.highlightElement(element);
+  };
+  
+  private async extractElementContext(element: HTMLElement): Promise<UIElementContext> {
+    return {
+      elementId: element.id || this.generateElementId(element),
+      componentPath: this.getComponentPath(element),
+      elementType: element.tagName.toLowerCase(),
+      props: this.extractProps(element),
+      styles: this.extractStyles(element),
+      parentHierarchy: this.getParentHierarchy(element),
+      dataBindings: this.extractDataBindings(element)
+    };
+  }
+}
+```
+
+### 3. Project README Manager
+```typescript
+interface ProjectReadmeDocument {
+  projectId: string;
+  lastUpdated: Date;
+  sections: {
+    overview: string;
+    requirements: ApplicationRequirements;
+    packages: PackageManifest;
+    apis: APISpecification[];
+    libraries: LibraryConfiguration[];
+    uiPreferences: UIPreferences;
+    specifications: CustomSpecifications;
+    changelog: ChangelogEntry[];
+  };
+}
+
+class ProjectReadmeManager {
+  private encoder: XMLEncoder;
+  private decoder: XMLDecoder;
+  
+  async updateReadme(projectId: string, updates: Partial<ProjectReadmeDocument>): Promise<void> {
+    const current = await this.getReadme(projectId);
+    const updated = this.mergeUpdates(current, updates);
+    
+    // Store as XML in database
+    const xmlData = this.encoder.encode(updated);
+    await this.storeInDatabase(projectId, xmlData);
+    
+    // Update cached version
+    this.cache.set(projectId, updated);
+  }
+  
+  generateReadmeContent(doc: ProjectReadmeDocument): string {
+    return `
+# Project: ${doc.sections.overview}
+
+## Application Requirements
+${this.formatRequirements(doc.sections.requirements)}
+
+## Dependencies & Packages
+${this.formatPackages(doc.sections.packages)}
+
+## API Specifications
+${this.formatAPIs(doc.sections.apis)}
+
+## UI Preferences
+${this.formatUIPreferences(doc.sections.uiPreferences)}
+
+## Recent Changes
+${this.formatChangelog(doc.sections.changelog)}
+    `.trim();
+  }
+}
+```
+
+### 4. Enhanced Prompt Generator
+```typescript
+class EnhancedPromptGenerator {
+  private contextEngine: ContextAggregator;
+  private readmeManager: ProjectReadmeManager;
+  private promptTemplates: PromptTemplateLibrary;
+  
+  async generateEnhancedPrompt(
+    userMessage: string,
+    projectId: string
+  ): Promise<EnhancedPrompt> {
+    // 1. Gather all context
+    const context = await this.contextEngine.gatherContext(projectId);
+    
+    // 2. Get latest README
+    const readme = await this.readmeManager.getReadme(projectId);
+    
+    // 3. Analyze user intent
+    const intent = this.analyzeIntent(userMessage, context);
+    
+    // 4. Build enhanced prompt
+    return this.buildPrompt({
+      userMessage,
+      context,
+      readme,
+      intent,
+      selectedUI: context.uiElement
+    });
+  }
+  
+  private buildPrompt(params: PromptParams): EnhancedPrompt {
+    const sections = [];
+    
+    // Project context
+    sections.push(`
+<project_context>
+${params.readme.generateContent()}
+</project_context>
+    `);
+    
+    // UI Element context (if selected)
+    if (params.selectedUI) {
+      sections.push(`
+<selected_ui_element>
+Component: ${params.selectedUI.componentPath}
+Element Type: ${params.selectedUI.elementType}
+Related Code:
+\`\`\`${this.detectLanguage(params.selectedUI.code)}
+${params.selectedUI.code}
+\`\`\`
+</selected_ui_element>
+      `);
+    }
+    
+    // Recent chat context
+    sections.push(`
+<recent_conversation>
+${this.formatRecentChat(params.context.chatHistory)}
+</recent_conversation>
+    `);
+    
+    // User request
+    sections.push(`
+<user_request>
+${params.userMessage}
+</user_request>
+    `);
+    
+    // Instructions for Claude Code SDK
+    sections.push(`
+<instructions>
+Based on the project context, selected UI element (if any), and user request:
+1. Analyze the existing code structure and patterns
+2. Maintain consistency with the project's established conventions
+3. Update only the necessary files
+4. Preserve existing functionality unless explicitly asked to change
+5. Follow the UI preferences and design patterns specified in the project context
+</instructions>
+    `);
+    
+    return {
+      prompt: sections.join('\n'),
+      metadata: {
+        projectId: params.context.projectId,
+        timestamp: new Date(),
+        contextSources: this.getContextSources(params),
+        intent: params.intent
+      }
+    };
+  }
+}
+```
+
+### 5. XML Storage Layer
+```typescript
+// Encore.ts Backend Service
+import { api } from "@encore.dev/api";
+import { SQLDatabase } from "@encore.dev/storage/sqldb";
+
+const db = new SQLDatabase("project_context", {
+  migrations: "./migrations"
+});
+
+interface ContextXMLStorage {
+  projectId: string;
+  contextType: 'readme' | 'config' | 'history' | 'ui_preferences';
+  xmlData: string;
+  version: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export const contextStorage = api(
+  { expose: true, method: "POST", path: "/context/store" },
+  async (req: { projectId: string; type: string; data: any }): Promise<{ success: boolean }> => {
+    const xmlData = convertToXML(req.data);
+    
+    await db.exec`
+      INSERT INTO context_storage (project_id, context_type, xml_data, version)
+      VALUES (${req.projectId}, ${req.type}, ${xmlData}, 1)
+      ON CONFLICT (project_id, context_type)
+      DO UPDATE SET 
+        xml_data = ${xmlData},
+        version = context_storage.version + 1,
+        updated_at = NOW()
+    `;
+    
+    return { success: true };
+  }
+);
+
+export const getContext = api(
+  { expose: true, method: "GET", path: "/context/:projectId/:type" },
+  async (req: { projectId: string; type: string }): Promise<{ data: string }> => {
+    const result = await db.query`
+      SELECT xml_data FROM context_storage
+      WHERE project_id = ${req.projectId}
+      AND context_type = ${req.type}
+      ORDER BY version DESC
+      LIMIT 1
+    `;
+    
+    return { data: result.rows[0]?.xml_data || null };
+  }
+);
+```
+
+### 6. Frontend Integration
+```typescript
+// React Component for Chat Interface
+import { useState, useCallback } from 'react';
+import { CCEService } from './services/CCEService';
+import { UISelector } from './components/UISelector';
+
+export function ChatInterface({ projectId }: { projectId: string }) {
+  const [message, setMessage] = useState('');
+  const [isUISelectMode, setIsUISelectMode] = useState(false);
+  const [selectedElement, setSelectedElement] = useState<UIElementContext | null>(null);
+  
+  const cceService = new CCEService(projectId);
+  
+  const handleUISelectorClick = useCallback(() => {
+    setIsUISelectMode(!isUISelectMode);
+    
+    if (!isUISelectMode) {
+      // Enable UI selection mode
+      window.postMessage({
+        type: 'ENABLE_UI_SELECTION',
+        projectId
+      }, '*');
+    }
+  }, [isUISelectMode, projectId]);
+  
+  const handleSendMessage = async () => {
+    // Generate enhanced prompt
+    const enhancedPrompt = await cceService.generateEnhancedPrompt({
+      message,
+      selectedElement,
+      includeHistory: true
+    });
+    
+    // Send to Claude Code SDK
+    await claudeCodeSDK.execute(enhancedPrompt);
+    
+    // Update README with any new requirements
+    await cceService.updateProjectReadme(message);
+    
+    // Clear selection
+    setSelectedElement(null);
+    setIsUISelectMode(false);
+  };
+  
+  return (
+    <div className="chat-interface">
+      <div className="chat-messages">
+        {/* Chat history */}
+      </div>
+      
+      <div className="chat-input-area">
+        {selectedElement && (
+          <div className="selected-element-preview">
+            <span>Selected: {selectedElement.componentPath}</span>
+            <button onClick={() => setSelectedElement(null)}>✕</button>
+          </div>
+        )}
+        
+        <div className="input-controls">
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Tell Claude what to build..."
+          />
+          
+          <div className="action-buttons">
+            <button
+              className={`ui-selector-btn ${isUISelectMode ? 'active' : ''}`}
+              onClick={handleUISelectorClick}
+            >
+              <IconUISelector />
+              UI Selector
+            </button>
+            
+            <button onClick={handleSendMessage}>
+              Send
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+## Implementation Workflow
+
+### Phase 1: Core Infrastructure
+1. Set up XML storage layer in Encore.ts backend
+2. Implement Context Aggregator base class
+3. Create Project README Manager
+4. Set up caching layer for performance
+
+### Phase 2: UI Selector
+1. Implement preview window event handling
+2. Create element context extraction logic
+3. Build code relationship analyzer
+4. Add visual feedback system
+
+### Phase 3: Prompt Enhancement
+1. Implement prompt template system
+2. Create intent analyzer
+3. Build context merging logic
+4. Add prompt optimization algorithms
+
+### Phase 4: Integration
+1. Connect to Claude Code SDK
+2. Implement real-time README updates
+3. Add chat history management
+4. Create feedback loop for continuous improvement
+
+## Benefits of XML Storage
+
+1. **Lower Overhead**: ~30% less storage than JSON
+2. **Better Structure**: Natural hierarchy for nested data
+3. **Schema Validation**: Built-in DTD/XSD support
+4. **Streaming**: Efficient for large documents
+5. **Human Readable**: Easy debugging
+
+## Example XML Structure
+```xml
+<project-context version="1.0">
+  <project-id>proj_123</project-id>
+  <configuration>
+    <name>E-Commerce Platform</name>
+    <framework>Next.js</framework>
+    <styling>Tailwind CSS</styling>
+  </configuration>
+  <requirements>
+    <requirement priority="high">
+      <description>User authentication system</description>
+      <status>completed</status>
+    </requirement>
+  </requirements>
+  <ui-preferences>
+    <theme>dark</theme>
+    <component-library>shadcn/ui</component-library>
+  </ui-preferences>
+</project-context>
+```
+
+## Next Steps
+
+1. **Immediate**: Replace context button with UI Selector
+2. **Week 1**: Implement core CCE infrastructure
+3. **Week 2**: Add README management system
+4. **Week 3**: Complete prompt enhancement logic
+5. **Week 4**: Full integration and testing

@@ -1,3 +1,16 @@
+/*
+ * DEPRECATED: This classic wizard component is deprecated and will be removed.
+ * 
+ * The wizard functionality has been replaced with a modern modal-based approach:
+ * - components/ProjectWizard/ProjectCreationModal.tsx (new implementation)
+ * - components/ProjectWizard/steps/* (new step components)
+ * - components/Layout/Modals.tsx (modal management)
+ * 
+ * This component and all supporting files in this directory are obsolete.
+ * 
+ * @deprecated Use ProjectCreationModal instead
+ */
+
 import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store';

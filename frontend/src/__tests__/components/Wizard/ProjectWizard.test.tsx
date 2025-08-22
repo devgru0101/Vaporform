@@ -1,6 +1,14 @@
 /**
- * Project Wizard Tests
- * Tests for the complete wizard flow, step navigation, validation, and state management
+ * DEPRECATED: Legacy Project Wizard Tests
+ * 
+ * These tests cover the deprecated ProjectWizard component functionality.
+ * The wizard has been replaced with a modal-based approach.
+ * 
+ * New tests should be written for:
+ * - components/ProjectWizard/ProjectCreationModal.tsx
+ * - store/projectWizard.ts
+ * 
+ * @deprecated Tests for legacy ProjectWizard component
  */
 
 import React from 'react';

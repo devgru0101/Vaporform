@@ -1,0 +1,761 @@
+# Integrations
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vaporform - Step 3: Integrations</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        :root {
+            /* Base Colors */
+            --vf-bg-primary: #000000;
+            --vf-bg-secondary: #0A0A0A;
+            --vf-bg-tertiary: #111111;
+            --vf-bg-elevated: #1A1A1A;
+            --vf-surface-border: #2A2A2A;
+            --vf-surface-border-light: #3A3A3A;
+            
+            /* Text Colors */
+            --vf-text-primary: #F6EEE3;
+            --vf-text-secondary: #CAC4B7;
+            --vf-text-muted: #737664;
+            --vf-text-disabled: #4A4A4A;
+            
+            /* Accent Colors */
+            --vf-accent-primary: #CAC4B7;
+            --vf-accent-active: #F6EEE3;
+            --vf-accent-success: #E1FF00;
+            --vf-accent-danger: #FF4200;
+            --vf-accent-info: #2B00FF;
+            
+            /* Typography */
+            --vf-font-display: 'Space Grotesk', 'Inter', sans-serif;
+            --vf-font-body: 'Inter', system-ui, sans-serif;
+            --vf-font-mono: 'JetBrains Mono', monospace;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--vf-font-body);
+            background: var(--vf-bg-primary);
+            color: var(--vf-text-primary);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Modal Structure */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .modal-container {
+            background: var(--vf-bg-secondary);
+            border: 1px solid var(--vf-surface-border);
+            width: 90%;
+            max-width: 1000px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--vf-surface-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-title {
+            font-family: var(--vf-font-display);
+            font-size: 18px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .close-btn {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-muted);
+            cursor: pointer;
+            transition: all 150ms ease-out;
+        }
+        
+        .progress-bar {
+            height: 2px;
+            background: var(--vf-surface-border);
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--vf-accent-primary);
+            width: 60%;
+            transition: width 300ms ease-out;
+        }
+        
+        .modal-body {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .wizard-sidebar {
+            width: 240px;
+            background: var(--vf-bg-tertiary);
+            border-right: 1px solid var(--vf-surface-border);
+            padding: 24px 0;
+        }
+        
+        .step-item {
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--vf-text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            position: relative;
+        }
+        
+        .step-item.completed {
+            color: var(--vf-text-secondary);
+        }
+        
+        .step-item.active {
+            color: var(--vf-accent-active);
+            background: var(--vf-bg-elevated);
+        }
+        
+        .step-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--vf-accent-primary);
+        }
+        
+        .step-number {
+            width: 24px;
+            height: 24px;
+            border: 1px solid var(--vf-surface-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        
+        .step-item.completed .step-number {
+            background: var(--vf-accent-success);
+            color: var(--vf-bg-primary);
+            border-color: var(--vf-accent-success);
+        }
+        
+        .step-item.active .step-number {
+            background: var(--vf-accent-primary);
+            color: var(--vf-bg-primary);
+            border-color: var(--vf-accent-primary);
+        }
+        
+        .wizard-content {
+            flex: 1;
+            padding: 32px;
+            overflow-y: auto;
+        }
+        
+        .step-title {
+            font-family: var(--vf-font-display);
+            font-size: 24px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+        
+        .step-description {
+            color: var(--vf-text-muted);
+            font-size: 14px;
+            margin-bottom: 32px;
+            line-height: 1.5;
+        }
+        
+        /* Claude Recommendations */
+        .claude-recommendations {
+            background: var(--vf-bg-tertiary);
+            border: 1px solid var(--vf-surface-border);
+            padding: 16px;
+            margin-bottom: 32px;
+        }
+        
+        .claude-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .claude-icon {
+            width: 20px;
+            height: 20px;
+            background: var(--vf-accent-primary);
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--vf-bg-primary);
+        }
+        
+        .claude-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .claude-content {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--vf-text-secondary);
+            margin-bottom: 16px;
+        }
+        
+        .recommended-integrations {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+        }
+        
+        .recommended-tag {
+            padding: 8px 12px;
+            background: var(--vf-bg-secondary);
+            border: 1px solid var(--vf-accent-success);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+        }
+        
+        .recommended-tag:hover {
+            background: var(--vf-bg-elevated);
+        }
+        
+        .recommended-tag.selected {
+            background: var(--vf-accent-success);
+            color: var(--vf-bg-primary);
+        }
+        
+        /* Integration Categories */
+        .integration-category {
+            margin-bottom: 32px;
+        }
+        
+        .category-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .category-title {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--vf-text-secondary);
+        }
+        
+        .category-count {
+            font-size: 11px;
+            color: var(--vf-text-muted);
+        }
+        
+        .integration-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 12px;
+        }
+        
+        .integration-card {
+            background: var(--vf-bg-tertiary);
+            border: 1px solid var(--vf-surface-border);
+            padding: 16px;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            position: relative;
+        }
+        
+        .integration-card:hover {
+            background: var(--vf-bg-elevated);
+            border-color: var(--vf-surface-border-light);
+        }
+        
+        .integration-card.selected {
+            border-color: var(--vf-accent-primary);
+            background: var(--vf-bg-elevated);
+        }
+        
+        .integration-card.selected::after {
+            content: '✓';
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 18px;
+            height: 18px;
+            background: var(--vf-accent-primary);
+            color: var(--vf-bg-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        
+        .integration-logo {
+            width: 32px;
+            height: 32px;
+            background: var(--vf-bg-elevated);
+            border: 1px solid var(--vf-surface-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+            font-size: 14px;
+            font-weight: bold;
+            color: var(--vf-text-muted);
+        }
+        
+        .integration-name {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .integration-description {
+            font-size: 11px;
+            color: var(--vf-text-muted);
+            line-height: 1.4;
+            margin-bottom: 8px;
+        }
+        
+        .integration-meta {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        
+        .integration-badge {
+            padding: 2px 6px;
+            background: var(--vf-bg-secondary);
+            border: 1px solid var(--vf-surface-border);
+            font-size: 9px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .badge-free {
+            border-color: var(--vf-accent-success);
+            color: var(--vf-accent-success);
+        }
+        
+        .badge-paid {
+            border-color: var(--vf-text-muted);
+            color: var(--vf-text-muted);
+        }
+        
+        /* Selected Integrations Summary */
+        .selected-summary {
+            background: var(--vf-bg-tertiary);
+            border: 1px solid var(--vf-surface-border);
+            padding: 16px;
+            margin-top: 24px;
+            position: sticky;
+            bottom: 0;
+        }
+        
+        .summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .summary-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .summary-count {
+            font-size: 11px;
+            color: var(--vf-text-muted);
+        }
+        
+        .summary-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        
+        .summary-item {
+            padding: 4px 8px;
+            background: var(--vf-bg-secondary);
+            border: 1px solid var(--vf-surface-border);
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .summary-remove {
+            cursor: pointer;
+            color: var(--vf-text-muted);
+            transition: color 150ms ease-out;
+        }
+        
+        .summary-remove:hover {
+            color: var(--vf-accent-danger);
+        }
+        
+        /* Modal Footer */
+        .modal-footer {
+            padding: 20px 24px;
+            border-top: 1px solid var(--vf-surface-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--vf-bg-tertiary);
+        }
+        
+        .footer-info {
+            font-size: 11px;
+            color: var(--vf-text-muted);
+        }
+        
+        .footer-actions {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .btn {
+            padding: 8px 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: none;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            background: transparent;
+        }
+        
+        .btn-secondary {
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-secondary);
+        }
+        
+        .btn-secondary:hover {
+            border-color: var(--vf-text-secondary);
+            background: var(--vf-bg-elevated);
+        }
+        
+        .btn-primary {
+            background: var(--vf-text-muted);
+            color: var(--vf-bg-primary);
+        }
+        
+        .btn-primary:hover {
+            background: var(--vf-accent-primary);
+        }
+    </style>
+</head>
+<body>
+    <!-- Modal Overlay -->
+    <div class="modal-overlay">
+        <div class="modal-container">
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <h2 class="modal-title">Create New Project</h2>
+                <button class="close-btn">×</button>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+            
+            <!-- Modal Body -->
+            <div class="modal-body">
+                <!-- Wizard Steps Sidebar -->
+                <div class="wizard-sidebar">
+                    <div class="step-item completed">
+                        <div class="step-number">✓</div>
+                        <span>Project Vision</span>
+                    </div>
+                    <div class="step-item completed">
+                        <div class="step-number">✓</div>
+                        <span>Tech Stack</span>
+                    </div>
+                    <div class="step-item active">
+                        <div class="step-number">3</div>
+                        <span>Integrations</span>
+                    </div>
+                    <div class="step-item">
+                        <div class="step-number">4</div>
+                        <span>Configuration</span>
+                    </div>
+                    <div class="step-item">
+                        <div class="step-number">5</div>
+                        <span>Review & Generate</span>
+                    </div>
+                </div>
+                
+                <!-- Wizard Content Area -->
+                <div class="wizard-content">
+                    <h3 class="step-title">Integrations & Services</h3>
+                    <p class="step-description">Add powerful third-party services to enhance your application. Claude has recommended integrations based on your project requirements.</p>
+                    
+                    <!-- Claude's Recommendations -->
+                    <div class="claude-recommendations">
+                        <div class="claude-header">
+                            <div class="claude-icon">C</div>
+                            <span class="claude-title">Recommended for Your Project</span>
+                        </div>
+                        <div class="claude-content">
+                            Based on your task management application, these integrations would be valuable for team collaboration, user authentication, and real-time notifications.
+                        </div>
+                        <div class="recommended-integrations">
+                            <div class="recommended-tag selected">
+                                <span>Clerk Auth</span>
+                                <span>✓</span>
+                            </div>
+                            <div class="recommended-tag selected">
+                                <span>Resend Email</span>
+                                <span>✓</span>
+                            </div>
+                            <div class="recommended-tag">
+                                <span>Stripe Payments</span>
+                                <span>+</span>
+                            </div>
+                            <div class="recommended-tag">
+                                <span>Sentry Monitoring</span>
+                                <span>+</span>
+                            </div>
+                            <div class="recommended-tag">
+                                <span>Upstash Redis</span>
+                                <span>+</span>
+                            </div>
+                            <div class="recommended-tag">
+                                <span>PostHog Analytics</span>
+                                <span>+</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Authentication Category -->
+                    <div class="integration-category">
+                        <div class="category-header">
+                            <h4 class="category-title">Authentication</h4>
+                            <span class="category-count">1 selected</span>
+                        </div>
+                        <div class="integration-grid">
+                            <div class="integration-card selected">
+                                <div class="integration-logo">CL</div>
+                                <div class="integration-name">Clerk</div>
+                                <div class="integration-description">Complete user management with social logins, MFA, and user profiles</div>
+                                <div class="integration-meta">
+                                    <span class="integration-badge badge-free">Free tier</span>
+                                </div>
+                            </div>
+                            <div class="integration-card">
+                                <div class="integration-logo">A0</div>
+                                <div class="integration-name">Auth0</div>
+                                <div class="integration-description">Enterprise-grade authentication and authorization platform</div>
+                                <div class="integration-meta">
+                                    <span class="integration-badge badge-free">Free tier</span>
+                                </div>
+                            </div>
+                            <div class="integration-card">
+                                <div class="integration-logo">SB</div>
+                                <div class="integration-name">Supabase Auth</div>
+                                <div class="integration-description">Open source auth with row-level security</div>
+                                <div class="integration-meta">
+                                    <span class="integration-badge badge-free">Free tier</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Payments Category -->
+                    <div class="integration-category">
+                        <div class="category-header">
+                            <h4 class="category-title">Payments</h4>
+                            <span class="category-count">0 selected</span>
+                        </div>
+                        <div class="integration-grid">
+                            <div class="integration-card">
+                                <div class="integration-logo">ST</div>
+                                <div class="integration-name">Stripe</div>
+                                <div class="integration-description">Complete payment processing with subscriptions and invoicing</div>
+                                <div class="integration-meta">
+                                    <span class="integration-badge badge-paid">2.9% + 30¢</span>
+                                </div>
+                            </div>
+                            <div class="integration-card">
+                                <div class="integration-logo">LS</div>
+                                <div class="integration-name">Lemon Squeezy</div>
+                                <div class="integration-description">Merchant of record for SaaS and digital products</div>
+                                <div class="integration-meta">
+                                    <span class="integration-badge badge-paid">5% + 50¢</span>
+                                </div>
+                            </div>
+                            <div class="integration-card">
+                                <div class="integration-logo">PP</div>
+                                <div class="integration-name">Paddle</div>
+                                <div class="integration-description">All-in-one SaaS commerce platform</div>
+                                <div class="integration-meta">
+                                    <span class="integration-badge badge-paid">5% + 50¢</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Communication Category -->
+                    <div class="integration-category">
+                        <div class="category-header">
+                            <h4 class="category-title">Communication</h4>
+                            <span class="category-count">1 selected</span>
+                        </div>
+                        <div class="integration-grid">
+                            <div class="integration-card selected">
+                                <div class="integration-logo">RS</div>
+                                <div class="integration-name">Resend</div>
+                                <div class="integration-description">Developer-friendly email API with great DX</div>
+                                <div class="integration-meta">
+                                    <span class="integration-badge badge-free">Free tier</span>
+                                </div>
+                            </div>
+                            <div class="integration-card">
+                                <div class="integration-logo">SG</div>
+                                <div class="integration-name">SendGrid</div>
+                                <div class="integration-description">Scalable email delivery platform</div>
+                                <div class="integration-meta">
+                                    <span class="integration-badge badge-free">Free tier</span>
+                                </div>
+                            </div>
+                            <div class="integration-card">
+                                <div class="integration-logo">TW</div>
+                                <div class="integration-name">Twilio</div>
+                                <div class="integration-description">SMS, voice, and video communications</div>
+                                <div class="integration-meta">
+                                    <span class="integration-badge badge-paid">Pay as you go</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- AI/ML Category -->
+                    <div class="integration-category">
+                        <div class="category-header">
+                            <h4 class="category-title">AI/ML Services</h4>
+                            <span class="category-count">0 selected</span>
+                        </div>
+                        <div class="integration-grid">
+                            <div class="integration-card">
+                                <div class="integration-logo">OA</div>
+                                <div class="integration-name">OpenAI</div>
+                                <div class="integration-description">GPT models for text generation and analysis</div>
+                                <div class="integration-meta">
+                                    <span class="integration-badge badge-paid">Usage-based</span>
+                                </div>
+                            </div>
+                            <div class="integration-card">
+                                <div class="integration-logo">AN</div>
+                                <div class="integration-name">Anthropic</div>
+                                <div class="integration-description">Claude API for safe and helpful AI</div>
+                                <div class="integration-meta">
+                                    <span class="integration-badge badge-paid">Usage-based</span>
+                                </div>
+                            </div>
+                            <div class="integration-card">
+                                <div class="integration-logo">RE</div>
+                                <div class="integration-name">Replicate</div>
+                                <div class="integration-description">Run ML models in the cloud</div>
+                                <div class="integration-meta">
+                                    <span class="integration-badge badge-free">Free tier</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Selected Integrations Summary -->
+                    <div class="selected-summary">
+                        <div class="summary-header">
+                            <span class="summary-title">Selected Integrations</span>
+                            <span class="summary-count">2 services</span>
+                        </div>
+                        <div class="summary-items">
+                            <div class="summary-item">
+                                Clerk Auth
+                                <span class="summary-remove">×</span>
+                            </div>
+                            <div class="summary-item">
+                                Resend Email
+                                <span class="summary-remove">×</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <div class="footer-info">
+                    Step 3 of 5 • Integration Selection
+                </div>
+                <div class="footer-actions">
+                    <button class="btn btn-secondary">Previous</button>
+                    <button class="btn btn-primary">Next: Configure Project</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

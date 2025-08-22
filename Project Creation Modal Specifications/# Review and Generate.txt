@@ -1,0 +1,799 @@
+# Review and Generate
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vaporform - Step 5: Review & Generate</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+        
+        :root {
+            /* Base Colors */
+            --vf-bg-primary: #000000;
+            --vf-bg-secondary: #0A0A0A;
+            --vf-bg-tertiary: #111111;
+            --vf-bg-elevated: #1A1A1A;
+            --vf-surface-border: #2A2A2A;
+            --vf-surface-border-light: #3A3A3A;
+            
+            /* Text Colors */
+            --vf-text-primary: #F6EEE3;
+            --vf-text-secondary: #CAC4B7;
+            --vf-text-muted: #737664;
+            --vf-text-disabled: #4A4A4A;
+            
+            /* Accent Colors */
+            --vf-accent-primary: #CAC4B7;
+            --vf-accent-active: #F6EEE3;
+            --vf-accent-success: #E1FF00;
+            --vf-accent-danger: #FF4200;
+            --vf-accent-info: #2B00FF;
+            
+            /* Typography */
+            --vf-font-display: 'Space Grotesk', 'Inter', sans-serif;
+            --vf-font-body: 'Inter', system-ui, sans-serif;
+            --vf-font-mono: 'JetBrains Mono', monospace;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: var(--vf-font-body);
+            background: var(--vf-bg-primary);
+            color: var(--vf-text-primary);
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Modal Structure */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .modal-container {
+            background: var(--vf-bg-secondary);
+            border: 1px solid var(--vf-surface-border);
+            width: 90%;
+            max-width: 1000px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .modal-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--vf-surface-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-title {
+            font-family: var(--vf-font-display);
+            font-size: 18px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .close-btn {
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent;
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-muted);
+            cursor: pointer;
+            transition: all 150ms ease-out;
+        }
+        
+        .progress-bar {
+            height: 2px;
+            background: var(--vf-surface-border);
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: var(--vf-accent-primary);
+            width: 100%;
+            transition: width 300ms ease-out;
+        }
+        
+        .modal-body {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .wizard-sidebar {
+            width: 240px;
+            background: var(--vf-bg-tertiary);
+            border-right: 1px solid var(--vf-surface-border);
+            padding: 24px 0;
+        }
+        
+        .step-item {
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--vf-text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            position: relative;
+        }
+        
+        .step-item.completed {
+            color: var(--vf-text-secondary);
+        }
+        
+        .step-item.active {
+            color: var(--vf-accent-active);
+            background: var(--vf-bg-elevated);
+        }
+        
+        .step-item.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--vf-accent-primary);
+        }
+        
+        .step-number {
+            width: 24px;
+            height: 24px;
+            border: 1px solid var(--vf-surface-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        
+        .step-item.completed .step-number {
+            background: var(--vf-accent-success);
+            color: var(--vf-bg-primary);
+            border-color: var(--vf-accent-success);
+        }
+        
+        .step-item.active .step-number {
+            background: var(--vf-accent-primary);
+            color: var(--vf-bg-primary);
+            border-color: var(--vf-accent-primary);
+        }
+        
+        .wizard-content {
+            flex: 1;
+            padding: 32px;
+            overflow-y: auto;
+        }
+        
+        .step-title {
+            font-family: var(--vf-font-display);
+            font-size: 24px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+        
+        .step-description {
+            color: var(--vf-text-muted);
+            font-size: 14px;
+            margin-bottom: 32px;
+            line-height: 1.5;
+        }
+        
+        /* Project Summary */
+        .project-summary {
+            background: var(--vf-bg-tertiary);
+            border: 1px solid var(--vf-surface-border);
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        
+        .summary-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        .summary-title {
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        
+        .summary-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .summary-label {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--vf-text-muted);
+        }
+        
+        .summary-value {
+            font-size: 12px;
+            color: var(--vf-text-primary);
+            font-family: var(--vf-font-mono);
+        }
+        
+        /* Generation Plan */
+        .generation-plan {
+            background: var(--vf-bg-tertiary);
+            border: 1px solid var(--vf-surface-border);
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        
+        .claude-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        
+        .claude-icon {
+            width: 20px;
+            height: 20px;
+            background: var(--vf-accent-primary);
+            border-radius: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--vf-bg-primary);
+        }
+        
+        .claude-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .claude-message {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--vf-text-secondary);
+            margin-bottom: 20px;
+        }
+        
+        /* Generation Steps */
+        .generation-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .gen-step {
+            display: flex;
+            gap: 12px;
+            padding: 12px;
+            background: var(--vf-bg-secondary);
+            border: 1px solid var(--vf-surface-border);
+            transition: all 150ms ease-out;
+        }
+        
+        .gen-step.active {
+            border-color: var(--vf-accent-primary);
+            background: var(--vf-bg-elevated);
+        }
+        
+        .gen-step.completed {
+            border-color: var(--vf-accent-success);
+        }
+        
+        .gen-step-number {
+            width: 24px;
+            height: 24px;
+            border: 1px solid var(--vf-surface-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+        
+        .gen-step.completed .gen-step-number {
+            background: var(--vf-accent-success);
+            color: var(--vf-bg-primary);
+            border-color: var(--vf-accent-success);
+        }
+        
+        .gen-step.active .gen-step-number {
+            background: var(--vf-accent-primary);
+            color: var(--vf-bg-primary);
+            border-color: var(--vf-accent-primary);
+        }
+        
+        .gen-step-content {
+            flex: 1;
+        }
+        
+        .gen-step-title {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .gen-step-description {
+            font-size: 11px;
+            color: var(--vf-text-muted);
+            line-height: 1.4;
+        }
+        
+        .gen-step-status {
+            font-size: 10px;
+            color: var(--vf-text-muted);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        /* Timeline */
+        .generation-timeline {
+            display: flex;
+            gap: 24px;
+            padding: 16px;
+            background: var(--vf-bg-secondary);
+            border: 1px solid var(--vf-surface-border);
+            margin-top: 16px;
+        }
+        
+        .timeline-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            color: var(--vf-text-secondary);
+        }
+        
+        .timeline-icon {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--vf-text-muted);
+        }
+        
+        /* Generation Progress (Active State) */
+        .generation-progress {
+            background: var(--vf-bg-tertiary);
+            border: 1px solid var(--vf-surface-border);
+            padding: 32px;
+            text-align: center;
+        }
+        
+        .progress-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 20px;
+            animation: spin 2s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .progress-title {
+            font-family: var(--vf-font-display);
+            font-size: 20px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
+            margin-bottom: 8px;
+        }
+        
+        .progress-subtitle {
+            font-size: 13px;
+            color: var(--vf-text-muted);
+            margin-bottom: 24px;
+        }
+        
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: var(--vf-surface-border);
+            margin-bottom: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--vf-accent-primary);
+            width: 35%;
+            transition: width 500ms ease-out;
+        }
+        
+        .progress-percentage {
+            font-family: var(--vf-font-mono);
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--vf-accent-primary);
+            margin-bottom: 8px;
+        }
+        
+        .progress-eta {
+            font-size: 11px;
+            color: var(--vf-text-muted);
+        }
+        
+        .progress-steps {
+            margin-top: 32px;
+            text-align: left;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .progress-step {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--vf-text-muted);
+        }
+        
+        .progress-step.completed {
+            color: var(--vf-accent-success);
+        }
+        
+        .progress-step.active {
+            color: var(--vf-text-primary);
+        }
+        
+        .step-indicator {
+            width: 16px;
+            height: 16px;
+            border: 1px solid var(--vf-surface-border);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+        }
+        
+        .progress-step.completed .step-indicator {
+            background: var(--vf-accent-success);
+            border-color: var(--vf-accent-success);
+            color: var(--vf-bg-primary);
+        }
+        
+        .progress-step.active .step-indicator {
+            border-color: var(--vf-accent-primary);
+            animation: pulse 1.5s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Modal Footer */
+        .modal-footer {
+            padding: 20px 24px;
+            border-top: 1px solid var(--vf-surface-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--vf-bg-tertiary);
+        }
+        
+        .footer-info {
+            font-size: 11px;
+            color: var(--vf-text-muted);
+        }
+        
+        .footer-actions {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .btn {
+            padding: 8px 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border: none;
+            cursor: pointer;
+            transition: all 150ms ease-out;
+            background: transparent;
+        }
+        
+        .btn-secondary {
+            border: 1px solid var(--vf-surface-border);
+            color: var(--vf-text-secondary);
+        }
+        
+        .btn-secondary:hover {
+            border-color: var(--vf-text-secondary);
+            background: var(--vf-bg-elevated);
+        }
+        
+        .btn-primary {
+            background: var(--vf-text-muted);
+            color: var(--vf-bg-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary:hover {
+            background: var(--vf-accent-primary);
+        }
+        
+        .btn-primary.generating {
+            background: var(--vf-accent-success);
+        }
+        
+        .sparkle-icon {
+            width: 16px;
+            height: 16px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Modal Overlay -->
+    <div class="modal-overlay">
+        <div class="modal-container">
+            <!-- Modal Header -->
+            <div class="modal-header">
+                <h2 class="modal-title">Create New Project</h2>
+                <button class="close-btn">×</button>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+            
+            <!-- Modal Body -->
+            <div class="modal-body">
+                <!-- Wizard Steps Sidebar -->
+                <div class="wizard-sidebar">
+                    <div class="step-item completed">
+                        <div class="step-number">✓</div>
+                        <span>Project Vision</span>
+                    </div>
+                    <div class="step-item completed">
+                        <div class="step-number">✓</div>
+                        <span>Tech Stack</span>
+                    </div>
+                    <div class="step-item completed">
+                        <div class="step-number">✓</div>
+                        <span>Integrations</span>
+                    </div>
+                    <div class="step-item completed">
+                        <div class="step-number">✓</div>
+                        <span>Configuration</span>
+                    </div>
+                    <div class="step-item active">
+                        <div class="step-number">5</div>
+                        <span>Review & Generate</span>
+                    </div>
+                </div>
+                
+                <!-- Wizard Content Area -->
+                <div class="wizard-content">
+                    <!-- Review State -->
+                    <div id="review-state">
+                        <h3 class="step-title">Review & Generate</h3>
+                        <p class="step-description">Claude will create your project with these specifications. Review the details and click generate to begin.</p>
+                        
+                        <!-- Project Summary -->
+                        <div class="project-summary">
+                            <div class="summary-header">
+                                <h4 class="summary-title">Project Configuration</h4>
+                            </div>
+                            <div class="summary-grid">
+                                <div class="summary-item">
+                                    <span class="summary-label">Project Name</span>
+                                    <span class="summary-value">TaskFlow Pro</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Tech Stack</span>
+                                    <span class="summary-value">Encore.ts + React</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Database</span>
+                                    <span class="summary-value">Encore SQLDB (PostgreSQL)</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Integrations</span>
+                                    <span class="summary-value">Clerk, Resend</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Environment</span>
+                                    <span class="summary-value">Development</span>
+                                </div>
+                                <div class="summary-item">
+                                    <span class="summary-label">Container</span>
+                                    <span class="summary-value">512MB RAM, 50% CPU</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Generation Plan -->
+                        <div class="generation-plan">
+                            <div class="claude-header">
+                                <div class="claude-icon">C</div>
+                                <span class="claude-title">Generation Plan</span>
+                            </div>
+                            <div class="claude-message">
+                                Here's what I'll create for your task management application. The entire process will take approximately 3-5 minutes.
+                            </div>
+                            
+                            <div class="generation-steps">
+                                <div class="gen-step">
+                                    <div class="gen-step-number">1</div>
+                                    <div class="gen-step-content">
+                                        <div class="gen-step-title">Project Structure</div>
+                                        <div class="gen-step-description">Create Encore.ts backend with services, API endpoints, and database schemas</div>
+                                    </div>
+                                </div>
+                                <div class="gen-step">
+                                    <div class="gen-step-number">2</div>
+                                    <div class="gen-step-content">
+                                        <div class="gen-step-title">Frontend Application</div>
+                                        <div class="gen-step-description">Build React UI with components, routing, and state management</div>
+                                    </div>
+                                </div>
+                                <div class="gen-step">
+                                    <div class="gen-step-number">3</div>
+                                    <div class="gen-step-content">
+                                        <div class="gen-step-title">Authentication Setup</div>
+                                        <div class="gen-step-description">Configure Clerk for user authentication and session management</div>
+                                    </div>
+                                </div>
+                                <div class="gen-step">
+                                    <div class="gen-step-number">4</div>
+                                    <div class="gen-step-content">
+                                        <div class="gen-step-title">Database & Migrations</div>
+                                        <div class="gen-step-description">Set up Encore SQLDB with tables for projects, tasks, and users</div>
+                                    </div>
+                                </div>
+                                <div class="gen-step">
+                                    <div class="gen-step-number">5</div>
+                                    <div class="gen-step-content">
+                                        <div class="gen-step-title">Container Deployment</div>
+                                        <div class="gen-step-description">Build Docker container and deploy to Vaporform infrastructure</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="generation-timeline">
+                                <div class="timeline-item">
+                                    <span class="timeline-icon">⏱</span>
+                                    <span>Estimated time: 3-5 minutes</span>
+                                </div>
+                                <div class="timeline-item">
+                                    <span class="timeline-icon">📁</span>
+                                    <span>~47 files will be created</span>
+                                </div>
+                                <div class="timeline-item">
+                                    <span class="timeline-icon">🔗</span>
+                                    <span>Available at: taskflow-pro.vaporform.dev</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Generation Progress State (Hidden by default) -->
+                    <div id="generation-state" style="display: none;">
+                        <div class="generation-progress">
+                            <div class="progress-icon">✨</div>
+                            <h3 class="progress-title">Claude is building your project</h3>
+                            <p class="progress-subtitle">Setting up your Encore.ts backend...</p>
+                            
+                            <div class="progress-bar-container">
+                                <div class="progress-bar-fill"></div>
+                            </div>
+                            
+                            <div class="progress-percentage">35%</div>
+                            <div class="progress-eta">Approximately 2 minutes remaining</div>
+                            
+                            <div class="progress-steps">
+                                <div class="progress-step completed">
+                                    <span class="step-indicator">✓</span>
+                                    <span>Project structure created</span>
+                                </div>
+                                <div class="progress-step completed">
+                                    <span class="step-indicator">✓</span>
+                                    <span>Dependencies installed</span>
+                                </div>
+                                <div class="progress-step active">
+                                    <span class="step-indicator">•</span>
+                                    <span>Generating backend services...</span>
+                                </div>
+                                <div class="progress-step">
+                                    <span class="step-indicator"></span>
+                                    <span>Building frontend components</span>
+                                </div>
+                                <div class="progress-step">
+                                    <span class="step-indicator"></span>
+                                    <span>Configuring integrations</span>
+                                </div>
+                                <div class="progress-step">
+                                    <span class="step-indicator"></span>
+                                    <span>Starting development server</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Modal Footer -->
+            <div class="modal-footer">
+                <div class="footer-info">
+                    Step 5 of 5 • Final Review
+                </div>
+                <div class="footer-actions">
+                    <button class="btn btn-secondary">Back to Edit</button>
+                    <button class="btn btn-primary" id="generate-btn">
+                        <span class="sparkle-icon">✨</span>
+                        Generate My Project
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Simple demo interaction
+        document.getElementById('generate-btn').addEventListener('click', function() {
+            document.getElementById('review-state').style.display = 'none';
+            document.getElementById('generation-state').style.display = 'block';
+            this.textContent = 'Generating...';
+            this.classList.add('generating');
+            this.disabled = true;
+        });
+    </script>
+</body>
+</html>

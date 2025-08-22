@@ -1,0 +1,731 @@
+// services/ChatContextEngine.ts
+import { XMLParser, XMLBuilder } from 'fast-xml-parser';
+import { EventEmitter } from 'events';
+
+// Types and Interfaces
+export interface ProjectConfiguration {
+  id: string;
+  name: string;
+  framework: string;
+  language: 'typescript' | 'javascript';
+  styling: string;
+  features: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  context?: any;
+}
+
+export interface UIElementContext {
+  elementId: string;
+  componentPath: string;
+  elementType: string;
+  props: Record<string, any>;
+  styles: Record<string, string>;
+  parentHierarchy: string[];
+  dataBindings: Array<{
+    key: string;
+    value: any;
+    source: string;
+  }>;
+  relatedCode?: {
+    component: string;
+    imports: string[];
+    handlers: string[];
+  };
+}
+
+export interface ProjectReadme {
+  projectId: string;
+  lastUpdated: Date;
+  overview: string;
+  requirements: ApplicationRequirement[];
+  packages: PackageInfo[];
+  apis: APISpec[];
+  uiPreferences: UIPreferences;
+  specifications: CustomSpec[];
+  changelog: ChangelogEntry[];
+}
+
+export interface ApplicationRequirement {
+  id: string;
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+  status: 'pending' | 'in-progress' | 'completed';
+  addedAt: Date;
+  modifiedAt?: Date;
+}
+
+export interface PackageInfo {
+  name: string;
+  version: string;
+  purpose: string;
+  addedAt: Date;
+}
+
+export interface APISpec {
+  endpoint: string;
+  method: string;
+  description: string;
+  parameters?: Record<string, any>;
+  response?: Record<string, any>;
+}
+
+export interface UIPreferences {
+  theme: 'light' | 'dark' | 'system';
+  primaryColor: string;
+  fontFamily: string;
+  componentLibrary: string;
+  animations: boolean;
+  responsiveBreakpoints: Record<string, number>;
+}
+
+export interface CustomSpec {
+  key: string;
+  value: any;
+  description?: string;
+}
+
+export interface ChangelogEntry {
+  id: string;
+  timestamp: Date;
+  type: 'feature' | 'fix' | 'update' | 'refactor';
+  description: string;
+  files?: string[];
+}
+
+export interface EnhancedPrompt {
+  prompt: string;
+  context: {
+    projectId: string;
+    selectedUI?: UIElementContext;
+    recentChanges: ChangelogEntry[];
+    activeRequirements: ApplicationRequirement[];
+  };
+  metadata: {
+    timestamp: Date;
+    sources: string[];
+    intent: string;
+    confidence: number;
+  };
+}
+
+// Main Chat Context Engine Class
+export class ChatContextEngine extends EventEmitter {
+  private projectId: string;
+  private xmlParser: XMLParser;
+  private xmlBuilder: XMLBuilder;
+  private contextCache: Map<string, any>;
+  private readme: ProjectReadme | null = null;
+  private chatHistory: ChatMessage[] = [];
+  private currentUIContext: UIElementContext | null = null;
+
+  constructor(projectId: string) {
+    super();
+    this.projectId = projectId;
+    this.contextCache = new Map();
+    
+    this.xmlParser = new XMLParser({
+      ignoreAttributes: false,
+      attributeNamePrefix: '@_',
+      parseAttributeValue: true,
+      trimValues: true
+    });
+    
+    this.xmlBuilder = new XMLBuilder({
+      ignoreAttributes: false,
+      attributeNamePrefix: '@_',
+      format: true,
+      indentBy: '  '
+    });
+    
+    this.initialize();
+  }
+
+  private async initialize(): Promise<void> {
+    // Load initial context
+    await this.loadProjectConfiguration();
+    await this.loadProjectReadme();
+    await this.loadChatHistory();
+  }
+
+  // Project Configuration Management
+  private async loadProjectConfiguration(): Promise<ProjectConfiguration> {
+    const cached = this.contextCache.get('projectConfig');
+    if (cached) return cached;
+
+    try {
+      const response = await fetch(`/api/context/${this.projectId}/config`);
+      const { data } = await response.json();
+      
+      if (data) {
+        const config = this.xmlParser.parse(data);
+        this.contextCache.set('projectConfig', config);
+        return config;
+      }
+    } catch (error) {
+      console.error('Failed to load project configuration:', error);
+    }
+    
+    return this.getDefaultProjectConfig();
+  }
+
+  private getDefaultProjectConfig(): ProjectConfiguration {
+    return {
+      id: this.projectId,
+      name: 'Untitled Project',
+      framework: 'react',
+      language: 'typescript',
+      styling: 'tailwind',
+      features: [],
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+  }
+
+  // Project README Management
+  public async loadProjectReadme(): Promise<ProjectReadme> {
+    try {
+      const response = await fetch(`/api/context/${this.projectId}/readme`);
+      const { data } = await response.json();
+      
+      if (data) {
+        this.readme = this.xmlParser.parse(data);
+        return this.readme;
+      }
+    } catch (error) {
+      console.error('Failed to load project README:', error);
+    }
+    
+    // Create default README if none exists
+    this.readme = this.createDefaultReadme();
+    await this.saveProjectReadme();
+    return this.readme;
+  }
+
+  private createDefaultReadme(): ProjectReadme {
+    const config = this.contextCache.get('projectConfig') || this.getDefaultProjectConfig();
+    
+    return {
+      projectId: this.projectId,
+      lastUpdated: new Date(),
+      overview: `${config.name} - A ${config.framework} application`,
+      requirements: [],
+      packages: this.getDefaultPackages(config),
+      apis: [],
+      uiPreferences: {
+        theme: 'system',
+        primaryColor: '#3B82F6',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        componentLibrary: 'custom',
+        animations: true,
+        responsiveBreakpoints: {
+          sm: 640,
+          md: 768,
+          lg: 1024,
+          xl: 1280
+        }
+      },
+      specifications: [],
+      changelog: []
+    };
+  }
+
+  private getDefaultPackages(config: ProjectConfiguration): PackageInfo[] {
+    const packages: PackageInfo[] = [];
+    const now = new Date();
+    
+    if (config.framework === 'react' || config.framework === 'next') {
+      packages.push({
+        name: 'react',
+        version: '^18.2.0',
+        purpose: 'UI library',
+        addedAt: now
+      });
+    }
+    
+    if (config.framework === 'next') {
+      packages.push({
+        name: 'next',
+        version: '^14.0.0',
+        purpose: 'React framework',
+        addedAt: now
+      });
+    }
+    
+    if (config.styling === 'tailwind') {
+      packages.push({
+        name: 'tailwindcss',
+        version: '^3.4.0',
+        purpose: 'CSS framework',
+        addedAt: now
+      });
+    }
+    
+    return packages;
+  }
+
+  public async updateProjectReadme(updates: Partial<ProjectReadme>): Promise<void> {
+    if (!this.readme) {
+      this.readme = this.createDefaultReadme();
+    }
+    
+    // Merge updates
+    this.readme = {
+      ...this.readme,
+      ...updates,
+      lastUpdated: new Date()
+    };
+    
+    // Add to changelog if significant update
+    if (updates.requirements || updates.packages || updates.apis) {
+      this.addChangelogEntry({
+        type: 'update',
+        description: 'Project requirements and specifications updated',
+        files: []
+      });
+    }
+    
+    await this.saveProjectReadme();
+    this.emit('readme-updated', this.readme);
+  }
+
+  private async saveProjectReadme(): Promise<void> {
+    if (!this.readme) return;
+    
+    const xmlData = this.xmlBuilder.build({
+      'project-readme': this.readme
+    });
+    
+    try {
+      await fetch('/api/context/store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: this.projectId,
+          type: 'readme',
+          data: xmlData
+        })
+      });
+    } catch (error) {
+      console.error('Failed to save project README:', error);
+    }
+  }
+
+  // Chat History Management
+  private async loadChatHistory(): Promise<void> {
+    try {
+      const response = await fetch(`/api/context/${this.projectId}/history`);
+      const { data } = await response.json();
+      
+      if (data) {
+        const parsed = this.xmlParser.parse(data);
+        this.chatHistory = parsed.messages || [];
+      }
+    } catch (error) {
+      console.error('Failed to load chat history:', error);
+    }
+  }
+
+  public addChatMessage(message: ChatMessage): void {
+    this.chatHistory.push(message);
+    
+    // Keep only last 50 messages for context
+    if (this.chatHistory.length > 50) {
+      this.chatHistory = this.chatHistory.slice(-50);
+    }
+    
+    this.emit('chat-message-added', message);
+  }
+
+  // UI Element Context Management
+  public setUIElementContext(context: UIElementContext | null): void {
+    this.currentUIContext = context;
+    
+    if (context) {
+      // Extract related code information
+      this.enhanceUIContext(context);
+    }
+    
+    this.emit('ui-context-changed', context);
+  }
+
+  private async enhanceUIContext(context: UIElementContext): Promise<void> {
+    try {
+      // Fetch the actual component code
+      const response = await fetch(`/api/code/component/${context.componentPath}`);
+      const codeData = await response.json();
+      
+      if (codeData) {
+        context.relatedCode = {
+          component: codeData.code,
+          imports: this.extractImports(codeData.code),
+          handlers: this.extractHandlers(codeData.code)
+        };
+      }
+    } catch (error) {
+      console.error('Failed to enhance UI context:', error);
+    }
+  }
+
+  private extractImports(code: string): string[] {
+    const importRegex = /import\s+(?:.+\s+from\s+)?['"](.+)['"]/g;
+    const imports: string[] = [];
+    let match;
+    
+    while ((match = importRegex.exec(code)) !== null) {
+      imports.push(match[1]);
+    }
+    
+    return imports;
+  }
+
+  private extractHandlers(code: string): string[] {
+    const handlerRegex = /(?:const|let|var|function)\s+(\w+)\s*=.*?(?:=>|\bfunction\b)/g;
+    const handlers: string[] = [];
+    let match;
+    
+    while ((match = handlerRegex.exec(code)) !== null) {
+      if (match[1].startsWith('handle') || match[1].startsWith('on')) {
+        handlers.push(match[1]);
+      }
+    }
+    
+    return handlers;
+  }
+
+  // Enhanced Prompt Generation
+  public async generateEnhancedPrompt(userMessage: string): Promise<EnhancedPrompt> {
+    // Ensure we have latest context
+    await this.loadProjectReadme();
+    
+    const config = await this.loadProjectConfiguration();
+    const intent = this.analyzeUserIntent(userMessage);
+    
+    // Build comprehensive context
+    const contextSections: string[] = [];
+    
+    // 1. Project Configuration Context
+    contextSections.push(this.formatProjectContext(config));
+    
+    // 2. README Context
+    if (this.readme) {
+      contextSections.push(this.formatReadmeContext(this.readme));
+    }
+    
+    // 3. UI Element Context
+    if (this.currentUIContext) {
+      contextSections.push(this.formatUIContext(this.currentUIContext));
+    }
+    
+    // 4. Recent Chat Context
+    if (this.chatHistory.length > 0) {
+      contextSections.push(this.formatChatHistory(this.chatHistory.slice(-5)));
+    }
+    
+    // 5. User Request
+    contextSections.push(`
+<user_request>
+${userMessage}
+</user_request>`);
+    
+    // 6. Instructions
+    contextSections.push(this.generateInstructions(intent));
+    
+    const enhancedPrompt: EnhancedPrompt = {
+      prompt: contextSections.join('\n\n'),
+      context: {
+        projectId: this.projectId,
+        selectedUI: this.currentUIContext || undefined,
+        recentChanges: this.readme?.changelog.slice(-5) || [],
+        activeRequirements: this.readme?.requirements.filter(r => r.status !== 'completed') || []
+      },
+      metadata: {
+        timestamp: new Date(),
+        sources: this.getActiveSources(),
+        intent,
+        confidence: this.calculateConfidence(intent, userMessage)
+      }
+    };
+    
+    // Log the prompt generation
+    this.addChangelogEntry({
+      type: 'feature',
+      description: `Generated enhanced prompt for: ${intent}`,
+      files: []
+    });
+    
+    return enhancedPrompt;
+  }
+
+  private analyzeUserIntent(message: string): string {
+    const lowercased = message.toLowerCase();
+    
+    if (lowercased.includes('add') || lowercased.includes('create') || lowercased.includes('new')) {
+      return 'create-feature';
+    } else if (lowercased.includes('fix') || lowercased.includes('bug') || lowercased.includes('error')) {
+      return 'fix-issue';
+    } else if (lowercased.includes('change') || lowercased.includes('update') || lowercased.includes('modify')) {
+      return 'modify-existing';
+    } else if (lowercased.includes('style') || lowercased.includes('design') || lowercased.includes('look')) {
+      return 'update-styling';
+    } else if (lowercased.includes('refactor') || lowercased.includes('optimize') || lowercased.includes('improve')) {
+      return 'refactor-code';
+    } else {
+      return 'general-request';
+    }
+  }
+
+  private formatProjectContext(config: ProjectConfiguration): string {
+    return `
+<project_configuration>
+  <name>${config.name}</name>
+  <framework>${config.framework}</framework>
+  <language>${config.language}</language>
+  <styling>${config.styling}</styling>
+  <features>${config.features.join(', ')}</features>
+</project_configuration>`;
+  }
+
+  private formatReadmeContext(readme: ProjectReadme): string {
+    const sections: string[] = ['<project_readme>'];
+    
+    // Overview
+    sections.push(`  <overview>${readme.overview}</overview>`);
+    
+    // Active Requirements
+    const activeReqs = readme.requirements.filter(r => r.status !== 'completed');
+    if (activeReqs.length > 0) {
+      sections.push('  <active_requirements>');
+      activeReqs.forEach(req => {
+        sections.push(`    <requirement priority="${req.priority}" status="${req.status}">`);
+        sections.push(`      ${req.description}`);
+        sections.push('    </requirement>');
+      });
+      sections.push('  </active_requirements>');
+    }
+    
+    // Packages
+    if (readme.packages.length > 0) {
+      sections.push('  <packages>');
+      readme.packages.forEach(pkg => {
+        sections.push(`    <package name="${pkg.name}" version="${pkg.version}">${pkg.purpose}</package>`);
+      });
+      sections.push('  </packages>');
+    }
+    
+    // UI Preferences
+    sections.push('  <ui_preferences>');
+    sections.push(`    <theme>${readme.uiPreferences.theme}</theme>`);
+    sections.push(`    <primary_color>${readme.uiPreferences.primaryColor}</primary_color>`);
+    sections.push(`    <component_library>${readme.uiPreferences.componentLibrary}</component_library>`);
+    sections.push('  </ui_preferences>');
+    
+    sections.push('</project_readme>');
+    
+    return sections.join('\n');
+  }
+
+  private formatUIContext(context: UIElementContext): string {
+    const sections: string[] = ['<selected_ui_element>'];
+    
+    sections.push(`  <component_path>${context.componentPath}</component_path>`);
+    sections.push(`  <element_type>${context.elementType}</element_type>`);
+    sections.push(`  <element_id>${context.elementId}</element_id>`);
+    
+    if (context.parentHierarchy.length > 0) {
+      sections.push(`  <parent_hierarchy>${context.parentHierarchy.join(' > ')}</parent_hierarchy>`);
+    }
+    
+    if (context.relatedCode) {
+      sections.push('  <related_code>');
+      sections.push('    <![CDATA[');
+      sections.push(context.relatedCode.component);
+      sections.push('    ]]>');
+      sections.push('  </related_code>');
+    }
+    
+    sections.push('</selected_ui_element>');
+    
+    return sections.join('\n');
+  }
+
+  private formatChatHistory(messages: ChatMessage[]): string {
+    const sections: string[] = ['<recent_conversation>'];
+    
+    messages.forEach(msg => {
+      sections.push(`  <message role="${msg.role}" timestamp="${msg.timestamp.toISOString()}">`);
+      sections.push(`    ${msg.content}`);
+      sections.push('  </message>');
+    });
+    
+    sections.push('</recent_conversation>');
+    
+    return sections.join('\n');
+  }
+
+  private generateInstructions(intent: string): string {
+    const baseInstructions = `
+<instructions>
+  <intent>${intent}</intent>
+  <guidelines>
+    1. Analyze the existing project structure and maintain consistency
+    2. Follow the established coding patterns and conventions
+    3. Respect the UI preferences and design system
+    4. Update only the necessary files to accomplish the task
+    5. Preserve existing functionality unless explicitly asked to change
+    6. Consider the selected UI element context if provided
+    7. Ensure all changes align with active requirements
+  </guidelines>`;
+    
+    // Add intent-specific instructions
+    let specificInstructions = '';
+    
+    switch (intent) {
+      case 'create-feature':
+        specificInstructions = `
+  <specific_instructions>
+    - Create new components in the appropriate directory
+    - Add necessary imports and exports
+    - Update any index files or routing configuration
+    - Ensure proper TypeScript types if applicable
+  </specific_instructions>`;
+        break;
+        
+      case 'fix-issue':
+        specificInstructions = `
+  <specific_instructions>
+    - Identify the root cause of the issue
+    - Apply minimal changes to fix the problem
+    - Add error handling if appropriate
+    - Test edge cases
+  </specific_instructions>`;
+        break;
+        
+      case 'update-styling':
+        specificInstructions = `
+  <specific_instructions>
+    - Use the project's established styling approach
+    - Maintain responsive design principles
+    - Follow the color scheme and typography guidelines
+    - Ensure accessibility standards are met
+  </specific_instructions>`;
+        break;
+    }
+    
+    return baseInstructions + specificInstructions + '\n</instructions>';
+  }
+
+  private getActiveSources(): string[] {
+    const sources: string[] = ['project-config'];
+    
+    if (this.readme) sources.push('readme');
+    if (this.currentUIContext) sources.push('ui-element');
+    if (this.chatHistory.length > 0) sources.push('chat-history');
+    
+    return sources;
+  }
+
+  private calculateConfidence(intent: string, message: string): number {
+    // Simple confidence calculation based on message clarity
+    let confidence = 0.5;
+    
+    // Increase confidence for clear intents
+    if (intent !== 'general-request') confidence += 0.2;
+    
+    // Increase confidence if UI element is selected
+    if (this.currentUIContext) confidence += 0.15;
+    
+    // Increase confidence based on message length and specificity
+    if (message.length > 50) confidence += 0.1;
+    if (message.includes('specifically') || message.includes('exactly')) confidence += 0.05;
+    
+    return Math.min(confidence, 1.0);
+  }
+
+  // Changelog Management
+  public addChangelogEntry(entry: Omit<ChangelogEntry, 'id' | 'timestamp'>): void {
+    if (!this.readme) return;
+    
+    const fullEntry: ChangelogEntry = {
+      id: this.generateId(),
+      timestamp: new Date(),
+      ...entry
+    };
+    
+    this.readme.changelog.push(fullEntry);
+    
+    // Keep only last 100 entries
+    if (this.readme.changelog.length > 100) {
+      this.readme.changelog = this.readme.changelog.slice(-100);
+    }
+    
+    this.saveProjectReadme();
+  }
+
+  // Utility Methods
+  private generateId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  public async exportContext(): Promise<string> {
+    const fullContext = {
+      projectId: this.projectId,
+      configuration: await this.loadProjectConfiguration(),
+      readme: this.readme,
+      chatHistory: this.chatHistory,
+      currentUIContext: this.currentUIContext
+    };
+    
+    return this.xmlBuilder.build({
+      'full-context': fullContext
+    });
+  }
+
+  // Public API for requirement management
+  public async addRequirement(requirement: Omit<ApplicationRequirement, 'id' | 'addedAt'>): Promise<void> {
+    if (!this.readme) await this.loadProjectReadme();
+    
+    const fullRequirement: ApplicationRequirement = {
+      id: this.generateId(),
+      addedAt: new Date(),
+      ...requirement
+    };
+    
+    this.readme!.requirements.push(fullRequirement);
+    await this.saveProjectReadme();
+    
+    this.emit('requirement-added', fullRequirement);
+  }
+
+  public async updateRequirement(id: string, updates: Partial<ApplicationRequirement>): Promise<void> {
+    if (!this.readme) await this.loadProjectReadme();
+    
+    const index = this.readme!.requirements.findIndex(r => r.id === id);
+    if (index !== -1) {
+      this.readme!.requirements[index] = {
+        ...this.readme!.requirements[index],
+        ...updates,
+        modifiedAt: new Date()
+      };
+      
+      await this.saveProjectReadme();
+      this.emit('requirement-updated', this.readme!.requirements[index]);
+    }
+  }
+
+  // Cleanup
+  public dispose(): void {
+    this.removeAllListeners();
+    this.contextCache.clear();
+    this.chatHistory = [];
+    this.currentUIContext = null;
+    this.readme = null;
+  }
+}

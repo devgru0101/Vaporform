@@ -1,3 +1,15 @@
+/*
+ * DEPRECATED: This wizard state slice is deprecated and will be removed.
+ * 
+ * The wizard functionality has been moved to a new implementation:
+ * - store/projectWizard.ts (new wizard state management)
+ * - components/ProjectWizard/* (new wizard components)
+ * 
+ * This file supports the legacy components/Wizard implementation which is obsolete.
+ * 
+ * @deprecated Use projectWizard store slice instead
+ */
+
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 
 // Types

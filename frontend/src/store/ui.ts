@@ -42,6 +42,7 @@ interface UiState {
     projectSettings: boolean;
     containerSettings: boolean;
     about: boolean;
+    projectCreationModal: boolean;
   };
   notifications: Array<{
     id: string;
@@ -119,6 +120,7 @@ const initialState: UiState = {
     projectSettings: false,
     containerSettings: false,
     about: false,
+    projectCreationModal: false,
   },
   notifications: [],
   statusBar: {
@@ -137,6 +139,7 @@ const initialState: UiState = {
   shortcuts: {
     'ctrl+p': 'quickOpen',
     'ctrl+shift+p': 'commandPalette',
+    'ctrl+,': 'settings',
     'ctrl+b': 'toggleSidebar',
     'ctrl+j': 'togglePanel',
     'ctrl+shift+e': 'showFileExplorer',

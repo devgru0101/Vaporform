@@ -2,6 +2,7 @@ import React, { Component, ReactNode } from 'react';
 import styled from '@emotion/styled';
 import { VaporformLogo } from './ui/Icons';
 import { Button } from './ui/Button';
+import { isProduction } from '../config/environment';
 
 const ErrorContainer = styled.div`
   display: flex;
@@ -103,7 +104,7 @@ export class ErrorBoundary extends Component<Props, State> {
     });
 
     // Log to external service in production
-    if (process.env.NODE_ENV === 'production') {
+    if (isProduction) {
       // TODO: Send error to logging service
     }
   }

@@ -1,6 +1,15 @@
 /**
- * End-to-End Workflow Tests
- * Tests for complete user workflows from authentication to project deployment
+ * DEPRECATED: Legacy End-to-End Workflow Tests
+ * 
+ * These tests include deprecated wizard functionality.
+ * The wizard has been replaced with a modal-based approach.
+ * 
+ * Update tests to use:
+ * - ProjectCreationModal instead of wizard pages
+ * - projectWizard store slice instead of wizard slice
+ * - Modal state management instead of route navigation
+ * 
+ * @deprecated Update tests to use modal-based wizard approach
  */
 
 import React from 'react';

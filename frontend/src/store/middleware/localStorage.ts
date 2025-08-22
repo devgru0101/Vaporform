@@ -25,6 +25,7 @@ interface StorableState {
     settings: any;
     conversations: any[];
   };
+  settings: any;
 }
 
 export const localStorageMiddleware: Middleware<{}, RootState> = store => next => action => {
@@ -50,6 +51,19 @@ export const localStorageMiddleware: Middleware<{}, RootState> = store => next =
     'ai/updateConversation',
     'ai/deleteConversation',
     'auth/updateUser',
+    'settings/updateUserProfile',
+    'settings/updateTheme',
+    'settings/updateEditor',
+    'settings/updateAi',
+    'settings/updateCollaboration',
+    'settings/updateDevEnvironment',
+    'settings/updateTerminal',
+    'settings/updateSecurity',
+    'settings/updatePerformance',
+    'settings/updateIntegrations',
+    'settings/updateNotifications',
+    'settings/updateAdvanced',
+    'settings/saveSettingsSuccess',
   ];
 
   if (persistActions.some(actionType => action.type.startsWith(actionType))) {
@@ -77,6 +91,20 @@ export const localStorageMiddleware: Middleware<{}, RootState> = store => next =
         ai: {
           settings: state.ai.settings,
           conversations: state.ai.conversations,
+        },
+        settings: {
+          userProfile: state.settings?.userProfile,
+          theme: state.settings?.theme,
+          editor: state.settings?.editor,
+          ai: state.settings?.ai,
+          collaboration: state.settings?.collaboration,
+          devEnvironment: state.settings?.devEnvironment,
+          terminal: state.settings?.terminal,
+          security: state.settings?.security,
+          performance: state.settings?.performance,
+          integrations: state.settings?.integrations,
+          notifications: state.settings?.notifications,
+          advanced: state.settings?.advanced,
         },
       };
 
@@ -130,6 +158,13 @@ export const loadStoredState = (): Partial<RootState> | undefined => {
         suggestions: [],
         contextFiles: [],
       } as any,
+      settings: parsed.settings ? {
+        ...parsed.settings,
+        // Reset runtime state
+        isLoading: false,
+        error: null,
+        hasUnsavedChanges: false,
+      } : undefined,
     };
   } catch (error) {
     console.warn('Failed to load stored state from localStorage:', error);

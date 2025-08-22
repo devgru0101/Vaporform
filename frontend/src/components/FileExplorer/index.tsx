@@ -41,12 +41,7 @@ export const FileExplorer: React.FC = () => {
         <div className="vf-file-tree">
           <div className="vf-empty-state">
             <p>No project opened</p>
-            <button 
-              className="vf-btn vf-btn-primary vf-btn-sm"
-              onClick={() => dispatch(fileSystemSlice.actions.openProjectWizard())}
-            >
-              Create Project
-            </button>
+            <p className="vf-empty-hint">Use the "Create Project" button in the header to get started</p>
           </div>
         </div>
       </div>

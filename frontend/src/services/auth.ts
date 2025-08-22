@@ -1,7 +1,8 @@
 import axios from 'axios';
 import type { User } from '@shared/types';
+import { API_BASE_ALT } from '../config/environment';
 
-const API_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://192.168.1.235:4001';
+const API_BASE = API_BASE_ALT;
 
 interface LoginCredentials {
   email: string;

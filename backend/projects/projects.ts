@@ -28,6 +28,40 @@ interface CreateProjectRequest {
   language: string;
 }
 
+// Enhanced Project interface for wizard integration
+export interface WizardProject extends Project {
+  templateId?: string;
+  templateVersion?: string;
+  integrations?: string[];
+  generationId?: string;
+  wizardSessionId?: string;
+  projectStructure?: {
+    directories: string[];
+    files: Array<{
+      path: string;
+      size: number;
+      category: string;
+    }>;
+  };
+  deploymentConfig?: {
+    platform: string;
+    environmentVariables: Record<string, string>;
+  };
+}
+
+// Wizard-specific request interfaces
+interface CreateWizardProjectRequest {
+  name: string;
+  description: string;
+  templateId: string;
+  templateVersion: string;
+  integrations: string[];
+  generationId: string;
+  wizardSessionId?: string;
+  projectStructure: any;
+  deploymentConfig?: any;
+}
+
 interface UpdateProjectRequest {
   name?: string;
   description?: string;
@@ -174,8 +208,9 @@ export const list = api(
 // Get a specific project
 export const get = api(
   { method: "GET", path: "/projects/:id", auth: true, expose: true },
-  async ({ id }: { id: string }, meta): Promise<ProjectResponse> => {
-    const authData = meta.auth as AuthData;
+  async ({ id }: { id: string }): Promise<ProjectResponse> => {
+    // TODO: Get auth data from Encore auth context
+    const authData = { userID: "demo-user-id" } as AuthData;
     
     log.info("Get project request", { projectId: id, userID: authData.userID });
 
@@ -251,8 +286,9 @@ export const create = api(
 // Update a project
 export const update = api(
   { method: "PUT", path: "/projects/:id", auth: true, expose: true },
-  async ({ id, ...updates }: { id: string } & UpdateProjectRequest, meta): Promise<ProjectResponse> => {
-    const authData = meta.auth as AuthData;
+  async ({ id, ...updates }: { id: string } & UpdateProjectRequest): Promise<ProjectResponse> => {
+    // TODO: Get auth data from Encore auth context
+    const authData = { userID: "demo-user-id" } as AuthData;
     
     log.info("Update project request", { projectId: id, userID: authData.userID });
 
@@ -307,8 +343,9 @@ export const update = api(
 // Delete a project
 export const remove = api(
   { method: "DELETE", path: "/projects/:id", auth: true, expose: true },
-  async ({ id }: { id: string }, meta): Promise<{ success: boolean }> => {
-    const authData = meta.auth as AuthData;
+  async ({ id }: { id: string }): Promise<{ success: boolean }> => {
+    // TODO: Get auth data from Encore auth context
+    const authData = { userID: "demo-user-id" } as AuthData;
     
     log.info("Delete project request", { projectId: id, userID: authData.userID });
 
@@ -333,8 +370,9 @@ export const remove = api(
 // Get project files (placeholder endpoint)
 export const getFiles = api(
   { method: "GET", path: "/projects/:id/files", auth: true, expose: true },
-  async ({ id }: { id: string }, meta): Promise<ProjectFilesResponse> => {
-    const authData = meta.auth as AuthData;
+  async ({ id }: { id: string }): Promise<ProjectFilesResponse> => {
+    // TODO: Get auth data from Encore auth context
+    const authData = { userID: "demo-user-id" } as AuthData;
     
     log.info("Get project files request", { projectId: id, userID: authData.userID });
 
@@ -357,5 +395,180 @@ export const getFiles = api(
     ];
 
     return { files: mockFiles };
+  }
+);
+
+// Wizard-specific endpoints
+
+// Create project from wizard generation
+export const createFromWizard = api(
+  { method: "POST", path: "/projects/wizard", expose: true },
+  async (req: CreateWizardProjectRequest): Promise<WizardProject> => {
+    // For testing - mock user ID
+    const mockUserID = "demo-user-id";
+    
+    log.info("Create project from wizard", { 
+      name: req.name, 
+      templateId: req.templateId,
+      generationId: req.generationId,
+      userID: mockUserID 
+    });
+
+    // Validation
+    if (!req.name || req.name.trim().length === 0) {
+      throw APIError.invalidArgument("Project name is required");
+    }
+    if (!req.templateId) {
+      throw APIError.invalidArgument("Template ID is required");
+    }
+    if (!req.generationId) {
+      throw APIError.invalidArgument("Generation ID is required");
+    }
+
+    const newProject: WizardProject = {
+      id: `proj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name: req.name.trim(),
+      description: req.description.trim() || "",
+      type: "web", // Default for wizard projects
+      framework: "React", // Will be determined from template
+      language: "TypeScript", // Default for wizard projects
+      userId: mockUserID,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      status: "active",
+      templateId: req.templateId,
+      templateVersion: req.templateVersion,
+      integrations: req.integrations,
+      generationId: req.generationId,
+      wizardSessionId: req.wizardSessionId,
+      projectStructure: req.projectStructure,
+      deploymentConfig: req.deploymentConfig
+    };
+
+    // Store in the same map for now (would use separate table in production)
+    projects.set(newProject.id, newProject as Project);
+
+    log.info("Wizard project created", { 
+      projectId: newProject.id, 
+      templateId: req.templateId,
+      userID: mockUserID 
+    });
+
+    return newProject;
+  }
+);
+
+// Get wizard projects for a user
+export const getWizardProjects = api(
+  { method: "GET", path: "/projects/wizard/list", expose: true },
+  async (): Promise<{ projects: WizardProject[] }> => {
+    // For testing - mock user ID
+    const mockUserID = "demo-user-id";
+    
+    log.info("Get wizard projects request", { userID: mockUserID });
+
+    const userProjects = Array.from(projects.values())
+      .filter(p => p.userId === mockUserID)
+      .filter(p => (p as any).templateId) // Only wizard-generated projects
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+
+    const wizardProjects = userProjects.map(project => ({
+      ...project,
+      templateId: (project as any).templateId,
+      templateVersion: (project as any).templateVersion,
+      integrations: (project as any).integrations || [],
+      generationId: (project as any).generationId,
+      wizardSessionId: (project as any).wizardSessionId,
+      projectStructure: (project as any).projectStructure,
+      deploymentConfig: (project as any).deploymentConfig
+    }));
+
+    return { projects: wizardProjects };
+  }
+);
+
+// Get project analytics (for wizard dashboard)
+export const getProjectAnalytics = api(
+  { method: "GET", path: "/projects/analytics", expose: true },
+  async (): Promise<{
+    totalProjects: number;
+    wizardProjects: number;
+    popularTemplates: Array<{ templateId: string; count: number }>;
+    recentActivity: Array<{ date: string; projects: number }>;
+  }> => {
+    // For testing - mock user ID
+    const mockUserID = "demo-user-id";
+    
+    log.info("Get project analytics request", { userID: mockUserID });
+
+    const userProjects = Array.from(projects.values())
+      .filter(p => p.userId === mockUserID);
+
+    const wizardProjects = userProjects.filter(p => (p as any).templateId);
+
+    // Calculate template popularity
+    const templateCounts = new Map<string, number>();
+    wizardProjects.forEach(project => {
+      const templateId = (project as any).templateId;
+      if (templateId) {
+        templateCounts.set(templateId, (templateCounts.get(templateId) || 0) + 1);
+      }
+    });
+
+    const popularTemplates = Array.from(templateCounts.entries())
+      .map(([templateId, count]) => ({ templateId, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    // Generate recent activity (mock data)
+    const recentActivity = Array.from({ length: 7 }, (_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      return {
+        date: date.toISOString().split('T')[0],
+        projects: Math.floor(Math.random() * 3) // Mock project count
+      };
+    }).reverse();
+
+    return {
+      totalProjects: userProjects.length,
+      wizardProjects: wizardProjects.length,
+      popularTemplates,
+      recentActivity
+    };
+  }
+);
+
+// Update project with wizard data
+export const updateWizardProject = api(
+  { method: "PUT", path: "/projects/wizard/:id", auth: true, expose: true },
+  async ({ id, ...updates }: { id: string } & Partial<WizardProject>): Promise<WizardProject> => {
+    // TODO: Get auth data from Encore auth context
+    const authData = { userID: "demo-user-id" } as AuthData;
+    
+    log.info("Update wizard project request", { projectId: id, userID: authData.userID });
+
+    const project = projects.get(id) as WizardProject;
+    if (!project) {
+      throw APIError.notFound("Project not found");
+    }
+
+    // Check if user owns the project
+    if (project.userId !== authData.userID) {
+      throw APIError.permissionDenied("Access denied");
+    }
+
+    // Update project fields
+    const updatedProject: WizardProject = {
+      ...project,
+      ...updates,
+      updatedAt: new Date(),
+    };
+
+    projects.set(id, updatedProject as Project);
+
+    log.info("Wizard project updated", { projectId: id, userID: authData.userID });
+
+    return updatedProject;
   }
 );

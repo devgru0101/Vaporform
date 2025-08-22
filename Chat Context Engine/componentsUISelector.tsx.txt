@@ -1,0 +1,525 @@
+// components/UISelector.tsx
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { UIElementContext } from '../services/ChatContextEngine';
+
+interface UISelectorProps {
+  projectId: string;
+  onElementSelected: (context: UIElementContext) => void;
+  isActive: boolean;
+  previewFrameRef?: React.RefObject<HTMLIFrameElement>;
+}
+
+export const UISelector: React.FC<UISelectorProps> = ({
+  projectId,
+  onElementSelected,
+  isActive,
+  previewFrameRef
+}) => {
+  const [highlightedElement, setHighlightedElement] = useState<HTMLElement | null>(null);
+  const [selectedElement, setSelectedElement] = useState<UIElementContext | null>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const originalStylesMap = useRef<Map<HTMLElement, string>>(new Map());
+
+  // Initialize UI selection mode
+  useEffect(() => {
+    if (!isActive || !previewFrameRef?.current) return;
+
+    const iframe = previewFrameRef.current;
+    const iframeDocument = iframe.contentDocument || iframe.contentWindow?.document;
+    
+    if (!iframeDocument) return;
+
+    // Add selection mode styles
+    const style = iframeDocument.createElement('style');
+    style.id = 'ui-selector-styles';
+    style.textContent = `
+      .ui-selector-active * {
+        cursor: crosshair !important;
+      }
+      
+      .ui-selector-highlight {
+        outline: 2px solid #3B82F6 !important;
+        outline-offset: 2px !important;
+        background-color: rgba(59, 130, 246, 0.1) !important;
+        position: relative !important;
+      }
+      
+      .ui-selector-highlight::after {
+        content: attr(data-component-path) !important;
+        position: absolute !important;
+        top: -24px !important;
+        left: 0 !important;
+        background: #3B82F6 !important;
+        color: white !important;
+        padding: 2px 8px !important;
+        border-radius: 4px !important;
+        font-size: 12px !important;
+        font-family: monospace !important;
+        white-space: nowrap !important;
+        z-index: 999999 !important;
+        pointer-events: none !important;
+      }
+      
+      .ui-selector-selected {
+        outline: 3px solid #10B981 !important;
+        outline-offset: 2px !important;
+        background-color: rgba(16, 185, 129, 0.15) !important;
+      }
+    `;
+    
+    iframeDocument.head.appendChild(style);
+    iframeDocument.body.classList.add('ui-selector-active');
+
+    // Add event listeners
+    const handleMouseMove = (e: MouseEvent) => handleElementHover(e, iframeDocument);
+    const handleClick = (e: MouseEvent) => handleElementClick(e, iframeDocument);
+    const handleKeyDown = (e: KeyboardEvent) => handleEscape(e);
+
+    iframeDocument.addEventListener('mousemove', handleMouseMove);
+    iframeDocument.addEventListener('click', handleClick);
+    iframeDocument.addEventListener('keydown', handleKeyDown);
+
+    // Cleanup
+    return () => {
+      iframeDocument.removeEventListener('mousemove', handleMouseMove);
+      iframeDocument.removeEventListener('click', handleClick);
+      iframeDocument.removeEventListener('keydown', handleKeyDown);
+      
+      const existingStyle = iframeDocument.getElementById('ui-selector-styles');
+      if (existingStyle) {
+        existingStyle.remove();
+      }
+      
+      iframeDocument.body.classList.remove('ui-selector-active');
+      
+      // Clear any highlighted elements
+      if (highlightedElement) {
+        highlightedElement.classList.remove('ui-selector-highlight');
+        highlightedElement.removeAttribute('data-component-path');
+      }
+    };
+  }, [isActive, previewFrameRef]);
+
+  const handleElementHover = useCallback((e: MouseEvent, doc: Document) => {
+    const target = e.target as HTMLElement;
+    
+    // Skip if same element
+    if (target === highlightedElement) return;
+    
+    // Clear previous highlight
+    if (highlightedElement) {
+      highlightedElement.classList.remove('ui-selector-highlight');
+      highlightedElement.removeAttribute('data-component-path');
+    }
+    
+    // Add new highlight
+    if (target && target !== doc.body) {
+      target.classList.add('ui-selector-highlight');
+      const componentPath = getComponentPath(target);
+      target.setAttribute('data-component-path', componentPath);
+      setHighlightedElement(target);
+    }
+  }, [highlightedElement]);
+
+  const handleElementClick = useCallback((e: MouseEvent, doc: Document) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const target = e.target as HTMLElement;
+    
+    if (!target || target === doc.body) return;
+    
+    // Extract element context
+    const context = extractElementContext(target, doc);
+    
+    // Mark as selected
+    doc.querySelectorAll('.ui-selector-selected').forEach(el => {
+      el.classList.remove('ui-selector-selected');
+    });
+    target.classList.add('ui-selector-selected');
+    
+    // Store and emit selection
+    setSelectedElement(context);
+    onElementSelected(context);
+    
+    // Show selection info
+    showSelectionInfo(context);
+  }, [onElementSelected]);
+
+  const handleEscape = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      // Exit selection mode
+      window.parent.postMessage({
+        type: 'EXIT_UI_SELECTION',
+        projectId
+      }, '*');
+    }
+  }, [projectId]);
+
+  const getComponentPath = (element: HTMLElement): string => {
+    const path: string[] = [];
+    let current: HTMLElement | null = element;
+    
+    while (current && current !== document.body) {
+      // Try to get React component name
+      const reactKey = Object.keys(current).find(key => key.startsWith('__reactInternalInstance'));
+      
+      if (reactKey) {
+        const instance = (current as any)[reactKey];
+        const componentName = instance?.elementType?.name || 
+                            instance?.return?.elementType?.name ||
+                            instance?.return?.type?.name;
+        
+        if (componentName && componentName !== 'div' && componentName !== 'span') {
+          path.unshift(componentName);
+          break;
+        }
+      }
+      
+      // Fallback to data attributes or class names
+      const dataComponent = current.getAttribute('data-component');
+      const dataTestId = current.getAttribute('data-testid');
+      const id = current.id;
+      
+      if (dataComponent) {
+        path.unshift(dataComponent);
+      } else if (dataTestId) {
+        path.unshift(`[${dataTestId}]`);
+      } else if (id) {
+        path.unshift(`#${id}`);
+      } else if (current.className) {
+        const mainClass = current.className.split(' ')[0];
+        if (mainClass && !mainClass.startsWith('ui-selector')) {
+          path.unshift(`.${mainClass}`);
+        }
+      } else {
+        path.unshift(current.tagName.toLowerCase());
+      }
+      
+      current = current.parentElement;
+    }
+    
+    return path.join(' > ') || 'Unknown';
+  };
+
+  const extractElementContext = (element: HTMLElement, doc: Document): UIElementContext => {
+    // Extract props from data attributes
+    const props: Record<string, any> = {};
+    Array.from(element.attributes).forEach(attr => {
+      if (attr.name.startsWith('data-')) {
+        props[attr.name.substring(5)] = attr.value;
+      }
+    });
+    
+    // Extract computed styles
+    const computedStyles = doc.defaultView?.getComputedStyle(element);
+    const styles: Record<string, string> = {};
+    
+    if (computedStyles) {
+      // Get important style properties
+      const importantProps = [
+        'width', 'height', 'padding', 'margin', 'display',
+        'position', 'backgroundColor', 'color', 'fontSize',
+        'fontWeight', 'borderRadius', 'boxShadow'
+      ];
+      
+      importantProps.forEach(prop => {
+        const value = computedStyles.getPropertyValue(prop);
+        if (value && value !== 'auto' && value !== 'none') {
+          styles[prop] = value;
+        }
+      });
+    }
+    
+    // Extract parent hierarchy
+    const parentHierarchy: string[] = [];
+    let parent = element.parentElement;
+    let depth = 0;
+    
+    while (parent && parent !== doc.body && depth < 5) {
+      parentHierarchy.push(parent.tagName.toLowerCase());
+      parent = parent.parentElement;
+      depth++;
+    }
+    
+    // Extract data bindings
+    const dataBindings: Array<{ key: string; value: any; source: string }> = [];
+    
+    // Check for React props
+    const reactKey = Object.keys(element).find(key => key.startsWith('__reactInternalInstance'));
+    if (reactKey) {
+      const instance = (element as any)[reactKey];
+      const memoizedProps = instance?.memoizedProps || instance?.return?.memoizedProps;
+      
+      if (memoizedProps) {
+        Object.entries(memoizedProps).forEach(([key, value]) => {
+          if (key !== 'children' && key !== 'className' && key !== 'style') {
+            dataBindings.push({
+              key,
+              value,
+              source: 'react-props'
+            });
+          }
+        });
+      }
+    }
+    
+    // Check for event listeners
+    const events = ['click', 'change', 'submit', 'focus', 'blur'];
+    events.forEach(eventType => {
+      const handler = (element as any)[`on${eventType}`];
+      if (handler) {
+        dataBindings.push({
+          key: `on${eventType.charAt(0).toUpperCase() + eventType.slice(1)}`,
+          value: handler.toString().substring(0, 50) + '...',
+          source: 'event-listener'
+        });
+      }
+    });
+    
+    return {
+      elementId: element.id || generateElementId(element),
+      componentPath: getComponentPath(element),
+      elementType: element.tagName.toLowerCase(),
+      props,
+      styles,
+      parentHierarchy,
+      dataBindings
+    };
+  };
+
+  const generateElementId = (element: HTMLElement): string => {
+    const tag = element.tagName.toLowerCase();
+    const index = Array.from(element.parentElement?.children || []).indexOf(element);
+    return `${tag}-${index}-${Date.now()}`;
+  };
+
+  const showSelectionInfo = (context: UIElementContext) => {
+    console.log('Selected Element:', context);
+    
+    // Send message to parent window
+    window.parent.postMessage({
+      type: 'UI_ELEMENT_SELECTED',
+      projectId,
+      context
+    }, '*');
+  };
+
+  return null; // This component doesn't render anything visible
+};
+
+// Enhanced Chat Interface Component
+interface ChatInterfaceProps {
+  projectId: string;
+}
+
+export const EnhancedChatInterface: React.FC<ChatInterfaceProps> = ({ projectId }) => {
+  const [message, setMessage] = useState('');
+  const [isUISelectMode, setIsUISelectMode] = useState(false);
+  const [selectedElement, setSelectedElement] = useState<UIElementContext | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const previewFrameRef = useRef<HTMLIFrameElement>(null);
+  const cceRef = useRef<any>(null);
+
+  useEffect(() => {
+    // Initialize CCE
+    import('../services/ChatContextEngine').then(({ ChatContextEngine }) => {
+      cceRef.current = new ChatContextEngine(projectId);
+    });
+
+    // Listen for messages from preview iframe
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === 'UI_ELEMENT_SELECTED') {
+        setSelectedElement(event.data.context);
+        setIsUISelectMode(false);
+      } else if (event.data.type === 'EXIT_UI_SELECTION') {
+        setIsUISelectMode(false);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      if (cceRef.current) {
+        cceRef.current.dispose();
+      }
+    };
+  }, [projectId]);
+
+  const handleUISelectorClick = useCallback(() => {
+    setIsUISelectMode(!isUISelectMode);
+  }, [isUISelectMode]);
+
+  const handleElementSelected = useCallback((context: UIElementContext) => {
+    setSelectedElement(context);
+    
+    if (cceRef.current) {
+      cceRef.current.setUIElementContext(context);
+    }
+  }, []);
+
+  const handleSendMessage = async () => {
+    if (!message.trim() || !cceRef.current) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      // Add message to chat history
+      cceRef.current.addChatMessage({
+        id: Date.now().toString(),
+        role: 'user',
+        content: message,
+        timestamp: new Date()
+      });
+      
+      // Generate enhanced prompt
+      const enhancedPrompt = await cceRef.current.generateEnhancedPrompt(message);
+      
+      console.log('Enhanced Prompt:', enhancedPrompt);
+      
+      // Send to Claude Code SDK
+      // await claudeCodeSDK.execute(enhancedPrompt);
+      
+      // Update README based on the request
+      if (message.toLowerCase().includes('add') || message.toLowerCase().includes('requirement')) {
+        await cceRef.current.addRequirement({
+          description: message,
+          priority: 'medium',
+          status: 'pending'
+        });
+      }
+      
+      // Clear input and selection
+      setMessage('');
+      setSelectedElement(null);
+      
+      if (cceRef.current) {
+        cceRef.current.setUIElementContext(null);
+      }
+    } catch (error) {
+      console.error('Error processing message:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedElement(null);
+    if (cceRef.current) {
+      cceRef.current.setUIElementContext(null);
+    }
+  };
+
+  return (
+    <div className="chat-interface flex flex-col h-full bg-gray-50 dark:bg-gray-900">
+      {/* Hidden UI Selector Component */}
+      <UISelector
+        projectId={projectId}
+        onElementSelected={handleElementSelected}
+        isActive={isUISelectMode}
+        previewFrameRef={previewFrameRef}
+      />
+      
+      {/* Chat Messages Area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Chat messages would be rendered here */}
+      </div>
+      
+      {/* Selected Element Preview */}
+      {selectedElement && (
+        <div className="mx-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+              </svg>
+              <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                Selected: <code className="px-1 py-0.5 bg-blue-100 dark:bg-blue-800 rounded">
+                  {selectedElement.componentPath}
+                </code>
+              </span>
+            </div>
+            <button
+              onClick={clearSelection}
+              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          
+          {selectedElement.props && Object.keys(selectedElement.props).length > 0 && (
+            <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+              Props: {Object.keys(selectedElement.props).join(', ')}
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Input Area */}
+      <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+        <div className="flex space-x-2">
+          <button
+            onClick={handleUISelectorClick}
+            className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
+              isUISelectMode
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+            title="Click to select a UI element from the preview"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+            </svg>
+            <span>UI Selector</span>
+          </button>
+          
+          <div className="flex-1 relative">
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Tell Claude what to build..."
+              className="w-full px-4 py-2 pr-12 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+              rows={1}
+              disabled={isProcessing}
+            />
+            
+            <button
+              onClick={handleSendMessage}
+              disabled={!message.trim() || isProcessing}
+              className="absolute right-2 bottom-2 p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isProcessing ? (
+                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              )}
+            </button>
+          </div>
+        </div>
+        
+        {isUISelectMode && (
+          <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+            Click on any element in the preview to select it. Press ESC to cancel.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

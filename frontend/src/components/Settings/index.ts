@@ -1,0 +1,13 @@
+export { SettingsModal } from './SettingsModal';
+export * from './sections/UserProfileSection';
+export * from './sections/ThemeSection';
+export * from './sections/EditorSection';
+export * from './sections/AiSection';
+export * from './sections/CollaborationSection';
+export * from './sections/DevEnvironmentSection';
+export * from './sections/TerminalSection';
+export * from './sections/SecuritySection';
+export * from './sections/PerformanceSection';
+export * from './sections/IntegrationsSection';
+export * from './sections/NotificationsSection';
+export * from './sections/AdvancedSection';

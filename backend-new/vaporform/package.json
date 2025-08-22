@@ -1,0 +1,39 @@
+{
+  "name": "vaporform",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Vaporform AI-powered development environment - Encore TypeScript Backend",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "encore run",
+    "build": "encore build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "start": "encore run",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^20.5.7",
+    "typescript": "^5.2.2",
+    "vitest": "^1.5.0"
+  },
+  "dependencies": {
+    "encore.dev": "^1.49.0"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.13.0"
+  },
+  "keywords": [
+    "vaporform",
+    "ai",
+    "development",
+    "encore",
+    "typescript"
+  ],
+  "author": "Vaporform Team",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

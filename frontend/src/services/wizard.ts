@@ -1,105 +1,151 @@
-// API Configuration
-const API_BASE_URL = 'http://192.168.1.235:4001';
+import { apiClient } from './api';
+import projectAnalysisAPI from './projectAnalysis';
+import templatesAPI from './templates';
+import integrationsAPI from './integrations';
+import projectGenerationAPI, { ProjectGenerationTracker } from './projectGeneration';
+import type { 
+  WizardSession,
+  ProjectVisionData,
+  TechStackData,
+  IntegrationData,
+  ProjectCreationRequest,
+  Template,
+  IntegrationProvider
+} from './types';
 
-// Wizard service for project creation flow
+// Enhanced Wizard service that integrates with all backend microservices
 export const wizardAPI = {
-  createSession: async (userId: string) => {
-    const response = await fetch(`${API_BASE_URL}/wizard/session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to create wizard session: ${response.statusText}`);
-    }
-    return response.json();
+  // Session Management
+  createSession: async (userId: string): Promise<WizardSession> => {
+    return apiClient.post<WizardSession>('/projectwizard/session', { userId });
   },
 
-  getSession: async (sessionId: string) => {
-    const response = await fetch(`${API_BASE_URL}/wizard/session/${sessionId}`);
-    if (!response.ok) {
-      throw new Error(`Failed to get wizard session: ${response.statusText}`);
-    }
-    return response.json();
+  getSession: async (sessionId: string): Promise<WizardSession> => {
+    return apiClient.get<WizardSession>(`/projectwizard/session/${sessionId}`);
   },
 
-  updateSession: async (sessionId: string, updates: any) => {
-    const response = await fetch(`${API_BASE_URL}/wizard/session/${sessionId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to update wizard session: ${response.statusText}`);
-    }
-    return response.json();
+  updateSession: async (sessionId: string, updates: Partial<WizardSession>): Promise<WizardSession> => {
+    return apiClient.put<WizardSession>(`/projectwizard/session/${sessionId}`, updates);
   },
 
-  analyzeProject: async (requirements: any) => {
-    const response = await fetch(`${API_BASE_URL}/wizard/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        description: requirements.description,
-        preferences: requirements,
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to analyze project: ${response.statusText}`);
-    }
-    return response.json();
+  updateStep: async (sessionId: string, stepId: string, data: any): Promise<WizardSession> => {
+    return apiClient.put<WizardSession>(`/projectwizard/session/${sessionId}/step/${stepId}`, { data });
   },
 
-  updateStep: async (sessionId: string, stepId: string, data: any) => {
-    const response = await fetch(`${API_BASE_URL}/wizard/session/${sessionId}/step/${stepId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data }),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to update wizard step: ${response.statusText}`);
-    }
-    return response.json();
+  // Step 1: Project Vision Analysis
+  analyzeVision: async (vision: ProjectVisionData, userId: string) => {
+    return projectAnalysisAPI.analyzeVision(vision, userId);
   },
 
-  generatePreview: async (sessionId: string, stepId: string) => {
-    const response = await fetch(`${API_BASE_URL}/wizard/session/${sessionId}/preview/${stepId}`);
-    if (!response.ok) {
-      throw new Error(`Failed to generate preview: ${response.statusText}`);
-    }
-    return response.json();
+  // Step 2: Tech Stack & Templates
+  getTemplates: async (filters?: any): Promise<{ templates: Template[] }> => {
+    return templatesAPI.getTemplates(filters);
   },
 
-  completeWizard: async (sessionId: string) => {
-    const response = await fetch(`${API_BASE_URL}/wizard/session/${sessionId}/complete`, {
-      method: 'POST',
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to complete wizard: ${response.statusText}`);
-    }
-    return response.json();
-  },
-  
-  getTemplates: async () => {
-    const response = await fetch(`${API_BASE_URL}/wizard/templates`);
-    if (!response.ok) {
-      throw new Error(`Failed to get templates: ${response.statusText}`);
-    }
-    return response.json();
+  getRecommendedTemplates: async (requirements: any): Promise<{ templates: Template[] }> => {
+    return templatesAPI.getRecommendedTemplates(requirements);
   },
 
-  validateProject: async (projectData: any) => {
-    // This could be enhanced to call a backend validation endpoint
-    return Promise.resolve({ valid: true, errors: [] });
+  getTemplate: async (templateId: string): Promise<Template> => {
+    return templatesAPI.getTemplate(templateId);
   },
 
-  deployProject: async (projectId: string) => {
-    // This would integrate with actual deployment services
-    return Promise.resolve({ 
-      success: true, 
-      deploymentUrl: 'https://example.com',
-      status: 'deployed' 
-    });
+  // Step 3: Integrations
+  getIntegrationProviders: async (filters?: any): Promise<{ providers: IntegrationProvider[] }> => {
+    return integrationsAPI.getProviders(filters);
+  },
+
+  getProvidersByType: async (type: string): Promise<{ providers: IntegrationProvider[] }> => {
+    return integrationsAPI.getProvidersByType(type);
+  },
+
+  validateIntegration: async (config: any) => {
+    return integrationsAPI.validateIntegration(config);
+  },
+
+  // Step 4: Project Generation
+  generateProject: async (
+    vision: ProjectVisionData,
+    techStack: TechStackData,
+    integrations: IntegrationData,
+    userId: string,
+    sessionId?: string,
+    options?: any
+  ) => {
+    const projectData: ProjectCreationRequest = {
+      vision,
+      techStack,
+      integrations,
+      userId,
+      sessionId
+    };
+
+    return projectGenerationAPI.generateProject(projectData, options);
+  },
+
+  // Progress tracking
+  createProgressTracker: (generationId: string): ProjectGenerationTracker => {
+    return new ProjectGenerationTracker(generationId);
+  },
+
+  getGenerationStatus: async (generationId: string) => {
+    return projectGenerationAPI.getGenerationStatus(generationId);
+  },
+
+  downloadProject: async (generationId: string) => {
+    return projectGenerationAPI.downloadProject(generationId);
+  },
+
+  // Preview & Validation
+  generatePreview: async (sessionId: string, stepId: string): Promise<any> => {
+    return apiClient.get(`/projectwizard/session/${sessionId}/preview/${stepId}`);
+  },
+
+  validateProject: async (projectData: any): Promise<{ valid: boolean; errors: string[] }> => {
+    return apiClient.post<{ valid: boolean; errors: string[] }>('/projectwizard/validate', projectData);
+  },
+
+  // Completion
+  completeWizard: async (sessionId: string): Promise<{
+    success: boolean;
+    projectId?: string;
+    generationId?: string;
+  }> => {
+    return apiClient.post<{
+      success: boolean;
+      projectId?: string;
+      generationId?: string;
+    }>(`/projectwizard/session/${sessionId}/complete`);
+  },
+
+  // Additional utilities
+  estimateProjectComplexity: async (vision: ProjectVisionData) => {
+    return projectAnalysisAPI.estimateComplexity(vision);
+  },
+
+  getSetupGuide: async (providerId: string) => {
+    return integrationsAPI.getSetupGuide(providerId);
+  },
+
+  checkTemplateCompatibility: async (templateId: string, providerId: string) => {
+    return integrationsAPI.checkCompatibility(templateId, providerId);
+  },
+
+  // Enhanced features
+  saveProgress: async (sessionId: string, stepData: any): Promise<{ success: boolean }> => {
+    return apiClient.post<{ success: boolean }>(`/projectwizard/session/${sessionId}/save`, stepData);
+  },
+
+  restoreProgress: async (sessionId: string): Promise<WizardSession> => {
+    return apiClient.get<WizardSession>(`/projectwizard/session/${sessionId}/restore`);
+  },
+
+  getUserSessions: async (userId: string): Promise<{ sessions: WizardSession[] }> => {
+    return apiClient.get<{ sessions: WizardSession[] }>(`/projectwizard/sessions/user/${userId}`);
+  },
+
+  deleteSession: async (sessionId: string): Promise<{ success: boolean }> => {
+    return apiClient.delete<{ success: boolean }>(`/projectwizard/session/${sessionId}`);
   }
 };
 

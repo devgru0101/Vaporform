@@ -6,11 +6,12 @@ import { fileSystemSlice } from '../fileSystem';
 import { aiSlice } from '../ai';
 import { uiSlice } from '../ui';
 import type { RootState } from '../index';
+import { API_BASE_ALT, isProduction, getEnvVar } from '../../config/environment';
 
-const WS_BASE = process.env.NODE_ENV === 'production' ? '' : 'http://192.168.1.235:4001';
+const WS_BASE = API_BASE_ALT;
 
 // WebSocket feature flag - disable in development until backend WebSocket server is implemented
-const ENABLE_WEBSOCKET = process.env.NODE_ENV === 'production' && process.env.REACT_APP_ENABLE_WEBSOCKET === 'true';
+const ENABLE_WEBSOCKET = isProduction && getEnvVar('REACT_APP_ENABLE_WEBSOCKET') === 'true';
 
 interface WebSocketState {
   socket: Socket | null;
@@ -115,7 +116,7 @@ function initializeWebSocket(token: string, store: any) {
     wsState.reconnectAttempts++;
     
     // Only log errors in development mode for debugging
-    if (process.env.NODE_ENV === 'development') {
+    if (!isProduction) {
       console.warn(`WebSocket connection attempt ${wsState.reconnectAttempts}/${wsState.maxRetries} failed:`, error.message);
     }
     

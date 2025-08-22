@@ -5,7 +5,7 @@ import { Layout } from '@/components/Layout';
 import { AuthPage } from '@/pages/AuthPage';
 import { WorkspacePage } from '@/pages/WorkspacePage';
 import { SettingsPage } from '@/pages/SettingsPage';
-import { WizardPage } from '@/pages/WizardPage';
+// REMOVED: WizardPage import - replaced with modal-based approach via ProjectCreationModal
 import { LoadingScreen } from '@/components/ui/LoadingScreen';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { authSlice, restoreSession } from '@/store/auth';
@@ -58,8 +58,10 @@ export const App: React.FC = () => {
               <Route path="/" element={<Layout />} />
               <Route path="/workspace" element={<Layout />} />
               <Route path="/workspace/:projectId" element={<Layout />} />
-              <Route path="/wizard" element={<WizardPage />} />
-              <Route path="/wizard/:step" element={<WizardPage />} />
+              {/* REMOVED: Wizard routes - replaced with modal-based approach
+                  Project creation is now handled via ProjectCreationModal
+                  Access through UI state: dispatch(uiSlice.actions.openModal('projectCreationModal'))
+               */}
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="*" element={<Layout />} />
             </Routes>
