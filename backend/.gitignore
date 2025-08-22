@@ -1,3 +1,8 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
 encore.gen.go
 encore.gen.cue
 /.encore

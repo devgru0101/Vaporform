@@ -1,4 +1,0 @@
-{
-	"id":   "vaporform",
-	"lang": "typescript"
-}

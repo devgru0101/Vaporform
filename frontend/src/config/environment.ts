@@ -33,7 +33,7 @@ export const isLocalhost = detectLocalhost();
 // API Configuration
 export const API_BASE_URL = (() => {
   if (isLocalhost) {
-    return 'http://localhost:4001';
+    return 'http://192.168.1.235:4000';
   }
   return 'https://api.vaporform.com';
 })();
@@ -41,7 +41,7 @@ export const API_BASE_URL = (() => {
 // WebSocket Configuration
 export const WS_URL = (() => {
   if (isLocalhost) {
-    return 'ws://localhost:4001';
+    return 'ws://192.168.1.235:4000';
   }
   return 'wss://api.vaporform.com';
 })();
@@ -51,7 +51,7 @@ export const API_BASE_ALT = (() => {
   if (isProduction) {
     return '';
   }
-  return 'http://192.168.1.235:4001';
+  return 'http://192.168.1.235:4000';
 })();
 
 // Timeouts and retry configuration

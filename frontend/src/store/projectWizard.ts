@@ -122,7 +122,7 @@ const initialState: ProjectWizardState = {
   progressTracker: null,
   
   validation: {
-    isValid: false,
+    isValid: true,
     errors: [],
     warnings: []
   },
@@ -334,10 +334,15 @@ export const validateProject = createAsyncThunk(
   }
 );
 
-// Local validation helper
-const validateStep = (step: number, projectData: any): { isValid: boolean; errors: string[]; warnings: string[] } => {
+// Local validation helper - only validate if user has started filling out the form
+const validateStep = (step: number, projectData: any, skipEmptyValidation = false): { isValid: boolean; errors: string[]; warnings: string[] } => {
   const errors: string[] = [];
   const warnings: string[] = [];
+
+  // Skip validation for completely empty initial state
+  if (skipEmptyValidation) {
+    return { isValid: true, errors: [], warnings: [] };
+  }
 
   switch (step) {
     case 0: // Project Vision
@@ -419,7 +424,13 @@ const projectWizardSlice = createSlice({
         ...state.projectData.vision,
         ...action.payload
       };
-      state.validation = validateStep(state.currentStep, state.projectData);
+      // Only validate if user has actually started filling out fields
+      const hasContent = Object.values(action.payload).some(value => 
+        value && (typeof value === 'string' ? value.trim() : Array.isArray(value) ? value.length > 0 : true)
+      );
+      if (hasContent) {
+        state.validation = validateStep(state.currentStep, state.projectData);
+      }
     },
     
     updateTechStack: (state, action: PayloadAction<Partial<TechStackData>>) => {
@@ -427,6 +438,7 @@ const projectWizardSlice = createSlice({
         ...state.projectData.techStack,
         ...action.payload
       };
+      // Always validate tech stack changes as they indicate user interaction
       state.validation = validateStep(state.currentStep, state.projectData);
     },
     
@@ -435,6 +447,7 @@ const projectWizardSlice = createSlice({
         ...state.projectData.integrations,
         ...action.payload
       };
+      // Always validate integration changes as they indicate user interaction
       state.validation = validateStep(state.currentStep, state.projectData);
     },
     
@@ -443,6 +456,7 @@ const projectWizardSlice = createSlice({
         ...state.projectData,
         ...action.payload
       };
+      // Only validate if this is not an initial state update
       state.validation = validateStep(state.currentStep, state.projectData);
     },
     
